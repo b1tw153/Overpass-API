@@ -36,6 +36,7 @@ DONE=
 META=
 LOCK_FILE=
 INTERRUPTED=0
+PARALLEL_JOBS=3
 
 if [[ -z $1 ]]; then
 {
@@ -57,6 +58,10 @@ process_param()
   {
     META="${1:7}"
   };
+  elif [[ "${1:0:11}" == "--parallel=" ]]; then
+  {
+    PARALLEL_JOBS="${1:11}"
+  };
   else
   {
     echo "Unknown argument: $1"
@@ -68,6 +73,7 @@ process_param()
 if [[ -n $1  ]]; then process_param $1; fi
 if [[ -n $2  ]]; then process_param $2; fi
 if [[ -n $3  ]]; then process_param $3; fi
+if [[ -n $4  ]]; then process_param $4; fi
 
 # Validate required parameters
 if [[ -z "$CLONE_DIR" ]]; then
@@ -338,6 +344,55 @@ download_file()
   }; fi
 }
 
+# Download multiple files in parallel
+# Takes a space-separated list of filenames
+download_files_parallel()
+{
+  local files="$1"
+  local pids=()
+  local active_jobs=0
+
+  for file in $files; do
+  {
+    # Wait if we've hit the parallel limit
+    while [[ $active_jobs -ge $PARALLEL_JOBS ]]; do
+    {
+      # Check for completed jobs
+      for pid in "${pids[@]}"; do
+      {
+        if ! kill -0 "$pid" 2>/dev/null; then
+        {
+          # Job completed, check exit code
+          wait "$pid"
+          if [[ $? -ne 0 ]]; then
+          {
+            echo "Error: Parallel download failed"
+            exit 1
+          }; fi
+          active_jobs=$((active_jobs - 1))
+        }; fi
+      }; done
+      sleep 0.1
+    }; done
+
+    # Start download in background
+    download_file "$file" &
+    pids+=($!)
+    active_jobs=$((active_jobs + 1))
+  }; done
+
+  # Wait for all remaining jobs
+  for pid in "${pids[@]}"; do
+  {
+    wait "$pid"
+    if [[ $? -ne 0 ]]; then
+    {
+      echo "Error: Parallel download failed"
+      exit 1
+    }; fi
+  }; done
+}
+
 mkdir -p "$CLONE_DIR"
 
 # Acquire lock to prevent concurrent runs
@@ -371,25 +426,16 @@ if ! fetch_file "$REMOTE_DIR/replicate_id" "$CLONE_DIR/replicate_id" 300 1; then
   exit 1
 }; fi
 
-for I in $FILES_BASE; do
-{
-  download_file $I
-}; done
+download_files_parallel "$FILES_BASE"
 
 if [[ $META == "yes" || $META == "attic" ]]; then
 {
-  for I in $FILES_META; do
-  {
-    download_file $I
-  }; done
+  download_files_parallel "$FILES_META"
 }; fi
 
 if [[ $META == "attic" ]]; then
 {
-  for I in $FILES_ATTIC; do
-  {
-    download_file $I
-  }; done
+  download_files_parallel "$FILES_ATTIC"
 }; fi
 
 echo " database ready."
