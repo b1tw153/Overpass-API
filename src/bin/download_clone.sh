@@ -201,6 +201,7 @@ is_file_complete()
 
   # First check: sizes must match
   if [[ "$local_size" -ne "$remote_size" ]]; then
+    echo "Warning: Size mismatch for $local_file ($local_size <> $remote_size)"
     return 1
   fi
 
