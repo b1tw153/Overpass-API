@@ -29,6 +29,7 @@
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
 # Global variables
+USAGE="Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
 EXEC_DIR="`pwd`/../"
 CLONE_DIR=
 REMOTE_DIR=
@@ -37,8 +38,6 @@ META=
 LOCK_FILE=
 INTERRUPTED=0
 PARALLEL_JOBS=3
-
-USAGE="Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
 
 FILES_BASE="\
 nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
@@ -59,8 +58,8 @@ way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequen
 relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin \
 relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin"
 
-# Process and validate parameters
-process_and_validate_params()
+# Process parameters
+process_params()
 {
   if [[ -z "$1" ]]; then
   {
@@ -152,7 +151,7 @@ get_remote_file_info()
   headers=$(curl -s -I -L --max-time 30 "$url" 2>/dev/null)
 
   if [[ $? -ne 0 ]]; then
-    echo "Warning: HEAD request failed for $url" >&2
+    echo "Warning: HEAD request failed for $url"
     return 1
   fi
 
@@ -165,7 +164,7 @@ get_remote_file_info()
     return 0
   fi
 
-  echo "Warning: No Content-Length in response from $url" >&2
+  echo "Warning: No Content-Length in response from $url"
   return 1
 }
 
@@ -206,7 +205,7 @@ is_file_complete()
 
     if [[ -n "$remote_epoch" && "$local_epoch" -ne "$remote_epoch" ]]; then
     {
-      echo "Warning: Date mismatch for $local_file" >&2
+      echo "Warning: Date mismatch for $local_file"
       return 1
     }; fi
   }; fi
@@ -290,7 +289,7 @@ download_files_parallel()
       exit 1
     }; fi
 
-    # Atomically move .tmp files to final destinations
+    # Move .tmp files to final destinations
     for file in $files; do
     {
       local data_tmp="$CLONE_DIR/$file.tmp"
@@ -312,9 +311,10 @@ download_files_parallel()
 # Main function
 main()
 {
-  process_and_validate_params "$@"
+  process_params "$@"
 
   mkdir -p "$CLONE_DIR"
+
   acquire_lock
 
   # Fetch the clone URL from the trigger_clone endpoint
@@ -359,7 +359,7 @@ main()
     download_files_parallel "$FILES_ATTIC"
   }; fi
 
-  echo " database ready."
+  echo "Database ready"
 }
 
 # Set up signal handlers
