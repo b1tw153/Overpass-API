@@ -23,6 +23,9 @@ REMOTE_DIR=
 SOURCE=
 DONE=
 META=
+LOCK_FILE=
+STATE_FILE=
+INTERRUPTED=0
 
 if [[ -z $1 ]]; then
 {
@@ -71,6 +74,102 @@ if [[ -z "$SOURCE" ]]; then
   exit 1
 }; fi
 
+# Initialize lock and state files
+LOCK_FILE="$CLONE_DIR/.download_clone.lock"
+STATE_FILE="$CLONE_DIR/.download_clone.state"
+
+# Cleanup function - called on exit or interruption
+cleanup()
+{
+  local exit_code=$?
+
+  if [[ $INTERRUPTED -eq 1 ]]; then
+  {
+    echo
+    echo "============================================"
+    echo "Download interrupted! Cleaning up..."
+    echo "============================================"
+
+    # Remove incomplete .tmp files
+    find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
+
+    echo "Partial downloads saved. You can resume by running the script again."
+  }
+  else
+  {
+    # Clean exit - remove state file on success
+    if [[ $exit_code -eq 0 && -f "$STATE_FILE" ]]; then
+    {
+      rm -f "$STATE_FILE"
+    }; fi
+  }; fi
+
+  # Always remove lock file
+  if [[ -f "$LOCK_FILE" ]]; then
+  {
+    rm -f "$LOCK_FILE"
+  }; fi
+
+  exit $exit_code
+}
+
+# Signal handler for graceful interruption
+handle_interrupt()
+{
+  INTERRUPTED=1
+  echo
+  echo "Received interrupt signal. Stopping downloads gracefully..."
+  cleanup
+}
+
+# Set up signal handlers
+trap handle_interrupt SIGINT SIGTERM SIGHUP
+
+# Set cleanup to run on exit
+trap cleanup EXIT
+
+# Check if file download is already completed (in state file)
+is_completed()
+{
+  local filename="$1"
+  if [[ -f "$STATE_FILE" ]]; then
+  {
+    grep -q "^$filename$" "$STATE_FILE" 2>/dev/null
+    return $?
+  }; fi
+  return 1
+}
+
+# Mark file as completed in state file
+mark_completed()
+{
+  local filename="$1"
+  echo "$filename" >> "$STATE_FILE"
+}
+
+# Check and create lock file to prevent concurrent runs
+acquire_lock()
+{
+  if [[ -f "$LOCK_FILE" ]]; then
+  {
+    local lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+    {
+      echo "Error: Another instance of this script is already running (PID: $lock_pid)"
+      echo "If this is incorrect, remove the lock file: $LOCK_FILE"
+      exit 1
+    }
+    else
+    {
+      echo "Removing stale lock file from PID $lock_pid"
+      rm -f "$LOCK_FILE"
+    }; fi
+  }; fi
+
+  # Create lock file with current PID
+  echo $$ > "$LOCK_FILE"
+}
+
 FILES_BASE="\
 nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
 ways.bin ways.map way_tags_local.bin way_tags_global.bin way_frequent_tags.bin way_keys.bin \
@@ -90,15 +189,24 @@ way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequen
 relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin \
 relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin"
 
-# Improved fetch function using curl with automatic retries
+# Improved fetch function using curl with automatic retries and atomic operations
 # $1 - remote source URL
 # $2 - local destination path
 # $3 - optional: max retry time in seconds (default: 86400 = 24 hours)
+# $4 - optional: skip atomic operation (for small metadata files)
 fetch_file()
 {
   local url="$1"
   local dest="$2"
   local max_time="${3:-86400}"
+  local skip_atomic="${4:-0}"
+  local temp_dest="$dest"
+
+  # Use atomic operation for large files: download to .tmp, then rename
+  if [[ $skip_atomic -eq 0 ]]; then
+  {
+    temp_dest="$dest.tmp"
+  }; fi
 
   # curl options:
   # -f, --fail: Fail on HTTP errors (4xx, 5xx)
@@ -120,7 +228,7 @@ fetch_file()
     -C - \
     --progress-bar \
     --http2 \
-    -o "$dest" \
+    -o "$temp_dest" \
     "$url"
 
   local exit_code=$?
@@ -132,10 +240,21 @@ fetch_file()
   }; fi
 
   # Verify the file was actually downloaded and has content
-  if [[ ! -s "$dest" ]]; then
+  if [[ ! -s "$temp_dest" ]]; then
   {
-    echo "Error: Downloaded file $dest is empty or missing"
+    echo "Error: Downloaded file $temp_dest is empty or missing"
     return 1
+  }; fi
+
+  # Atomically move temp file to final destination
+  if [[ $skip_atomic -eq 0 ]]; then
+  {
+    mv "$temp_dest" "$dest"
+    if [[ $? -ne 0 ]]; then
+    {
+      echo "Error: Failed to move $temp_dest to $dest"
+      return 1
+    }; fi
   }; fi
 
   return 0
@@ -143,27 +262,70 @@ fetch_file()
 
 download_file()
 {
-  echo
-  echo "Fetching $1"
-  if ! fetch_file "$REMOTE_DIR/$1" "$CLONE_DIR/$1"; then
+  local filename="$1"
+  local data_file="$CLONE_DIR/$filename"
+  local idx_file="$CLONE_DIR/$filename.idx"
+
+  # Check if both files are already completed
+  if is_completed "$filename" && is_completed "$filename.idx"; then
   {
-    echo "Failed to download $1. Aborting."
-    exit 1
+    echo
+    echo "Skipping $filename (already downloaded)"
+    return 0
   }; fi
 
-  echo "Fetching $1.idx"
-  if ! fetch_file "$REMOTE_DIR/$1.idx" "$CLONE_DIR/$1.idx"; then
+  echo
+  # Download data file if not completed
+  if ! is_completed "$filename"; then
   {
-    echo "Failed to download $1.idx. Aborting."
-    exit 1
+    echo "Fetching $filename"
+    if ! fetch_file "$REMOTE_DIR/$filename" "$data_file"; then
+    {
+      echo "Failed to download $filename. Aborting."
+      exit 1
+    }; fi
+    mark_completed "$filename"
+  }
+  else
+  {
+    echo "Resuming: $filename already downloaded"
+  }; fi
+
+  # Download index file if not completed
+  if ! is_completed "$filename.idx"; then
+  {
+    echo "Fetching $filename.idx"
+    if ! fetch_file "$REMOTE_DIR/$filename.idx" "$idx_file"; then
+    {
+      echo "Failed to download $filename.idx. Aborting."
+      exit 1
+    }; fi
+    mark_completed "$filename.idx"
+  }
+  else
+  {
+    echo "Resuming: $filename.idx already downloaded"
   }; fi
 }
 
 mkdir -p "$CLONE_DIR"
 
+# Acquire lock to prevent concurrent runs
+acquire_lock
+
+# Check if this is a resume
+if [[ -f "$STATE_FILE" ]]; then
+{
+  echo "============================================"
+  echo "Resuming interrupted download"
+  echo "============================================"
+  echo "Progress file found. Skipping already downloaded files."
+  echo
+}; fi
+
 # Fetch the clone URL from the trigger_clone endpoint
 echo "Requesting clone URL from $SOURCE/trigger_clone"
-if ! fetch_file "$SOURCE/trigger_clone" "$CLONE_DIR/base-url" 300; then
+if ! fetch_file "$SOURCE/trigger_clone" "$CLONE_DIR/base-url" 300 1; then
 {
   echo "Error: Failed to retrieve clone URL from trigger endpoint"
   echo "Please verify that $SOURCE is accessible and correct"
@@ -193,7 +355,7 @@ echo "Clone URL: $REMOTE_DIR"
 
 # Fetch the replicate_id to verify the clone URL is accessible
 echo "Verifying clone availability..."
-if ! fetch_file "$REMOTE_DIR/replicate_id" "$CLONE_DIR/replicate_id"; then
+if ! fetch_file "$REMOTE_DIR/replicate_id" "$CLONE_DIR/replicate_id" 86400 1; then
 {
   echo "Error: Clone URL is not accessible or replicate_id is missing"
   echo "URL: $REMOTE_DIR/replicate_id"
