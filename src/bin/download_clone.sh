@@ -355,7 +355,7 @@ echo "Clone URL: $REMOTE_DIR"
 
 # Fetch the replicate_id to verify the clone URL is accessible
 echo "Verifying clone availability..."
-if ! fetch_file "$REMOTE_DIR/replicate_id" "$CLONE_DIR/replicate_id" 86400 1; then
+if ! fetch_file "$REMOTE_DIR/replicate_id" "$CLONE_DIR/replicate_id" 300 1; then
 {
   echo "Error: Clone URL is not accessible or replicate_id is missing"
   echo "URL: $REMOTE_DIR/replicate_id"
