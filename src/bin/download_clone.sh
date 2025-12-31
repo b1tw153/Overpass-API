@@ -132,6 +132,7 @@ get_remote_file_info()
   headers=$(curl -s -I -L --max-time 30 "$url" 2>/dev/null)
 
   if [[ $? -ne 0 ]]; then
+    echo "Warning: HEAD request failed for $url" >&2
     return 1
   fi
 
@@ -144,6 +145,7 @@ get_remote_file_info()
     return 0
   fi
 
+  echo "Warning: No Content-Length in response from $url" >&2
   return 1
 }
 
@@ -184,7 +186,7 @@ is_file_complete()
 
     if [[ -n "$remote_epoch" && "$local_epoch" -ne "$remote_epoch" ]]; then
     {
-      # Dates don't match - file was not downloaded correctly or is from different version
+      echo "Warning: Date mismatch for $local_file" >&2
       return 1
     }; fi
   }; fi
