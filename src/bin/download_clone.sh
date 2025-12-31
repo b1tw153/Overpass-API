@@ -159,12 +159,20 @@ get_remote_file_info()
   local size=$(echo "$headers" | grep -i "^Content-Length:" | tail -1 | awk '{print $2}' | tr -d '\r')
   local modified=$(echo "$headers" | grep -i "^Last-Modified:" | tail -1 | cut -d' ' -f2- | tr -d '\r')
 
-  if [[ -n "$size" ]]; then
+  # Both headers must be present
+  if [[ -n "$size" && -n "$modified" ]]; then
     echo "${size}|${modified}"
     return 0
   fi
 
-  echo "Warning: No Content-Length in response from $url"
+  if [[ -z "$size" ]]; then
+    echo "Warning: No Content-Length in response from $url"
+  fi
+
+  if [[ -z "$modified" ]]; then
+    echo "Warning: No Last-Modified in response from $url"
+  fi
+
   return 1
 }
 
