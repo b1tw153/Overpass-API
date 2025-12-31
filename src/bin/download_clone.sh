@@ -243,79 +243,6 @@ way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequen
 relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin \
 relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin"
 
-# Improved fetch function using curl with automatic retries and atomic operations
-# $1 - remote source URL
-# $2 - local destination path
-# $3 - optional: max retry time in seconds (default: 86400 = 24 hours)
-# $4 - optional: skip atomic operation (for small metadata files)
-fetch_file()
-{
-  local url="$1"
-  local dest="$2"
-  local max_time="${3:-86400}"
-  local skip_atomic="${4:-0}"
-  local temp_dest="$dest"
-
-  # Use atomic operation for large files: download to .tmp, then rename
-  if [[ $skip_atomic -eq 0 ]]; then
-  {
-    temp_dest="$dest.tmp"
-  }; fi
-
-  # curl options:
-  # -f, --fail: Fail on HTTP errors (4xx, 5xx)
-  # -S, --show-error: Show errors even when silent
-  # -L, --location: Follow redirects
-  # --retry: Number of retries on transient errors
-  # --retry-delay: Wait time between retries
-  # --retry-max-time: Maximum time to spend retrying
-  # --retry-all-errors: Retry on all errors, not just transient ones
-  # -C -: Continue/resume partial downloads
-  # -R, --remote-time: Set local file's timestamp to match remote Last-Modified
-  # -o: Output file
-  # --progress-bar: Show simple progress bar instead of detailed stats
-  # --http2: Use HTTP/2 if available (better connection reuse and performance)
-  curl -f -S -L \
-    --retry 240 \
-    --retry-delay 15 \
-    --retry-max-time "$max_time" \
-    --retry-all-errors \
-    -C - \
-    -R \
-    --progress-bar \
-    --http2 \
-    -o "$temp_dest" \
-    "$url"
-
-  local exit_code=$?
-
-  if [[ $exit_code -ne 0 ]]; then
-  {
-    echo "Error: Failed to download $url (exit code: $exit_code)"
-    return $exit_code
-  }; fi
-
-  # Verify the file was actually downloaded and has content
-  if [[ ! -s "$temp_dest" ]]; then
-  {
-    echo "Error: Downloaded file $temp_dest is empty or missing"
-    return 1
-  }; fi
-
-  # Atomically move temp file to final destination
-  if [[ $skip_atomic -eq 0 ]]; then
-  {
-    mv "$temp_dest" "$dest"
-    if [[ $? -ne 0 ]]; then
-    {
-      echo "Error: Failed to move $temp_dest to $dest"
-      return 1
-    }; fi
-  }; fi
-
-  return 0
-}
-
 # Download multiple files in parallel using curl's built-in parallel support
 # Takes a space-separated list of filenames
 download_files_parallel()
@@ -393,14 +320,14 @@ mkdir -p "$CLONE_DIR"
 acquire_lock
 
 # Fetch the clone URL from the trigger_clone endpoint
-if ! fetch_file "$SOURCE/trigger_clone" "$CLONE_DIR/base-url" 300 1; then
+if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
 {
   echo "Error: Failed to retrieve clone URL from trigger endpoint"
   exit 1
 }; fi
 
 # Read and validate the clone URL
-REMOTE_DIR=$(cat <"$CLONE_DIR/base-url")
+REMOTE_DIR=$(cat "$CLONE_DIR/base-url")
 
 if [[ -z "$REMOTE_DIR" ]]; then
 {
@@ -414,7 +341,8 @@ if [[ ! "$REMOTE_DIR" =~ ^https?://[^[:space:]]+$ ]]; then
   exit 1
 }; fi
 
-if ! fetch_file "$REMOTE_DIR/replicate_id" "$CLONE_DIR/replicate_id" 300 1; then
+# Verify clone is accessible by fetching replicate_id
+if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/replicate_id" "$REMOTE_DIR/replicate_id"; then
 {
   echo "Error: Clone not accessible"
   exit 1
