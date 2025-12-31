@@ -28,70 +28,90 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
+# Global variables
 EXEC_DIR="`pwd`/../"
-CLONE_DIR="$1"
+CLONE_DIR=
 REMOTE_DIR=
 SOURCE=
-DONE=
 META=
 LOCK_FILE=
 INTERRUPTED=0
 PARALLEL_JOBS=3
 
-if [[ -z $1 ]]; then
-{
-  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
-  exit 0
-}; fi
+USAGE="Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
 
-process_param()
+FILES_BASE="\
+nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
+ways.bin ways.map way_tags_local.bin way_tags_global.bin way_frequent_tags.bin way_keys.bin \
+relations.bin relations.map relation_roles.bin relation_tags_local.bin relation_tags_global.bin relation_frequent_tags.bin relation_keys.bin"
+
+FILES_META="\
+nodes_meta.bin \
+ways_meta.bin \
+relations_meta.bin \
+user_data.bin user_indices.bin"
+
+FILES_ATTIC="\
+nodes_attic.bin nodes_attic.map node_attic_indexes.bin nodes_attic_undeleted.bin nodes_meta_attic.bin \
+node_changelog.bin node_tags_local_attic.bin node_tags_global_attic.bin node_frequent_tags_attic.bin \
+ways_attic.bin ways_attic.map way_attic_indexes.bin ways_attic_undeleted.bin ways_meta_attic.bin \
+way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequent_tags_attic.bin \
+relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin \
+relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin"
+
+# Process and validate parameters
+process_and_validate_params()
 {
-  if [[ "${1:0:9}" == "--db-dir=" ]]; then
+  if [[ -z "$1" ]]; then
   {
-    CLONE_DIR="${1:9}"
-  };
-  elif [[ "${1:0:9}" == "--source=" ]]; then
-  {
-    SOURCE="${1:9}"
-  };
-  elif [[ "${1:0:7}" == "--meta=" ]]; then
-  {
-    META="${1:7}"
-  };
-  elif [[ "${1:0:11}" == "--parallel=" ]]; then
-  {
-    PARALLEL_JOBS="${1:11}"
-  };
-  else
-  {
-    echo "Unknown argument: $1"
+    echo "$USAGE"
     exit 0
-  };
-  fi
-};
+  }; fi
 
-if [[ -n $1  ]]; then process_param $1; fi
-if [[ -n $2  ]]; then process_param $2; fi
-if [[ -n $3  ]]; then process_param $3; fi
-if [[ -n $4  ]]; then process_param $4; fi
+  # Process all parameters
+  for arg in "$@"; do
+  {
+    if [[ "${arg:0:9}" == "--db-dir=" ]]; then
+    {
+      CLONE_DIR="${arg:9}"
+    };
+    elif [[ "${arg:0:9}" == "--source=" ]]; then
+    {
+      SOURCE="${arg:9}"
+    };
+    elif [[ "${arg:0:7}" == "--meta=" ]]; then
+    {
+      META="${arg:7}"
+    };
+    elif [[ "${arg:0:11}" == "--parallel=" ]]; then
+    {
+      PARALLEL_JOBS="${arg:11}"
+    };
+    else
+    {
+      echo "Unknown argument: $arg"
+      exit 1
+    }; fi
+  }; done
 
-# Validate required parameters
-if [[ -z "$CLONE_DIR" ]]; then
-{
-  echo "Error: --db-dir parameter is required"
-  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
-  exit 1
-}; fi
+  # Validate required parameters
+  if [[ -z "$CLONE_DIR" ]]; then
+  {
+    echo "Error: --db-dir parameter is required"
+    echo "$USAGE"
+    exit 1
+  }; fi
 
-if [[ -z "$SOURCE" ]]; then
-{
-  echo "Error: --source parameter is required"
-  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
-  exit 1
-}; fi
+  if [[ -z "$SOURCE" ]]; then
+  {
+    echo "Error: --source parameter is required"
+    echo "$USAGE"
+    exit 1
+  }; fi
 
-# Initialize lock file
-LOCK_FILE="$CLONE_DIR/.download_clone.lock"
+  # Initialize lock file path
+  LOCK_FILE="$CLONE_DIR/.download_clone.lock"
+}
 
 # Cleanup function - called on exit or interruption
 cleanup()
@@ -120,12 +140,6 @@ handle_interrupt()
   INTERRUPTED=1
   cleanup
 }
-
-# Set up signal handlers
-trap handle_interrupt SIGINT SIGTERM SIGHUP
-
-# Set cleanup to run on exit
-trap cleanup EXIT
 
 # Get remote file info using HTTP HEAD request
 # Returns: "size|last-modified" or empty string on error
@@ -224,25 +238,6 @@ acquire_lock()
   echo $$ > "$LOCK_FILE"
 }
 
-FILES_BASE="\
-nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
-ways.bin ways.map way_tags_local.bin way_tags_global.bin way_frequent_tags.bin way_keys.bin \
-relations.bin relations.map relation_roles.bin relation_tags_local.bin relation_tags_global.bin relation_frequent_tags.bin relation_keys.bin"
-
-FILES_META="\
-nodes_meta.bin \
-ways_meta.bin \
-relations_meta.bin \
-user_data.bin user_indices.bin"
-
-FILES_ATTIC="\
-nodes_attic.bin nodes_attic.map node_attic_indexes.bin nodes_attic_undeleted.bin nodes_meta_attic.bin \
-node_changelog.bin node_tags_local_attic.bin node_tags_global_attic.bin node_frequent_tags_attic.bin \
-ways_attic.bin ways_attic.map way_attic_indexes.bin ways_attic_undeleted.bin ways_meta_attic.bin \
-way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequent_tags_attic.bin \
-relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin \
-relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin"
-
 # Download multiple files in parallel using curl's built-in parallel support
 # Takes a space-separated list of filenames
 download_files_parallel()
@@ -314,50 +309,62 @@ download_files_parallel()
   }; fi
 }
 
-mkdir -p "$CLONE_DIR"
-
-# Acquire lock to prevent concurrent runs
-acquire_lock
-
-# Fetch the clone URL from the trigger_clone endpoint
-if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
+# Main function
+main()
 {
-  echo "Error: Failed to retrieve clone URL from trigger endpoint"
-  exit 1
-}; fi
+  process_and_validate_params "$@"
 
-# Read and validate the clone URL
-REMOTE_DIR=$(cat "$CLONE_DIR/base-url")
+  mkdir -p "$CLONE_DIR"
+  acquire_lock
 
-if [[ -z "$REMOTE_DIR" ]]; then
-{
-  echo "Error: Empty URL from trigger_clone"
-  exit 1
-}; fi
+  # Fetch the clone URL from the trigger_clone endpoint
+  if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
+  {
+    echo "Error: Failed to retrieve clone URL from trigger endpoint"
+    exit 1
+  }; fi
 
-if [[ ! "$REMOTE_DIR" =~ ^https?://[^[:space:]]+$ ]]; then
-{
-  echo "Error: Invalid URL from trigger_clone"
-  exit 1
-}; fi
+  # Read and validate the clone URL
+  REMOTE_DIR=$(cat "$CLONE_DIR/base-url")
 
-# Verify clone is accessible by fetching replicate_id
-if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/replicate_id" "$REMOTE_DIR/replicate_id"; then
-{
-  echo "Error: Clone not accessible"
-  exit 1
-}; fi
+  if [[ -z "$REMOTE_DIR" ]]; then
+  {
+    echo "Error: Empty URL from trigger_clone"
+    exit 1
+  }; fi
 
-download_files_parallel "$FILES_BASE"
+  if [[ ! "$REMOTE_DIR" =~ ^https?://[^[:space:]]+$ ]]; then
+  {
+    echo "Error: Invalid URL from trigger_clone"
+    exit 1
+  }; fi
 
-if [[ $META == "yes" || $META == "attic" ]]; then
-{
-  download_files_parallel "$FILES_META"
-}; fi
+  # Verify clone is accessible by fetching replicate_id
+  if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/replicate_id" "$REMOTE_DIR/replicate_id"; then
+  {
+    echo "Error: Clone not accessible"
+    exit 1
+  }; fi
 
-if [[ $META == "attic" ]]; then
-{
-  download_files_parallel "$FILES_ATTIC"
-}; fi
+  # Download files
+  download_files_parallel "$FILES_BASE"
 
-echo " database ready."
+  if [[ $META == "yes" || $META == "attic" ]]; then
+  {
+    download_files_parallel "$FILES_META"
+  }; fi
+
+  if [[ $META == "attic" ]]; then
+  {
+    download_files_parallel "$FILES_ATTIC"
+  }; fi
+
+  echo " database ready."
+}
+
+# Set up signal handlers
+trap handle_interrupt SIGINT SIGTERM SIGHUP
+trap cleanup EXIT
+
+# Run main
+main "$@"
