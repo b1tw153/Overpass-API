@@ -35,7 +35,6 @@ SOURCE=
 DONE=
 META=
 LOCK_FILE=
-STATE_FILE=
 INTERRUPTED=0
 
 if [[ -z $1 ]]; then
@@ -85,9 +84,8 @@ if [[ -z "$SOURCE" ]]; then
   exit 1
 }; fi
 
-# Initialize lock and state files
+# Initialize lock file
 LOCK_FILE="$CLONE_DIR/.download_clone.lock"
-STATE_FILE="$CLONE_DIR/.download_clone.state"
 
 # Cleanup function - called on exit or interruption
 cleanup()
@@ -104,15 +102,8 @@ cleanup()
     # Remove incomplete .tmp files
     find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
 
-    echo "Partial downloads saved. You can resume by running the script again."
-  }
-  else
-  {
-    # Clean exit - remove state file on success
-    if [[ $exit_code -eq 0 && -f "$STATE_FILE" ]]; then
-    {
-      rm -f "$STATE_FILE"
-    }; fi
+    echo "Partial downloads saved. Re-run the script to continue."
+    echo "Files are verified by size against the remote server."
   }; fi
 
   # Always remove lock file
@@ -139,23 +130,66 @@ trap handle_interrupt SIGINT SIGTERM SIGHUP
 # Set cleanup to run on exit
 trap cleanup EXIT
 
-# Check if file download is already completed (in state file)
-is_completed()
+# Get remote file info using HTTP HEAD request
+# Returns: "size|last-modified" or empty string on error
+get_remote_file_info()
 {
-  local filename="$1"
-  if [[ -f "$STATE_FILE" ]]; then
-  {
-    grep -q "^$filename$" "$STATE_FILE" 2>/dev/null
-    return $?
-  }; fi
+  local url="$1"
+  local headers
+
+  # Use HEAD request to get file metadata without downloading
+  headers=$(curl -s -I -L --max-time 30 "$url" 2>/dev/null)
+
+  if [[ $? -ne 0 ]]; then
+    return 1
+  fi
+
+  # Extract Content-Length and Last-Modified
+  local size=$(echo "$headers" | grep -i "^Content-Length:" | tail -1 | awk '{print $2}' | tr -d '\r')
+  local modified=$(echo "$headers" | grep -i "^Last-Modified:" | tail -1 | cut -d' ' -f2- | tr -d '\r')
+
+  if [[ -n "$size" ]]; then
+    echo "${size}|${modified}"
+    return 0
+  fi
+
   return 1
 }
 
-# Mark file as completed in state file
-mark_completed()
+# Check if local file matches remote file (by size and optionally mtime)
+# Returns 0 if file is complete and matches, 1 otherwise
+is_file_complete()
 {
-  local filename="$1"
-  echo "$filename" >> "$STATE_FILE"
+  local url="$1"
+  local local_file="$2"
+
+  # If local file doesn't exist, it's not complete
+  if [[ ! -f "$local_file" ]]; then
+    return 1
+  fi
+
+  # Get remote file info
+  local remote_info=$(get_remote_file_info "$url")
+  if [[ -z "$remote_info" ]]; then
+    # Can't get remote info, assume file needs download
+    return 1
+  fi
+
+  local remote_size=$(echo "$remote_info" | cut -d'|' -f1)
+  local remote_modified=$(echo "$remote_info" | cut -d'|' -f2)
+  local local_size=$(stat -f%z "$local_file" 2>/dev/null || stat -c%s "$local_file" 2>/dev/null)
+
+  # Compare sizes
+  if [[ "$local_size" -eq "$remote_size" ]]; then
+    # Sizes match - file is complete
+    # Optionally update mtime to match remote
+    if [[ -n "$remote_modified" ]]; then
+      touch -d "$remote_modified" "$local_file" 2>/dev/null || true
+    fi
+    return 0
+  fi
+
+  return 1
 }
 
 # Check and create lock file to prevent concurrent runs
@@ -277,17 +311,14 @@ download_file()
   local data_file="$CLONE_DIR/$filename"
   local idx_file="$CLONE_DIR/$filename.idx"
 
-  # Check if both files are already completed
-  if is_completed "$filename" && is_completed "$filename.idx"; then
-  {
-    echo
-    echo "Skipping $filename (already downloaded)"
-    return 0
-  }; fi
-
   echo
-  # Download data file if not completed
-  if ! is_completed "$filename"; then
+
+  # Check if data file is already complete (via HEAD request)
+  if is_file_complete "$REMOTE_DIR/$filename" "$data_file"; then
+  {
+    echo "✓ Skipping $filename (already complete, size matches remote)"
+  }
+  else
   {
     echo "Fetching $filename"
     if ! fetch_file "$REMOTE_DIR/$filename" "$data_file"; then
@@ -295,15 +326,14 @@ download_file()
       echo "Failed to download $filename. Aborting."
       exit 1
     }; fi
-    mark_completed "$filename"
-  }
-  else
-  {
-    echo "Resuming: $filename already downloaded"
   }; fi
 
-  # Download index file if not completed
-  if ! is_completed "$filename.idx"; then
+  # Check if index file is already complete (via HEAD request)
+  if is_file_complete "$REMOTE_DIR/$filename.idx" "$idx_file"; then
+  {
+    echo "✓ Skipping $filename.idx (already complete, size matches remote)"
+  }
+  else
   {
     echo "Fetching $filename.idx"
     if ! fetch_file "$REMOTE_DIR/$filename.idx" "$idx_file"; then
@@ -311,11 +341,6 @@ download_file()
       echo "Failed to download $filename.idx. Aborting."
       exit 1
     }; fi
-    mark_completed "$filename.idx"
-  }
-  else
-  {
-    echo "Resuming: $filename.idx already downloaded"
   }; fi
 }
 
@@ -324,13 +349,14 @@ mkdir -p "$CLONE_DIR"
 # Acquire lock to prevent concurrent runs
 acquire_lock
 
-# Check if this is a resume
-if [[ -f "$STATE_FILE" ]]; then
+# Check if this is a resume (any .bin files already exist)
+if ls "$CLONE_DIR"/*.bin >/dev/null 2>&1; then
 {
   echo "============================================"
-  echo "Resuming interrupted download"
+  echo "Resuming download"
   echo "============================================"
-  echo "Progress file found. Skipping already downloaded files."
+  echo "Existing files found. Verifying against remote server..."
+  echo "Complete files (matching remote size) will be skipped."
   echo
 }; fi
 
