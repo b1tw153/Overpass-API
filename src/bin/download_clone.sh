@@ -316,34 +316,6 @@ fetch_file()
   return 0
 }
 
-download_file()
-{
-  local filename="$1"
-  local data_file="$CLONE_DIR/$filename"
-  local idx_file="$CLONE_DIR/$filename.idx"
-
-  echo
-  if ! is_file_complete "$REMOTE_DIR/$filename" "$data_file"; then
-  {
-    echo "Fetching $filename"
-    if ! fetch_file "$REMOTE_DIR/$filename" "$data_file"; then
-    {
-      echo "Failed to download $filename"
-      exit 1
-    }; fi
-  }; fi
-
-  if ! is_file_complete "$REMOTE_DIR/$filename.idx" "$idx_file"; then
-  {
-    echo "Fetching $filename.idx"
-    if ! fetch_file "$REMOTE_DIR/$filename.idx" "$idx_file"; then
-    {
-      echo "Failed to download $filename.idx"
-      exit 1
-    }; fi
-  }; fi
-}
-
 # Download multiple files in parallel using curl's built-in parallel support
 # Takes a space-separated list of filenames
 download_files_parallel()
