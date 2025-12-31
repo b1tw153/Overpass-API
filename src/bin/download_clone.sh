@@ -40,7 +40,7 @@ PARALLEL_JOBS=3
 
 if [[ -z $1 ]]; then
 {
-  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic)"
+  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
   exit 0
 }; fi
 
@@ -79,14 +79,14 @@ if [[ -n $4  ]]; then process_param $4; fi
 if [[ -z "$CLONE_DIR" ]]; then
 {
   echo "Error: --db-dir parameter is required"
-  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic)"
+  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
   exit 1
 }; fi
 
 if [[ -z "$SOURCE" ]]; then
 {
   echo "Error: --source parameter is required"
-  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic)"
+  echo "Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
   exit 1
 }; fi
 
