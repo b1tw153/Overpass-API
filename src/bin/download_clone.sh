@@ -124,10 +124,14 @@ cleanup()
     find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
   }; fi
 
-  # Always remove lock file
+  # Only remove lock file if it contains our PID
   if [[ -f "$LOCK_FILE" ]]; then
   {
-    rm -f "$LOCK_FILE"
+    local lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+    if [[ "$lock_pid" == "$$" ]]; then
+    {
+      rm -f "$LOCK_FILE"
+    }; fi
   }; fi
 
   exit $exit_code
