@@ -156,7 +156,7 @@ get_remote_file_info()
   return 1
 }
 
-# Check if local file matches remote file (by size and optionally mtime)
+# Check if local file matches remote file (by size and modification time)
 # Returns 0 if file is complete and matches, 1 otherwise
 is_file_complete()
 {
@@ -179,17 +179,27 @@ is_file_complete()
   local remote_modified=$(echo "$remote_info" | cut -d'|' -f2)
   local local_size=$(stat -f%z "$local_file" 2>/dev/null || stat -c%s "$local_file" 2>/dev/null)
 
-  # Compare sizes
-  if [[ "$local_size" -eq "$remote_size" ]]; then
-    # Sizes match - file is complete
-    # Optionally update mtime to match remote
-    if [[ -n "$remote_modified" ]]; then
-      touch -d "$remote_modified" "$local_file" 2>/dev/null || true
-    fi
-    return 0
+  # First check: sizes must match
+  if [[ "$local_size" -ne "$remote_size" ]]; then
+    return 1
   fi
 
-  return 1
+  # Second check: modification times should match (if available)
+  if [[ -n "$remote_modified" ]]; then
+  {
+    # Convert remote Last-Modified to epoch for comparison
+    local remote_epoch=$(date -d "$remote_modified" +%s 2>/dev/null || date -j -f "%a, %d %b %Y %H:%M:%S %Z" "$remote_modified" +%s 2>/dev/null)
+    local local_epoch=$(stat -f%m "$local_file" 2>/dev/null || stat -c%Y "$local_file" 2>/dev/null)
+
+    if [[ -n "$remote_epoch" && "$local_epoch" -ne "$remote_epoch" ]]; then
+    {
+      # Dates don't match - file was not downloaded correctly or is from different version
+      return 1
+    }; fi
+  }; fi
+
+  # Both size and date match - file is complete and correct
+  return 0
 }
 
 # Check and create lock file to prevent concurrent runs
@@ -262,6 +272,7 @@ fetch_file()
   # --retry-max-time: Maximum time to spend retrying
   # --retry-all-errors: Retry on all errors, not just transient ones
   # -C -: Continue/resume partial downloads
+  # -R, --remote-time: Set local file's timestamp to match remote Last-Modified
   # -o: Output file
   # --progress-bar: Show simple progress bar instead of detailed stats
   # --http2: Use HTTP/2 if available (better connection reuse and performance)
@@ -271,6 +282,7 @@ fetch_file()
     --retry-max-time "$max_time" \
     --retry-all-errors \
     -C - \
+    -R \
     --progress-bar \
     --http2 \
     -o "$temp_dest" \
