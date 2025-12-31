@@ -95,15 +95,8 @@ cleanup()
   if [[ $INTERRUPTED -eq 1 ]]; then
   {
     echo
-    echo "============================================"
-    echo "Download interrupted! Cleaning up..."
-    echo "============================================"
-
     # Remove incomplete .tmp files
     find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
-
-    echo "Partial downloads saved. Re-run the script to continue."
-    echo "Files are verified by size against the remote server."
   }; fi
 
   # Always remove lock file
@@ -119,8 +112,6 @@ cleanup()
 handle_interrupt()
 {
   INTERRUPTED=1
-  echo
-  echo "Received interrupt signal. Stopping downloads gracefully..."
   cleanup
 }
 
@@ -324,33 +315,22 @@ download_file()
   local idx_file="$CLONE_DIR/$filename.idx"
 
   echo
-
-  # Check if data file is already complete (via HEAD request)
-  if is_file_complete "$REMOTE_DIR/$filename" "$data_file"; then
-  {
-    echo "✓ Skipping $filename (already complete, size matches remote)"
-  }
-  else
+  if ! is_file_complete "$REMOTE_DIR/$filename" "$data_file"; then
   {
     echo "Fetching $filename"
     if ! fetch_file "$REMOTE_DIR/$filename" "$data_file"; then
     {
-      echo "Failed to download $filename. Aborting."
+      echo "Failed to download $filename"
       exit 1
     }; fi
   }; fi
 
-  # Check if index file is already complete (via HEAD request)
-  if is_file_complete "$REMOTE_DIR/$filename.idx" "$idx_file"; then
-  {
-    echo "✓ Skipping $filename.idx (already complete, size matches remote)"
-  }
-  else
+  if ! is_file_complete "$REMOTE_DIR/$filename.idx" "$idx_file"; then
   {
     echo "Fetching $filename.idx"
     if ! fetch_file "$REMOTE_DIR/$filename.idx" "$idx_file"; then
     {
-      echo "Failed to download $filename.idx. Aborting."
+      echo "Failed to download $filename.idx"
       exit 1
     }; fi
   }; fi
@@ -361,53 +341,31 @@ mkdir -p "$CLONE_DIR"
 # Acquire lock to prevent concurrent runs
 acquire_lock
 
-# Check if this is a resume (any .bin files already exist)
-if ls "$CLONE_DIR"/*.bin >/dev/null 2>&1; then
-{
-  echo "============================================"
-  echo "Resuming download"
-  echo "============================================"
-  echo "Existing files found. Verifying against remote server..."
-  echo "Complete files (matching remote size) will be skipped."
-  echo
-}; fi
-
 # Fetch the clone URL from the trigger_clone endpoint
-echo "Requesting clone URL from $SOURCE/trigger_clone"
 if ! fetch_file "$SOURCE/trigger_clone" "$CLONE_DIR/base-url" 300 1; then
 {
   echo "Error: Failed to retrieve clone URL from trigger endpoint"
-  echo "Please verify that $SOURCE is accessible and correct"
   exit 1
 }; fi
 
 # Read and validate the clone URL
 REMOTE_DIR=$(cat <"$CLONE_DIR/base-url")
 
-# Validate that we received a valid HTTP/HTTPS URL
 if [[ -z "$REMOTE_DIR" ]]; then
 {
-  echo "Error: Received empty URL from trigger_clone endpoint"
-  echo "Expected a valid clone URL but got nothing"
+  echo "Error: Empty URL from trigger_clone"
   exit 1
 }; fi
 
 if [[ ! "$REMOTE_DIR" =~ ^https?://[^[:space:]]+$ ]]; then
 {
-  echo "Error: Invalid URL received from trigger_clone endpoint"
-  echo "Expected format: http://... or https://..."
-  echo "Received: $REMOTE_DIR"
+  echo "Error: Invalid URL from trigger_clone"
   exit 1
 }; fi
 
-echo "Clone URL: $REMOTE_DIR"
-
-# Fetch the replicate_id to verify the clone URL is accessible
-echo "Verifying clone availability..."
 if ! fetch_file "$REMOTE_DIR/replicate_id" "$CLONE_DIR/replicate_id" 300 1; then
 {
-  echo "Error: Clone URL is not accessible or replicate_id is missing"
-  echo "URL: $REMOTE_DIR/replicate_id"
+  echo "Error: Clone not accessible"
   exit 1
 }; fi
 
@@ -432,12 +390,4 @@ if [[ $META == "attic" ]]; then
   }; done
 }; fi
 
-echo
-echo "============================================"
-echo "Database clone completed successfully!"
-echo "============================================"
-echo "Clone source: $REMOTE_DIR"
-echo "Destination: $CLONE_DIR"
-echo "Replicate ID: $(cat "$CLONE_DIR/replicate_id" 2>/dev/null || echo "unknown")"
-echo "Meta data: ${META:-no}"
-echo "Database ready."
+echo " database ready."
