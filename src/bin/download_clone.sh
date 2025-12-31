@@ -344,53 +344,75 @@ download_file()
   }; fi
 }
 
-# Download multiple files in parallel
+# Download multiple files in parallel using curl's built-in parallel support
 # Takes a space-separated list of filenames
 download_files_parallel()
 {
   local files="$1"
-  local pids=()
-  local active_jobs=0
+  local curl_args=()
 
+  # Build list of files that need downloading
   for file in $files; do
   {
-    # Wait if we've hit the parallel limit
-    while [[ $active_jobs -ge $PARALLEL_JOBS ]]; do
-    {
-      # Check for completed jobs
-      for pid in "${pids[@]}"; do
-      {
-        if ! kill -0 "$pid" 2>/dev/null; then
-        {
-          # Job completed, check exit code
-          wait "$pid"
-          if [[ $? -ne 0 ]]; then
-          {
-            echo "Error: Parallel download failed"
-            exit 1
-          }; fi
-          active_jobs=$((active_jobs - 1))
-        }; fi
-      }; done
-      sleep 0.1
-    }; done
+    local data_file="$CLONE_DIR/$file"
+    local idx_file="$CLONE_DIR/$file.idx"
+    local data_url="$REMOTE_DIR/$file"
+    local idx_url="$REMOTE_DIR/$file.idx"
 
-    # Start download in background
-    download_file "$file" &
-    pids+=($!)
-    active_jobs=$((active_jobs + 1))
+    # Check data file
+    if ! is_file_complete "$data_url" "$data_file"; then
+    {
+      echo "Fetching $file"
+      curl_args+=("$data_url" -o "$data_file.tmp")
+    }; fi
+
+    # Check index file
+    if ! is_file_complete "$idx_url" "$idx_file"; then
+    {
+      echo "Fetching $file.idx"
+      curl_args+=("$idx_url" -o "$idx_file.tmp")
+    }; fi
   }; done
 
-  # Wait for all remaining jobs
-  for pid in "${pids[@]}"; do
+  # Download all files in parallel if there are any to download
+  if [[ ${#curl_args[@]} -gt 0 ]]; then
   {
-    wait "$pid"
+    echo
+    curl --parallel --parallel-max "$PARALLEL_JOBS" \
+      -f -S -L \
+      --retry 240 \
+      --retry-delay 15 \
+      --retry-max-time 86400 \
+      --retry-all-errors \
+      -C - \
+      -R \
+      --progress-bar \
+      --http2 \
+      "${curl_args[@]}"
+
     if [[ $? -ne 0 ]]; then
     {
       echo "Error: Parallel download failed"
       exit 1
     }; fi
-  }; done
+
+    # Atomically move .tmp files to final destinations
+    for file in $files; do
+    {
+      local data_tmp="$CLONE_DIR/$file.tmp"
+      local idx_tmp="$CLONE_DIR/$file.idx.tmp"
+
+      if [[ -f "$data_tmp" ]]; then
+      {
+        mv "$data_tmp" "$CLONE_DIR/$file" || exit 1
+      }; fi
+
+      if [[ -f "$idx_tmp" ]]; then
+      {
+        mv "$idx_tmp" "$CLONE_DIR/$file.idx" || exit 1
+      }; fi
+    }; done
+  }; fi
 }
 
 mkdir -p "$CLONE_DIR"
