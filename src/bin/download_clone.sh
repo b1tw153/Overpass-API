@@ -4,6 +4,17 @@
 #
 # This file is part of Overpass_API.
 #
+# USAGE NOTE: This script downloads large database files and may take hours.
+# For long-running downloads over SSH, use tmux or screen to prevent interruption:
+#
+#   tmux new -s download
+#   ./download_clone.sh --db-dir=/data --source=https://...
+#   # Detach: Ctrl+b, then d
+#   # Reattach later: tmux attach -s download
+#
+# The script is resilient to interruptions and can resume if killed.
+# Simply re-run with the same parameters to continue where it left off.
+#
 # Overpass_API is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
