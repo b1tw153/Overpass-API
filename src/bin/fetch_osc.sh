@@ -193,14 +193,20 @@ get_latest_available_id()
 # PATH CONVERSION
 # ============================================================================
 
+# Convert replicate ID to directory path
+# Usage: get_replicate_path <id>
+# Sets global variables: DIGIT1, DIGIT2, DIGIT3, REPLICATE_PATH
+# Note: These are intentionally global to avoid subshell overhead in tight loops
 get_replicate_path()
 {
   local ID=$1
-  printf -v DIGIT3 %03u $(($ID % 1000))
-  local ARG=$(($ID / 1000))
-  printf -v DIGIT2 %03u $(($ARG % 1000))
+  local ARG
+
+  DIGIT3=$(printf '%03u' $(($ID % 1000)))
+  ARG=$(($ID / 1000))
+  DIGIT2=$(printf '%03u' $(($ARG % 1000)))
   ARG=$(($ARG / 1000))
-  printf -v DIGIT1 %03u $ARG
+  DIGIT1=$(printf '%03u' $ARG)
   REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
 }
 
@@ -242,20 +248,36 @@ download_replicate_batch()
   local START=$1
   local END=$2
   local BATCH_COUNT=$(($END - $START))
-  
+
   local URL_LIST=""
   local STATE_FILES=""
   local OSC_FILES=""
-  
+  local REMOTE_BASE
+  local DIR_PATH
+  local OSC_FILE
+  local STATE_FILE_LOCAL
+  local ID
+  local TEMP_CONFIG
+  local URL_ARRAY
+  local STATE_ARRAY
+  local OSC_ARRAY
+  local STATE_IDX
+  local OSC_IDX
+  local URL
+  local CURL_ERROR_LOG
+  local CURL_EXIT
+  local SUCCESS
+  local STATE_FILE
+
   for (( ID=$START+1; ID<=$END; ID++ )); do
     get_replicate_path $ID
-    
-    local REMOTE_BASE="$SOURCE_URL/$REPLICATE_PATH"
-    local LOCAL_DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
-    mkdir -p "$LOCAL_DIR_PATH"
-    
-    local OSC_FILE="$LOCAL_DIR_PATH/$DIGIT3.osc.gz"
-    local STATE_FILE_LOCAL="$LOCAL_DIR_PATH/$DIGIT3.state.txt"
+
+    REMOTE_BASE="$SOURCE_URL/$REPLICATE_PATH"
+    DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
+    mkdir -p "$DIR_PATH"
+
+    OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
+    STATE_FILE_LOCAL="$DIR_PATH/$DIGIT3.state.txt"
     
     if ! verify_file "$STATE_FILE_LOCAL" "text"; then
       URL_LIST="$URL_LIST $REMOTE_BASE.state.txt"
@@ -277,14 +299,14 @@ download_replicate_batch()
     return 0
   fi
   
-  local TEMP_CONFIG="$LOCAL_DIR/curl_batch.txt"
+  TEMP_CONFIG="$LOCAL_DIR/curl_batch.txt"
   rm -f "$TEMP_CONFIG"
-  
-  local URL_ARRAY=($URL_LIST)
-  local STATE_ARRAY=($STATE_FILES)
-  local OSC_ARRAY=($OSC_FILES)
-  local STATE_IDX=0
-  local OSC_IDX=0
+
+  URL_ARRAY=($URL_LIST)
+  STATE_ARRAY=($STATE_FILES)
+  OSC_ARRAY=($OSC_FILES)
+  STATE_IDX=0
+  OSC_IDX=0
   
   for URL in "${URL_ARRAY[@]}"; do
     if [[ $URL == *.state.txt ]]; then
@@ -299,8 +321,8 @@ download_replicate_batch()
   done
   
   # Download all files with connection reuse
-  local CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$.log"
-  
+  CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$.log"
+
   curl -fsSL \
     --keepalive-time $CURL_KEEPALIVE_TIME \
     --connect-timeout "$CURL_CONNECT_TIMEOUT" \
@@ -309,8 +331,8 @@ download_replicate_batch()
     --parallel \
     --parallel-max 4 \
     --config "$TEMP_CONFIG" 2>"$CURL_ERROR_LOG"
-  
-  local CURL_EXIT=$?
+
+  CURL_EXIT=$?
   rm -f "$TEMP_CONFIG"
   
   if [[ $CURL_EXIT -ne 0 ]]; then
@@ -352,13 +374,14 @@ download_replicate_batch()
   
   # Clean up error log if successful
   rm -f "$CURL_ERROR_LOG"
-  
-  local SUCCESS=1
+
+  SUCCESS=1
+
   for (( ID=$START+1; ID<=$END; ID++ )); do
     get_replicate_path $ID
-    local LOCAL_DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
-    local STATE_FILE="$LOCAL_DIR_PATH/$DIGIT3.state.txt"
-    local OSC_FILE="$LOCAL_DIR_PATH/$DIGIT3.osc.gz"
+    DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
+    STATE_FILE="$DIR_PATH/$DIGIT3.state.txt"
+    OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
     
     if [[ -f "$STATE_FILE.tmp" ]]; then
       if verify_file "$STATE_FILE.tmp" "text"; then
@@ -453,9 +476,24 @@ log_message "=========================================="
 
 if [[ "$START_ID" == "auto" ]]; then
   # In auto mode, start from the database state (what's been applied)
+  # Check that database state file exists and has valid content
+  if [[ ! -f "$DB_STATE_FILE" || ! -s "$DB_STATE_FILE" ]]; then
+    echo "ERROR: $DB_STATE_FILE does not exist and start set to auto"
+    echo "Auto mode requires an existing replicate_id to resume from"
+    echo "Use an explicit replicate ID instead of 'auto' to start fresh"
+    exit 1
+  fi
+
   DB_ID=$(read_db_state)
   FETCH_ID=$(read_fetch_state)
-  
+
+  # Sanity check - state should be a valid number > 0
+  if [[ $DB_ID -eq 0 && $FETCH_ID -eq 0 ]]; then
+    echo "ERROR: Both database and fetch state are 0 in auto mode"
+    echo "Cannot determine where to resume from"
+    exit 1
+  fi
+
   # Use whichever is higher (in case fetch was ahead when restarted)
   if [[ $FETCH_ID -gt $DB_ID ]]; then
     CURRENT_ID=$FETCH_ID
@@ -465,8 +503,10 @@ if [[ "$START_ID" == "auto" ]]; then
     log_message "Auto mode: resuming from OSC file $CURRENT_ID (database state)"
   fi
 else
-  CURRENT_ID=$START_ID
-  log_message "Starting from OSC file $CURRENT_ID"
+  # In explicit mode, START_ID is the first file to download
+  # Set CURRENT_ID to the file before it (last file we "already have")
+  CURRENT_ID=$((START_ID - 1))
+  log_message "Starting from OSC file $START_ID"
 fi
 
 while true; do
