@@ -69,13 +69,13 @@ SLOW_RETRY_DELAY=60          # Seconds between retries when updates delayed
 LAST_UPDATE_WALL_CLOCK=      # Wall clock time when last update was downloaded
 
 # Get execution directory (where binaries are located)
-EXEC_DIR="$(dirname $0)/"
+EXEC_DIR="$(dirname "$0")/"
 if [[ ! "${EXEC_DIR:0:1}" == "/" ]]; then
   EXEC_DIR="$(pwd)/$EXEC_DIR"
 fi
 
 # Get database directory from dispatcher
-DB_DIR=$($EXEC_DIR/dispatcher --show-dir)
+DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
 
 if [[ ! -d "$DB_DIR" ]]; then
   echo "ERROR: Database directory '$DB_DIR' does not exist"
@@ -119,7 +119,8 @@ calculate_sleep_time()
     return
   fi
   
-  local NOW=$(date +%s)
+  local NOW
+  NOW=$(date +%s)
   local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + EXPECTED_UPDATE_INTERVAL))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
   
@@ -164,7 +165,8 @@ get_latest_available_id()
     
     # If download succeeded, parse and return
     if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE" ]]; then
-      local SEQ_LINE=$(grep -E '^sequenceNumber' "$REMOTE_STATE")
+      local SEQ_LINE
+      SEQ_LINE=$(grep -E '^sequenceNumber' "$REMOTE_STATE")
       if [[ -n "$SEQ_LINE" ]]; then
         # Parse the number (format is "sequenceNumber=12345")
         echo $((${SEQ_LINE:15} + 0))
@@ -249,18 +251,15 @@ download_replicate_batch()
   local END=$2
   local BATCH_COUNT=$(($END - $START))
 
-  local URL_LIST=""
-  local STATE_FILES=""
-  local OSC_FILES=""
+  local URL_ARRAY=()
+  local STATE_ARRAY=()
+  local OSC_ARRAY=()
   local REMOTE_BASE
   local DIR_PATH
   local OSC_FILE
   local STATE_FILE_LOCAL
   local ID
   local TEMP_CONFIG
-  local URL_ARRAY
-  local STATE_ARRAY
-  local OSC_ARRAY
   local STATE_IDX
   local OSC_IDX
   local URL
@@ -278,19 +277,19 @@ download_replicate_batch()
 
     OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
     STATE_FILE_LOCAL="$DIR_PATH/$DIGIT3.state.txt"
-    
+
     if ! verify_file "$STATE_FILE_LOCAL" "text"; then
-      URL_LIST="$URL_LIST $REMOTE_BASE.state.txt"
-      STATE_FILES="$STATE_FILES $STATE_FILE_LOCAL"
+      URL_ARRAY+=("$REMOTE_BASE.state.txt")
+      STATE_ARRAY+=("$STATE_FILE_LOCAL")
     fi
-    
+
     if ! verify_file "$OSC_FILE" "gzip"; then
-      URL_LIST="$URL_LIST $REMOTE_BASE.osc.gz"
-      OSC_FILES="$OSC_FILES $OSC_FILE"
+      URL_ARRAY+=("$REMOTE_BASE.osc.gz")
+      OSC_ARRAY+=("$OSC_FILE")
     fi
   done
-  
-  if [[ -z "$URL_LIST" ]]; then
+
+  if [[ ${#URL_ARRAY[@]} -eq 0 ]]; then
     if [[ $BATCH_COUNT -eq 1 ]]; then
       log_message "Downloaded OSC file $END (cached)"
     else
@@ -298,16 +297,13 @@ download_replicate_batch()
     fi
     return 0
   fi
-  
+
   TEMP_CONFIG="$LOCAL_DIR/curl_batch.txt"
   rm -f "$TEMP_CONFIG"
 
-  URL_ARRAY=($URL_LIST)
-  STATE_ARRAY=($STATE_FILES)
-  OSC_ARRAY=($OSC_FILES)
   STATE_IDX=0
   OSC_IDX=0
-  
+
   for URL in "${URL_ARRAY[@]}"; do
     if [[ $URL == *.state.txt ]]; then
       echo "url = \"$URL\"" >> "$TEMP_CONFIG"
