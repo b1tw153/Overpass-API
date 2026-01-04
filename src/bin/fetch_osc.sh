@@ -169,7 +169,7 @@ get_latest_available_id()
       SEQ_LINE=$(grep -E '^sequenceNumber' "$REMOTE_STATE")
       if [[ -n "$SEQ_LINE" ]]; then
         # Parse the number (format is "sequenceNumber=12345")
-        echo $((${SEQ_LINE:15} + 0))
+        echo $((${SEQ_LINE#*=} + 0))
         return 0
       fi
     fi
@@ -317,7 +317,7 @@ download_replicate_batch()
   done
   
   # Download all files with connection reuse
-  CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$.log"
+  CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$$.log"
 
   curl -fsSL \
     --keepalive-time $CURL_KEEPALIVE_TIME \
@@ -453,7 +453,9 @@ update_fetch_state()
 shutdown()
 {
   log_message "Shutdown signal received, cleaning up..."
-  rm -f "$LOCAL_DIR"/*.tmp
+  if [[ -n "$LOCAL_DIR" && -d "$LOCAL_DIR" ]]; then
+    rm -f "$LOCAL_DIR"/*.tmp
+  fi
   log_message "Shutdown complete"
   exit 0
 }
