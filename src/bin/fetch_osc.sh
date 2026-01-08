@@ -151,29 +151,39 @@ sleep_with_interrupts()
 get_latest_available_id()
 {
   local REMOTE_STATE="$LOCAL_DIR/state.txt"
-  
+  local REMOTE_STATE_TMP="$REMOTE_STATE.tmp"
+
   while true; do
-    rm -f "$REMOTE_STATE"
+    rm -f "$REMOTE_STATE_TMP"
     curl -fsSL \
       --keepalive-time $CURL_KEEPALIVE_TIME \
       --connect-timeout "$CURL_CONNECT_TIMEOUT" \
       --retry 3 \
       --retry-delay 5 \
-      -o "$REMOTE_STATE" "$SOURCE_URL/state.txt" 2>/dev/null
-    
+      -o "$REMOTE_STATE_TMP" "$SOURCE_URL/state.txt" 2>/dev/null
+
     local CURL_EXIT=$?
-    
-    # If download succeeded, parse and return
-    if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE" ]]; then
-      local SEQ_LINE
-      SEQ_LINE=$(grep -E '^sequenceNumber' "$REMOTE_STATE")
-      if [[ -n "$SEQ_LINE" ]]; then
-        # Parse the number (format is "sequenceNumber=12345")
-        echo $((${SEQ_LINE#*=} + 0))
-        return 0
+
+    # If download succeeded, verify before using
+    if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
+      # Verify file is valid (not HTML, has required fields)
+      if verify_file "$REMOTE_STATE_TMP" "text"; then
+        # Valid - move to final location and parse
+        mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
+        local SEQ_LINE
+        SEQ_LINE=$(grep -E '^sequenceNumber' "$REMOTE_STATE")
+        if [[ -n "$SEQ_LINE" ]]; then
+          # Parse the number (format is "sequenceNumber=12345")
+          echo $((${SEQ_LINE#*=} + 0))
+          return 0
+        fi
+      else
+        # Invalid file (HTML error page, corrupted, missing fields)
+        log_error "Downloaded state.txt failed validation (may be HTML error page or corrupted data)"
+        rm -f "$REMOTE_STATE_TMP"
       fi
     fi
-    
+
     # Download failed or file invalid
     # Check the SOURCE_VERIFIED flag (set in main loop, not here due to subshell)
     if [[ "$SOURCE_VERIFIED" == "true" ]]; then
