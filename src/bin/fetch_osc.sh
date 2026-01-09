@@ -137,7 +137,7 @@ calculate_sleep_time()
 
 sleep_with_interrupts()
 {
-  sleep $1 &
+  sleep "$1" &
   wait $!
 }
 
@@ -214,10 +214,10 @@ get_replicate_path()
   local ID=$1
   local ARG
 
-  DIGIT3=$(printf '%03u' $(($ID % 1000)))
-  ARG=$(($ID / 1000))
-  DIGIT2=$(printf '%03u' $(($ARG % 1000)))
-  ARG=$(($ARG / 1000))
+  DIGIT3=$(printf '%03u' $((ID % 1000)))
+  ARG=$((ID / 1000))
+  DIGIT2=$(printf '%03u' $((ARG % 1000)))
+  ARG=$((ARG / 1000))
   DIGIT1=$(printf '%03u' $ARG)
   REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
 }
@@ -259,7 +259,7 @@ download_replicate_batch()
 {
   local START=$1
   local END=$2
-  local BATCH_COUNT=$(($END - $START))
+  local BATCH_COUNT=$((END - START))
 
   local URL_ARRAY=()
   local STATE_ARRAY=()
@@ -278,7 +278,7 @@ download_replicate_batch()
   local SUCCESS
   local STATE_FILE
 
-  for (( ID=$START+1; ID<=$END; ID++ )); do
+  for (( ID=START+1; ID<=END; ID++ )); do
     get_replicate_path $ID
 
     REMOTE_BASE="$SOURCE_URL/$REPLICATE_PATH"
@@ -370,7 +370,7 @@ download_replicate_batch()
     rm -f "$CURL_ERROR_LOG"
     
     # Clean up temp files
-    for (( ID=$START+1; ID<=$END; ID++ )); do
+    for (( ID=START+1; ID<=END; ID++ )); do
       get_replicate_path $ID
       rm -f "$LOCAL_DIR/$REPLICATE_PATH.state.txt.tmp"
       rm -f "$LOCAL_DIR/$REPLICATE_PATH.osc.gz.tmp"
@@ -383,7 +383,7 @@ download_replicate_batch()
 
   SUCCESS=1
 
-  for (( ID=$START+1; ID<=$END; ID++ )); do
+  for (( ID=START+1; ID<=END; ID++ )); do
     get_replicate_path $ID
     DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
     STATE_FILE="$DIR_PATH/$DIGIT3.state.txt"
@@ -414,13 +414,13 @@ download_replicate_batch()
     if [[ $BATCH_COUNT -eq 1 ]]; then
       log_message "Downloaded OSC file $END"
     else
-      log_message "Downloaded $BATCH_COUNT OSC files ($(($START + 1)) to $END)"
+      log_message "Downloaded $BATCH_COUNT OSC files ($((START + 1)) to END)"
     fi
   else
     if [[ $BATCH_COUNT -eq 1 ]]; then
       log_error "File failed verification: OSC file $END"
     else
-      log_error "Some files failed verification in batch $(($START + 1)) to $END"
+      log_error "Some files failed verification in batch $((START + 1)) to END"
     fi
   fi
   
@@ -538,14 +538,14 @@ while true; do
     
     if [[ $SLEEP_TIME -gt 0 ]]; then
       log_message "No new OSC files available (current: $CURRENT_ID), sleeping ${SLEEP_TIME}s"
-      sleep_with_interrupts $SLEEP_TIME
+      sleep_with_interrupts "$SLEEP_TIME"
       continue
     fi
     
     RETRY_COUNT=0
     while [[ $RETRY_COUNT -lt $QUICK_RETRY_COUNT ]]; do
       sleep_with_interrupts $QUICK_RETRY_DELAY
-      RETRY_COUNT=$(($RETRY_COUNT + 1))
+      RETRY_COUNT=$((RETRY_COUNT + 1))
       
       MAX_AVAILABLE=$(get_latest_available_id)
       # get_latest_available_id will retry internally if SOURCE_VERIFIED=true
@@ -572,20 +572,20 @@ while true; do
   
   # Determine batch size
   BATCH_END=$CURRENT_ID
-  for (( TEST_ID=$CURRENT_ID+1; TEST_ID<=$MAX_AVAILABLE && TEST_ID<=$CURRENT_ID+$MAX_BATCH_SIZE; TEST_ID++ )); do
+  for (( TEST_ID=CURRENT_ID+1; TEST_ID<=MAX_AVAILABLE && TEST_ID<=CURRENT_ID+MAX_BATCH_SIZE; TEST_ID++ )); do
     BATCH_END=$TEST_ID
   done
   
-  BATCH_COUNT=$(($BATCH_END - $CURRENT_ID))
+  BATCH_COUNT=$((BATCH_END - CURRENT_ID))
   if [[ $BATCH_COUNT -eq 1 ]]; then
     log_message "Fetching OSC file $BATCH_END"
   else
-    log_message "Fetching $BATCH_COUNT OSC files ($(($CURRENT_ID + 1)) to $BATCH_END)"
+    log_message "Fetching $BATCH_COUNT OSC files ($((CURRENT_ID + 1)) to $BATCH_END)"
   fi
   
-  if download_replicate_batch $CURRENT_ID $BATCH_END; then
+  if download_replicate_batch "$CURRENT_ID" "$BATCH_END"; then
     LAST_UPDATE_WALL_CLOCK=$(date +%s)
-    update_fetch_state $BATCH_END
+    update_fetch_state "$BATCH_END"
     CURRENT_ID=$BATCH_END
   else
     log_error "Batch download failed, retrying"
