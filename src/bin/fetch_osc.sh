@@ -336,6 +336,8 @@ download_replicate_batch()
     --retry-delay "$CURL_RETRY_DELAY" \
     --parallel \
     --parallel-max 4 \
+    --speed-limit 1024 \
+    --speed-time 30 \
     --config "$TEMP_CONFIG" 2>"$CURL_ERROR_LOG"
 
   CURL_EXIT=$?
