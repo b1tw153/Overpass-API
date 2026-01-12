@@ -24,6 +24,12 @@
 #          in continuous batches with robust error handling
 # ============================================================================
 
+# Ensure the script is its own process group leader
+# (only needed if the script might be run from an interactive shell)
+if [[ $$ -ne $(ps -o pgid= $$ | tr -d ' ') ]]; then
+  exec setsid "$0" "$@"
+fi
+
 if [[ -z $3 ]]; then
 {
   echo "Usage: $0 replicate_dir start_id --meta=(attic|yes|no)"
@@ -51,8 +57,7 @@ elif [[ $META_ARG == "--meta=yes" || $META_ARG == "--meta" ]]; then
 elif [[ $META_ARG == "--meta=no" ]]; then
   META=
 else
-  echo "ERROR: You must specify --meta=attic, --meta=yes, or --meta=no"
-  exit 1
+  fail "ERROR: You must specify --meta=attic, --meta=yes, or --meta=no"
 fi
 
 # Batch configuration
@@ -77,8 +82,7 @@ fi
 DB_DIR=$($EXEC_DIR/dispatcher --show-dir)
 
 if [[ ! -d "$DB_DIR" ]]; then
-  echo "ERROR: Database directory '$DB_DIR' does not exist"
-  exit 1
+  fail "ERROR: Database directory '$DB_DIR' does not exist"
 fi
 
 # State file
@@ -114,7 +118,7 @@ read_current_state()
   if [[ -f "$STATE_FILE" && -s "$STATE_FILE" ]]; then
     cat "$STATE_FILE"
   else
-    echo "0"
+    fail "ERROR: $STATE_FILE does not exist and start set to auto\nAuto mode requires an existing replicate_id to resume from\nUse an explicit replicate ID specify the starting point"
   fi
 }
 
@@ -260,14 +264,15 @@ apply_batch()
 
   log_message "Applying batch to database (version: ${DATA_VERSION//\\/})"
 
-  cd "$EXEC_DIR" || fail "Unable to cd to execution directory"
+  cd "$EXEC_DIR" || fail "ERROR: Unable to cd to execution directory"
 
   local SUCCESS=0
   local RETRY_COUNT=0
   local MAX_RETRIES=5
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" $META --flush-size=0
+    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" $META --flush-size=0 &
+    wait "$!"
     local EXITCODE=$?
 
     if [[ $EXITCODE -eq 0 ]]; then
@@ -275,6 +280,16 @@ apply_batch()
     elif [[ $EXITCODE -eq 15 ]]; then
       log_message "Received SIGTERM, shutting down gracefully"
       exit 15
+    elif [[ $EXITCODE -eq 126 || $EXITCODE -eq 127 ]]; then
+      # Unrecoverable errors: command not executable (126) or not found (127)
+      log_error "update_from_dir failed with unrecoverable error (exit code: $EXITCODE)"
+      cd - >/dev/null || true
+      fail "ERROR: update_from_dir is not available or not executable"
+    elif [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
+      # Signal-based exits: process was killed/crashed (128+N where N is signal number)
+      log_error "update_from_dir terminated by signal (exit code: $EXITCODE)"
+      cd - >/dev/null || true
+      fail "ERROR: update_from_dir was terminated by signal $((EXITCODE - 128))"
     else
       RETRY_COUNT=$(($RETRY_COUNT + 1))
       log_error "update_from_dir failed (exit code: $EXITCODE), retry $RETRY_COUNT/$MAX_RETRIES"
@@ -285,7 +300,7 @@ apply_batch()
     fi
   done
 
-  cd - >/dev/null || fail "Unable to cd back to previous directory"
+  cd - >/dev/null || fail "ERROR: Unable to cd back to previous directory"
 
   if [[ $SUCCESS -eq 0 ]]; then
     log_error "Failed to apply batch after $MAX_RETRIES attempts"
@@ -306,7 +321,8 @@ calculate_sleep_time()
     return
   fi
 
-  local NOW=$(date +%s)
+  local NOW
+  NOW=$(date +%s)
   local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + EXPECTED_UPDATE_INTERVAL))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
 
@@ -335,9 +351,14 @@ shutdown()
 {
   log_message "Shutdown signal received, cleaning up..."
 
-  if [[ -n "$CHILD_PID" && $CHILD_PID -gt 0 ]]; then
-    kill $CHILD_PID 2>/dev/null
-  fi
+  # Temporarily ignore signals to prevent recursion
+  trap '' SIGTERM SIGINT
+
+  # Kill all processes in the process group except ourselves
+  kill -TERM -- -$$ 2>/dev/null || true
+
+  # Wait for children to finish
+  wait 2>/dev/null || true
 
   rm -rf "$WORK_DIR"
 
@@ -353,7 +374,7 @@ trap shutdown SIGTERM SIGINT
 
 fail()
 {
-  echo "Fatal error: $1; exiting"
+  echo "$1"
   exit 1
 }
 
@@ -365,20 +386,26 @@ log_message "Starting apply process from $REPLICATE_DIR with $META_ARG"
 
 if [[ "$START_ID" == "auto" ]]; then
   CURRENT_ID=$(read_current_state)
+  if [[ CURRENT_ID -le 0 ]]; then
+    fail "ERROR: Current replicate ID in database is invalid: $CURRENT_ID"
+  fi
   log_message "Auto mode: resuming from $CURRENT_ID"
 else
   CURRENT_ID=$START_ID
+  if [[ $CURRENT_ID -le 0 ]]; then
+    fail "ERROR: Specified start replicate ID is invalid: $CURRENT_ID"
+  fi
   log_message "Starting from $CURRENT_ID"
 fi
 
 # Run database migration
 log_message "Running database migration"
-cd "$EXEC_DIR" || fail "Unable to cd to execution directory"
+cd "$EXEC_DIR" || fail "ERROR: Unable to cd to execution directory"
 ./migrate_database --migrate &
-CHILD_PID=$!
-wait "$CHILD_PID"
-CHILD_PID=
-cd - >/dev/null || fail "Unable to cd back to previous directory"
+if ! wait "$!"; then
+  fail "ERROR: Database migration failed"
+fi
+cd - >/dev/null || fail "ERROR: Unable to cd back to previous directory"
 
 # Delete old temp files
 log_message "Deleting old temporary files and directories"
