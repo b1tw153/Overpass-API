@@ -171,9 +171,9 @@ collect_batch()
 
   local COUNT=$(($BATCH_END - $START))
   if [[ $COUNT -eq 1 ]]; then
-      log_message "Collected one OSC file: $BATCH_END"
+      log_message "Collected one file: $BATCH_END"
     else
-      log_message "Collected batch: $START to $BATCH_END ($COUNT OSC files)"
+      log_message "Collected batch: $START to $BATCH_END ($COUNT files)"
   fi
   return 0
 }
@@ -192,9 +192,9 @@ prepare_batch()
   mkdir -p "$OUT_DIR"
 
   if [[ $COUNT -eq 1 ]]; then
-    log_message "Decompressing OSC file: $END"
+    log_message "Decompressing file: $END"
   else
-    log_message "Decompressing batch: $START to $END ($COUNT OSC files)"
+    log_message "Decompressing batch: $START to $END ($COUNT files)"
   fi
 
   for (( ID=$START+1; ID<=$END; ID++ )); do
@@ -260,7 +260,7 @@ apply_batch()
 
   log_message "Applying batch to database (version: ${DATA_VERSION//\\/})"
 
-  cd "$EXEC_DIR"
+  cd "$EXEC_DIR" || fail "Unable to cd to execution directory"
 
   local SUCCESS=0
   local RETRY_COUNT=0
@@ -285,7 +285,7 @@ apply_batch()
     fi
   done
 
-  cd - >/dev/null
+  cd - >/dev/null || fail "Unable to cd back to previous directory"
 
   if [[ $SUCCESS -eq 0 ]]; then
     log_error "Failed to apply batch after $MAX_RETRIES attempts"
@@ -348,31 +348,37 @@ shutdown()
 trap shutdown SIGTERM SIGINT
 
 # ============================================================================
+# FAILURE HANDLING
+# ============================================================================
+
+fail()
+{
+  echo "Fatal error: $1; exiting"
+  exit 1
+}
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
-log_message "=========================================="
-log_message "Starting apply process"
-log_message "Replicate directory: $REPLICATE_DIR"
-log_message "Metadata mode: $META_ARG"
-log_message "=========================================="
+log_message "Starting apply process from $REPLICATE_DIR with $META_ARG"
 
 if [[ "$START_ID" == "auto" ]]; then
   CURRENT_ID=$(read_current_state)
-  log_message "Auto mode: resuming from OSC file $CURRENT_ID"
+  log_message "Auto mode: resuming from $CURRENT_ID"
 else
   CURRENT_ID=$START_ID
-  log_message "Starting from OSC file $CURRENT_ID"
+  log_message "Starting from $CURRENT_ID"
 fi
 
 # Run database migration
 log_message "Running database migration"
-cd "$EXEC_DIR"
+cd "$EXEC_DIR" || fail "Unable to cd to execution directory"
 ./migrate_database --migrate &
 CHILD_PID=$!
 wait "$CHILD_PID"
 CHILD_PID=
-cd - >/dev/null
+cd - >/dev/null || fail "Unable to cd back to previous directory"
 
 # Delete old temp files
 log_message "Deleting old temporary files and directories"
@@ -382,7 +388,7 @@ while true; do
   # Try to collect a batch
   if ! collect_batch $CURRENT_ID; then
     SLEEP_TIME=$(calculate_sleep_time)
-    log_message "No new OSC files available, waiting $SLEEP_TIME s"
+    log_message "No new files available, waiting $SLEEP_TIME s"
     sleep_with_interrupts $SLEEP_TIME
     continue
   fi
@@ -422,7 +428,7 @@ while true; do
   update_state $BATCH_END
   CURRENT_ID=$BATCH_END
 
-  log_message "Successfully applied batch up to OSC file $CURRENT_ID"
+  log_message "Successfully applied batch up to $CURRENT_ID"
 
   # Clean up
   rm -rf "$PROCESS_DIR"
