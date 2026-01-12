@@ -145,6 +145,35 @@ get_replicate_path()
 }
 
 # ============================================================================
+# FILE VERIFICATION
+# ============================================================================
+
+verify_file()
+{
+  local FILE="$1"
+  local TYPE="$2"
+  
+  if [[ ! -s "$FILE" ]]; then
+    return 1
+  fi
+  
+  if [[ "$TYPE" == "gzip" ]]; then
+    gunzip -t <"$FILE" 2>/dev/null
+    return $?
+  elif [[ "$TYPE" == "text" ]]; then
+    if ! grep -q "^sequenceNumber=" "$FILE" 2>/dev/null; then
+      return 1
+    fi
+    if ! grep -q "^timestamp=" "$FILE" 2>/dev/null; then
+      return 1
+    fi
+    return 0
+  fi
+  
+  return 1
+}
+
+# ============================================================================
 # BATCH COLLECTION
 # ============================================================================
 
@@ -163,6 +192,14 @@ collect_batch()
     local STATE_FILE_LOCAL="$REPLICATE_DIR/$REPLICATE_PATH.state.txt"
 
     if [[ -f "$OSC_FILE" && -f "$STATE_FILE_LOCAL" ]]; then
+      if ! verify_file "$OSC_FILE" "gzip"; then
+        log_error "Corrupt .osc.gz file: $OSC_FILE"
+        break
+      fi
+      if ! verify_file "$STATE_FILE_LOCAL" "text"; then
+        log_error "Corrupt .state.txt file: $STATE_FILE_LOCAL"
+        break
+      fi
       BATCH_END=$ID
     else
       break
