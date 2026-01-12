@@ -60,7 +60,7 @@ OUTAGE_RETRY_DELAY=60     # Seconds to wait during detected network outages
 SOURCE_VERIFIED=false     # Flag to track if source URL has been verified
 
 # Update timing configuration
-EXPECTED_UPDATE_INTERVAL=51  # Seconds to wait before checking for next update
+EXPECTED_UPDATE_INTERVAL=53  # Seconds to wait before checking for next update
 QUICK_RETRY_DELAY=1          # Seconds between quick retries
 QUICK_RETRY_COUNT=10         # Number of quick retries before slow retry
 SLOW_RETRY_DELAY=60          # Seconds between retries when updates delayed
@@ -301,9 +301,9 @@ download_replicate_batch()
 
   if [[ ${#URL_ARRAY[@]} -eq 0 ]]; then
     if [[ $BATCH_COUNT -eq 1 ]]; then
-      log_message "Downloaded OSC file $END (cached)"
+      log_message "Downloaded $END (cached)"
     else
-      log_message "Downloaded $BATCH_COUNT OSC files (all cached)"
+      log_message "Downloaded $BATCH_COUNT files (all cached)"
     fi
     return 0
   fi
@@ -344,7 +344,7 @@ download_replicate_batch()
   rm -f "$TEMP_CONFIG"
   
   if [[ $CURL_EXIT -ne 0 ]]; then
-    log_error "Batch download failed (exit code: $CURL_EXIT)"
+    log_error "Batch download failed (curl exit code: $CURL_EXIT)"
     
     # Log curl error details if available
     if [[ -s "$CURL_ERROR_LOG" ]]; then
@@ -395,7 +395,7 @@ download_replicate_batch()
       if verify_file "$STATE_FILE.tmp" "text"; then
         mv "$STATE_FILE.tmp" "$STATE_FILE"
       else
-        log_error "State file failed verification: ID $ID"
+        log_error "State file failed verification: $ID"
         rm -f "$STATE_FILE.tmp"
         SUCCESS=0
       fi
@@ -405,7 +405,7 @@ download_replicate_batch()
       if verify_file "$OSC_FILE.tmp" "gzip"; then
         mv "$OSC_FILE.tmp" "$OSC_FILE"
       else
-        log_error "OSC file failed verification: ID $ID"
+        log_error "OSC file failed verification: $ID"
         rm -f "$OSC_FILE.tmp"
         SUCCESS=0
       fi
@@ -414,9 +414,9 @@ download_replicate_batch()
   
   if [[ $SUCCESS -eq 1 ]]; then
     if [[ $BATCH_COUNT -eq 1 ]]; then
-      log_message "Downloaded OSC file $END"
+      log_message "Downloaded $END"
     else
-      log_message "Downloaded $BATCH_COUNT OSC files ($((START + 1)) to END)"
+      log_message "Downloaded $BATCH_COUNT files ($((START + 1)) to END)"
     fi
   else
     if [[ $BATCH_COUNT -eq 1 ]]; then
@@ -478,11 +478,7 @@ trap shutdown SIGTERM SIGINT
 # MAIN EXECUTION
 # ============================================================================
 
-log_message "=========================================="
-log_message "Starting fetch process"
-log_message "Source: $SOURCE_URL"
-log_message "Local directory: $LOCAL_DIR"
-log_message "=========================================="
+log_message "Starting fetch from $SOURCE_URL to $LOCAL_DIR"
 
 if [[ "$START_ID" == "auto" ]]; then
   # In auto mode, start from the database state (what's been applied)
@@ -507,16 +503,16 @@ if [[ "$START_ID" == "auto" ]]; then
   # Use whichever is higher (in case fetch was ahead when restarted)
   if [[ $FETCH_ID -gt $DB_ID ]]; then
     CURRENT_ID=$FETCH_ID
-    log_message "Auto mode: resuming fetch from OSC file $CURRENT_ID (fetch ahead of apply)"
+    log_message "Auto mode: resuming from $CURRENT_ID (fetch ahead of apply)"
   else
     CURRENT_ID=$DB_ID
-    log_message "Auto mode: resuming from OSC file $CURRENT_ID (database state)"
+    log_message "Auto mode: resuming from $CURRENT_ID (database state)"
   fi
 else
   # In explicit mode, START_ID is the first file to download
   # Set CURRENT_ID to the file before it (last file we "already have")
   CURRENT_ID=$((START_ID - 1))
-  log_message "Starting from OSC file $START_ID"
+  log_message "Starting from $START_ID"
 fi
 
 while true; do
@@ -539,7 +535,7 @@ while true; do
     SLEEP_TIME=$(calculate_sleep_time)
     
     if [[ $SLEEP_TIME -gt 0 ]]; then
-      log_message "No new OSC files available (current: $CURRENT_ID), sleeping ${SLEEP_TIME}s"
+      log_message "No new files available (current: $CURRENT_ID), sleeping ${SLEEP_TIME}s"
       sleep_with_interrupts "$SLEEP_TIME"
       continue
     fi
@@ -560,13 +556,13 @@ while true; do
       fi
       
       if [[ $RETRY_COUNT -lt $QUICK_RETRY_COUNT ]]; then
-        log_message "Waiting for OSC file $((CURRENT_ID + 1)) (quick retry $RETRY_COUNT/$QUICK_RETRY_COUNT)"
+        log_message "Waiting for file $((CURRENT_ID + 1)) (quick retry $RETRY_COUNT/$QUICK_RETRY_COUNT)"
       fi
     done
     
     # If still no new data after quick retries, fall back to slow retry
     if [[ -z "$MAX_AVAILABLE" || $MAX_AVAILABLE -le $CURRENT_ID ]]; then
-      log_message "OSC file $((CURRENT_ID + 1)) not available, falling back to ${SLOW_RETRY_DELAY}s delays"
+      log_message "File $((CURRENT_ID + 1)) not available, falling back to ${SLOW_RETRY_DELAY}s delays"
       sleep_with_interrupts $SLOW_RETRY_DELAY
       continue
     fi
@@ -580,9 +576,9 @@ while true; do
   
   BATCH_COUNT=$((BATCH_END - CURRENT_ID))
   if [[ $BATCH_COUNT -eq 1 ]]; then
-    log_message "Fetching OSC file $BATCH_END"
+    log_message "Fetching $BATCH_END"
   else
-    log_message "Fetching $BATCH_COUNT OSC files ($((CURRENT_ID + 1)) to $BATCH_END)"
+    log_message "Fetching $BATCH_COUNT files ($((CURRENT_ID + 1)) to $BATCH_END)"
   fi
   
   if download_replicate_batch "$CURRENT_ID" "$BATCH_END"; then
