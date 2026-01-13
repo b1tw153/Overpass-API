@@ -519,15 +519,22 @@ cd - >/dev/null || fail "ERROR: Unable to cd back to previous directory"
 log_message "Deleting old temporary files and directories"
 rm -rf /tmp/osm-3s_update_*
 
+START_TIME=$(date +%s)
+
 while true; do
   # Try to collect a batch
   if ! collect_batch $CURRENT_ID; then
+    if [[ -n "$START_TIME" && $(date +%s) -gt $((START_TIME + 65)) ]]; then
+      log_error "Waited more than one minute for the first file, exiting."
+      fail "ERROR: No new files to process after one minute. Is fetch_osc.sh running?"
+    fi
     SLEEP_TIME=$(calculate_sleep_time)
     log_message "No new files available, waiting $SLEEP_TIME s"
     sleep_with_interrupts $SLEEP_TIME
     continue
   fi
 
+  START_TIME=
   LAST_UPDATE_WALL_CLOCK=$(date +%s)
 
   # Prepare processing directory
