@@ -61,7 +61,8 @@ else
 fi
 
 # Batch configuration
-MAX_BATCH_SIZE=360          # Maximum OSC files per batch (6 hours)
+MAX_BATCH_SIZE_MB=512       # Maximum uncompressed size per batch (MB)
+MAX_BATCH_TIME_SECONDS=86400 # Maximum time span per batch (1 day = 86400 seconds)
 
 # Timestamp tracking
 EXPECTED_UPDATE_INTERVAL=57 # Seconds to wait before checking for next update
@@ -177,33 +178,103 @@ verify_file()
 # BATCH COLLECTION
 # ============================================================================
 
+# Helper function to extract timestamp from state file and convert to epoch seconds
+get_timestamp_epoch()
+{
+  local STATE_FILE_PATH="$1"
+
+  if [[ ! -f "$STATE_FILE_PATH" ]]; then
+    return 1
+  fi
+
+  local TIMESTAMP_LINE
+  TIMESTAMP_LINE=$(grep "^timestamp=" "$STATE_FILE_PATH" 2>/dev/null)
+
+  if [[ -z "$TIMESTAMP_LINE" ]]; then
+    return 1
+  fi
+
+  # Extract timestamp value (format: 2021-01-01T00\:00\:00Z)
+  local TIMESTAMP_STR="${TIMESTAMP_LINE#timestamp=}"
+
+  # Convert escaped colons to regular colons
+  TIMESTAMP_STR="${TIMESTAMP_STR//\\:/:}"
+
+  # Convert to epoch seconds using date command
+  date -d "$TIMESTAMP_STR" +%s 2>/dev/null
+  return $?
+}
+
 collect_batch()
 {
   local START=$1
-  local CURRENT=$(($START + 1))
+  local ID=$(($START + 1))
 
   BATCH_END=$START
 
-  # Find contiguous downloaded files up to MAX_BATCH_SIZE
-  for (( ID=$CURRENT; ID<=$START+$MAX_BATCH_SIZE; ID++ )); do
+  local BATCH_SIZE_BYTES=0
+  local MAX_BATCH_SIZE_BYTES=$(($MAX_BATCH_SIZE_MB * 1024 * 1024))
+  local BATCH_START_TIMESTAMP=""
+
+  # Find contiguous downloaded files until size or time limit reached
+  while true; do
     get_replicate_path $ID
 
     local OSC_FILE="$REPLICATE_DIR/$REPLICATE_PATH.osc.gz"
     local STATE_FILE_LOCAL="$REPLICATE_DIR/$REPLICATE_PATH.state.txt"
 
-    if [[ -f "$OSC_FILE" && -f "$STATE_FILE_LOCAL" ]]; then
-      if ! verify_file "$OSC_FILE" "gzip"; then
-        log_error "Corrupt .osc.gz file: $OSC_FILE"
-        break
-      fi
-      if ! verify_file "$STATE_FILE_LOCAL" "text"; then
-        log_error "Corrupt .state.txt file: $STATE_FILE_LOCAL"
-        break
-      fi
-      BATCH_END=$ID
-    else
+    # Check if files exist
+    if [[ ! -f "$OSC_FILE" || ! -f "$STATE_FILE_LOCAL" ]]; then
       break
     fi
+
+    # Verify file integrity
+    if ! verify_file "$OSC_FILE" "gzip"; then
+      log_error "Corrupt .osc.gz file: $OSC_FILE"
+      break
+    fi
+    if ! verify_file "$STATE_FILE_LOCAL" "text"; then
+      log_error "Corrupt .state.txt file: $STATE_FILE_LOCAL"
+      break
+    fi
+
+    # Get uncompressed size of this file
+    local UNCOMPRESSED_SIZE
+    UNCOMPRESSED_SIZE=$(gunzip -l "$OSC_FILE" 2>/dev/null | tail -1 | awk '{print $2}')
+    if [[ -z "$UNCOMPRESSED_SIZE" || "$UNCOMPRESSED_SIZE" -le 0 ]]; then
+      log_error "Cannot determine uncompressed size of $OSC_FILE"
+      break
+    fi
+
+    # Check size limit: would adding this file exceed the limit?
+    local NEW_BATCH_SIZE=$(($BATCH_SIZE_BYTES + $UNCOMPRESSED_SIZE))
+    if [[ $NEW_BATCH_SIZE -gt $MAX_BATCH_SIZE_BYTES ]]; then
+      break
+    fi
+
+    # Get timestamp for this file
+    local FILE_TIMESTAMP_EPOCH
+    FILE_TIMESTAMP_EPOCH=$(get_timestamp_epoch "$STATE_FILE_LOCAL")
+    if [[ $? -ne 0 || -z "$FILE_TIMESTAMP_EPOCH" ]]; then
+      log_error "Cannot extract timestamp from $STATE_FILE_LOCAL"
+      break
+    fi
+
+    # Set starting timestamp on first file
+    if [[ -z "$BATCH_START_TIMESTAMP" ]]; then
+      BATCH_START_TIMESTAMP="$FILE_TIMESTAMP_EPOCH"
+    fi
+
+    # Check time limit: would adding this file exceed the time span?
+    local TIME_SPAN=$(($FILE_TIMESTAMP_EPOCH - $BATCH_START_TIMESTAMP))
+    if [[ $TIME_SPAN -ge $MAX_BATCH_TIME_SECONDS ]]; then
+      break
+    fi
+
+    # File passes all checks - add it to the batch
+    BATCH_END=$ID
+    BATCH_SIZE_BYTES=$NEW_BATCH_SIZE
+    ID=$(($ID + 1))
   done
 
   if [[ $BATCH_END -le $START ]]; then
@@ -212,9 +283,9 @@ collect_batch()
 
   local COUNT=$(($BATCH_END - $START))
   if [[ $COUNT -eq 1 ]]; then
-      log_message "Collected one file: $BATCH_END"
-    else
-      log_message "Collected batch: $START to $BATCH_END ($COUNT files)"
+    log_message "Collected one file: $BATCH_END"
+  else
+    log_message "Collected batch: $START to $BATCH_END ($COUNT files)"
   fi
   return 0
 }
