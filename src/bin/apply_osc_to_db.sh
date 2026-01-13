@@ -26,8 +26,16 @@
 
 # Ensure the script is its own process group leader
 # (only needed if the script might be run from an interactive shell)
-if [[ $$ -ne $(ps -o pgid= $$ | tr -d ' ') ]]; then
+PGID=$(ps -o pgid= $$ 2>/dev/null | tr -d ' ')
+if [[ -z "$PGID" ]]; then
+  echo "ERROR: Unable to determine process group ID"
+  exit 1
+fi
+if [[ $$ -ne $PGID ]]; then
   exec setsid "$0" "$@"
+  # If exec fails, we get here
+  echo "ERROR: Unable to create new process group with setsid"
+  exit 1
 fi
 
 if [[ -z $3 ]]; then
