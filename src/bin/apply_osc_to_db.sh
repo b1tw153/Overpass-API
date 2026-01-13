@@ -409,14 +409,16 @@ apply_batch()
       SUCCESS=1
     elif [[ $EXITCODE -eq 3 ]]; then
       log_error "update_from_dir failed due to context error (exit code: $EXITCODE)"
+      log_message "Resolve the problem with the dispatcher before retrying"
       cd - >/dev/null || true
       fail "ERROR: Dispatcher failure, cannot proceed"
     elif [[ $EXITCODE -eq 15 ]]; then
       log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
+      cd - >/dev/null || true
       shutdown 143
     elif [[ $EXITCODE -eq 126 || $EXITCODE -eq 127 ]]; then
       # Unrecoverable errors: command not executable (126) or not found (127)
-      log_error "update_from_dir failed with unrecoverable error (exit code: $EXITCODE)"
+      log_error "Unable to run update_from_dir (exit code: $EXITCODE)"
       cd - >/dev/null || true
       fail "ERROR: update_from_dir is not available or not executable"
     elif [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
