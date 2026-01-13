@@ -464,15 +464,19 @@ update_fetch_state()
 
 shutdown()
 {
+  local EXIT_CODE=$1
+
   log_message "Shutdown signal received, cleaning up..."
   if [[ -n "$LOCAL_DIR" && -d "$LOCAL_DIR" ]]; then
     rm -f "$LOCAL_DIR"/*.tmp
   fi
   log_message "Shutdown complete"
-  exit 0
+  exit "$EXIT_CODE"
 }
 
-trap shutdown SIGTERM SIGINT
+trap 'shutdown 143' SIGTERM
+trap 'shutdown 130' SIGINT
+trap 'shutdown 129' SIGHUP
 
 # ============================================================================
 # MAIN EXECUTION

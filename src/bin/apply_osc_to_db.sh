@@ -479,10 +479,11 @@ sleep_with_interrupts()
 
 shutdown()
 {
+  local EXIT_CODE=$1
   log_message "Shutdown signal received, cleaning up..."
 
   # Temporarily ignore signals to prevent recursion
-  trap '' SIGTERM SIGINT
+  trap '' SIGTERM SIGINT SIGHUP
 
   # Kill all processes in the process group except ourselves
   kill -TERM -- -$$ 2>/dev/null || true
@@ -493,10 +494,12 @@ shutdown()
   rm -rf "$WORK_DIR"
 
   log_message "Shutdown complete"
-  exit 0
+  exit $EXIT_CODE
 }
 
-trap shutdown SIGTERM SIGINT
+trap 'shutdown 143' SIGTERM
+trap 'shutdown 130' SIGINT
+trap 'shutdown 129' SIGHUP
 
 # ============================================================================
 # MAIN EXECUTION
