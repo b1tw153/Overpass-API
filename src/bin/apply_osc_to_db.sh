@@ -407,9 +407,13 @@ apply_batch()
 
     if [[ $EXITCODE -eq 0 ]]; then
       SUCCESS=1
+    elif [[ $EXITCODE -eq 3 ]]; then
+      log_error "update_from_dir failed due to context error (exit code: $EXITCODE)"
+      cd - >/dev/null || true
+      fail "ERROR: Dispatcher failure, cannot proceed"
     elif [[ $EXITCODE -eq 15 ]]; then
-      log_message "Received SIGTERM, shutting down gracefully"
-      exit 15
+      log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
+      shutdown 143
     elif [[ $EXITCODE -eq 126 || $EXITCODE -eq 127 ]]; then
       # Unrecoverable errors: command not executable (126) or not found (127)
       log_error "update_from_dir failed with unrecoverable error (exit code: $EXITCODE)"
@@ -417,15 +421,16 @@ apply_batch()
       fail "ERROR: update_from_dir is not available or not executable"
     elif [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
       # Signal-based exits: process was killed/crashed (128+N where N is signal number)
-      log_error "update_from_dir terminated by signal (exit code: $EXITCODE)"
+      log_error "update_from_dir terminated by signal (exit code: $EXITCODE), cleaning up..."
       cd - >/dev/null || true
-      fail "ERROR: update_from_dir was terminated by signal $((EXITCODE - 128))"
+      shutdown $EXITCODE
     else
-      RETRY_COUNT=$(($RETRY_COUNT + 1))
-      log_error "update_from_dir failed (exit code: $EXITCODE), retry $RETRY_COUNT/$MAX_RETRIES"
-
+      RETRY_COUNT=$((RETRY_COUNT + 1))
       if [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; then
+        log_error "update_from_dir failed (exit code: $EXITCODE), attempt $((RETRY_COUNT + 1))/$MAX_RETRIES, retrying..."
         sleep_with_interrupts 60
+      else
+        log_error "update_from_dir error is not recoverable after $MAX_RETRIES attempts"
       fi
     fi
   done
