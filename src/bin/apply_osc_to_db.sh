@@ -41,6 +41,16 @@ if [[ -z $3 ]]; then
 }; fi
 
 # ============================================================================
+# FAILURE HANDLING
+# ============================================================================
+
+fail()
+{
+  echo "$1"
+  exit 1
+}
+
+# ============================================================================
 # CONFIGURATION
 # ============================================================================
 
@@ -93,8 +103,8 @@ STATE_FILE="$DB_DIR/replicate_id"
 LOG_FILE="$DB_DIR/apply_osc_to_db.log"
 
 # Working directory for decompressed files
-WORK_DIR=$(mktemp -d /tmp/osm-3s_update_XXXXXX)
-mkdir -p "$WORK_DIR"
+WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/osm-3s_update_XXXXXX")
+mkdir -p "$WORK_DIR" || fail "ERROR: Unable to create working directory"
 
 # ============================================================================
 # LOGGING
@@ -126,8 +136,12 @@ read_current_state()
 update_state()
 {
   local NEW_ID=$1
-  echo "$NEW_ID" > "$STATE_FILE.tmp"
-  mv "$STATE_FILE.tmp" "$STATE_FILE"
+  if ! {  echo "$NEW_ID" > "$STATE_FILE.tmp"; }; then
+    fail "ERROR: Failed to write new state to temporary file"
+  fi
+  if ! mv "$STATE_FILE.tmp" "$STATE_FILE"; then
+    fail "ERROR: Failed to update state file"
+  fi
 }
 
 # ============================================================================
@@ -477,16 +491,6 @@ shutdown()
 trap shutdown SIGTERM SIGINT
 
 # ============================================================================
-# FAILURE HANDLING
-# ============================================================================
-
-fail()
-{
-  echo "$1"
-  exit 1
-}
-
-# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
@@ -517,7 +521,7 @@ cd - >/dev/null || fail "ERROR: Unable to cd back to previous directory"
 
 # Delete old temp files
 log_message "Deleting old temporary files and directories"
-rm -rf /tmp/osm-3s_update_*
+rm -rf "${TMPDIR:-/tmp}"/osm-3s_update_*
 
 START_TIME=$(date +%s)
 
@@ -567,7 +571,7 @@ while true; do
   fi
 
   # Success - update state
-  update_state $BATCH_END
+  update_state "$BATCH_END"
   CURRENT_ID=$BATCH_END
 
   log_message "Successfully applied batch up to $CURRENT_ID"
