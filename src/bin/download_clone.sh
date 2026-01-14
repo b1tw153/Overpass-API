@@ -293,7 +293,6 @@ download_files_parallel()
       --retry 240 \
       --retry-delay 15 \
       --retry-max-time 86400 \
-      --retry-all-errors \
       -C - \
       -R \
       --progress-bar \
