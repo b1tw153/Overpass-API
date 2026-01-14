@@ -64,7 +64,7 @@ process_params()
   if [[ -z "$1" ]]; then
   {
     echo "$USAGE"
-    exit 0
+    exit 1
   }; fi
 
   # Process all parameters
@@ -81,6 +81,10 @@ process_params()
     elif [[ "${arg:0:7}" == "--meta=" ]]; then
     {
       META="${arg:7}"
+      if ! [[ $META =~ ^(yes|no|attic)$ ]]; then
+        echo "Unknown value for --meta: $arg"
+        exit 1
+      fi
     };
     elif [[ "${arg:0:11}" == "--parallel=" ]]; then
     {
