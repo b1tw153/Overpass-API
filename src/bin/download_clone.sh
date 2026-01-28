@@ -207,8 +207,8 @@ is_file_complete()
   local remote_size
   local local_size
 
-  # If local file doesn't exist, it's not complete
-  if [[ ! -f "$local_file" ]]; then
+  # If local file doesn't exist or is empty, it's not complete
+  if [[ ! -s "$local_file" ]]; then
     return 1
   fi
 
