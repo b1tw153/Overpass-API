@@ -58,12 +58,33 @@ way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequen
 relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin \
 relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin"
 
+# Log error
+log_error()
+{
+  local message="$1"
+  echo "Error: $message" >&2
+}
+
+# Log warning
+log_warning()
+{
+  local message="$1"
+  echo "Warning: $message" >&2
+}
+
+# Log message
+log_message()
+{
+  local message="$1"
+  echo "$message"
+}
+
 # Process parameters
 process_params()
 {
   if [[ -z "$1" ]]; then
   {
-    echo "$USAGE"
+    log_message "$USAGE"
     exit 1
   }; fi
 
@@ -82,7 +103,7 @@ process_params()
     {
       META="${arg:7}"
       if ! [[ $META =~ ^(yes|no|attic)$ ]]; then
-        echo "Unknown value for --meta: $arg"
+        log_error "Unknown value for --meta: $arg"
         exit 1
       fi
     };
@@ -92,7 +113,7 @@ process_params()
     };
     else
     {
-      echo "Unknown argument: $arg"
+      log_error "Unknown argument: $arg"
       exit 1
     }; fi
   }; done
@@ -100,15 +121,15 @@ process_params()
   # Validate required parameters
   if [[ -z "$CLONE_DIR" ]]; then
   {
-    echo "Error: --db-dir parameter is required"
-    echo "$USAGE"
+    log_error "--db-dir parameter is required"
+    log_message "$USAGE"
     exit 1
   }; fi
 
   if [[ -z "$SOURCE" ]]; then
   {
-    echo "Error: --source parameter is required"
-    echo "$USAGE"
+    log_error "--source parameter is required"
+    log_message "$USAGE"
     exit 1
   }; fi
 
@@ -162,7 +183,7 @@ get_remote_file_info()
   headers=$(curl -s -I -L --max-time 30 "$url" 2>/dev/null)
 
   if [[ $? -ne 0 ]]; then
-    echo "Warning: HEAD request failed for $url"
+    log_warning "HEAD request failed for $url"
     return 1
   fi
 
@@ -177,11 +198,11 @@ get_remote_file_info()
   fi
 
   if [[ -z "$size" ]]; then
-    echo "Warning: No Content-Length in response from $url"
+    log_warning "No Content-Length in response from $url"
   fi
 
   if [[ -z "$modified" ]]; then
-    echo "Warning: No Last-Modified in response from $url"
+    log_warning "No Last-Modified in response from $url"
   fi
 
   return 1
@@ -216,7 +237,7 @@ is_file_complete()
 
   # First check: sizes must match
   if [[ "$local_size" -ne "$remote_size" ]]; then
-    echo "Warning: Size mismatch for $local_file ($local_size <> $remote_size)"
+    log_warning "Size mismatch for $local_file ($local_size <> $remote_size)"
     return 1
   fi
 
@@ -232,7 +253,7 @@ is_file_complete()
 
     if [[ -n "$remote_epoch" && "$local_epoch" -ne "$remote_epoch" ]]; then
     {
-      echo "Warning: Date mismatch for $local_file"
+      log_warning "Date mismatch for $local_file"
       return 1
     }; fi
   }; fi
@@ -250,19 +271,22 @@ acquire_lock()
     lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
     if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
     {
-      echo "Error: Another instance of this script is already running (PID: $lock_pid)"
-      echo "If this is incorrect, remove the lock file: $LOCK_FILE"
+      log_error "Another instance of this script is already running (PID: $lock_pid)\nIf this is incorrect, remove the lock file: $LOCK_FILE"
       exit 1
     }
     else
     {
-      echo "Removing stale lock file from PID $lock_pid"
+      log_message "Removing stale lock file from PID $lock_pid"
       rm -f "$LOCK_FILE"
     }; fi
   }; fi
 
   # Create lock file with current PID
-  echo $$ > "$LOCK_FILE"
+  if ! echo $$ > "$LOCK_FILE"; then
+  {
+    log_error "Failed to create lock file: $LOCK_FILE"
+    exit 1
+  }; fi
 }
 
 # Download multiple files in parallel using curl's built-in parallel support
@@ -270,7 +294,7 @@ acquire_lock()
 download_files_parallel()
 {
   local files="$1"
-  local curl_args=()
+  local curl_args
 
   # deadline is current time + MAX_TIME
   local DEADLINE=$(($(date '+%s') + MAX_TIME))
@@ -278,6 +302,8 @@ download_files_parallel()
   # while current time is less than deadline
   while [[ $(date '+%s') -lt $DEADLINE ]]; do
   {
+    curl_args=()
+
     # Build list of files that need downloading
     for file in $files; do
     {
@@ -289,14 +315,14 @@ download_files_parallel()
       # Check data file
       if ! is_file_complete "$data_url" "$data_file"; then
       {
-        echo "Fetching $file"
+        log_message "Fetching $file"
         curl_args+=("$data_url" -o "$data_file.tmp")
       }; fi
 
       # Check index file
       if ! is_file_complete "$idx_url" "$idx_file"; then
       {
-        echo "Fetching $file.idx"
+        log_message "Fetching $file.idx"
         curl_args+=("$idx_url" -o "$idx_file.tmp")
       }; fi
     }; done
@@ -309,7 +335,7 @@ download_files_parallel()
         -f -S -L \
         --retry 240 \
         --retry-delay 15 \
-        --retry-max-time 86400 \
+        --retry-max-time $MAX_TIME \
         -C - \
         -R \
         --progress-bar \
@@ -320,28 +346,28 @@ download_files_parallel()
 
       if [[ CURL_EXIT -ne 0 ]]; then
       {
-        echo "Batch download failed (curl exit code: $CURL_EXIT)"
+        log_error "Batch download failed (curl exit code: $CURL_EXIT)"
         
         # Provide context for common error codes
         case $CURL_EXIT in
-          6)  echo "Exit 6: Could not resolve host" ;;
-          7)  echo "Exit 7: Failed to connect to host" ;;
-          16) echo "Exit 16: HTTP/2 protocol error (connection reset or framing issue)" ;;
-          18) echo "Exit 18: Partial file transfer" ;;
-          22) echo "Exit 22: HTTP response code indicated failure" ;;
-          23) echo "Exit 23: Write error" ;;
-          28) echo "Exit 28: Operation timeout" ;;
-          35) echo "Exit 35: SSL connect error" ;;
-          52) echo "Exit 52: Empty reply from server" ;;
-          55) echo "Exit 55: Failed sending network data" ;;
-          56) echo "Exit 56: Failed receiving network data" ;;
+          6)  log_message "Exit 6: Could not resolve host" ;;
+          7)  log_message "Exit 7: Failed to connect to host" ;;
+          16) log_message "Exit 16: HTTP/2 protocol error (connection reset or framing issue)" ;;
+          18) log_message "Exit 18: Partial file transfer" ;;
+          22) log_message "Exit 22: HTTP response code indicated failure" ;;
+          23) log_message "Exit 23: Write error" ;;
+          28) log_message "Exit 28: Operation timeout" ;;
+          35) log_message "Exit 35: SSL connect error" ;;
+          52) log_message "Exit 52: Empty reply from server" ;;
+          55) log_message "Exit 55: Failed sending network data" ;;
+          56) log_message "Exit 56: Failed receiving network data" ;;
         esac
         
         # Log curl error details if available
         if [[ -s "$CURL_ERROR_LOG" ]]; then
-          echo "Curl error output:"
+          log_message "Curl error output:"
           while IFS= read -r line; do
-            echo "  $line"
+            log_message "  $line"
           done < "$CURL_ERROR_LOG"
         fi        
         rm -f "$CURL_ERROR_LOG"
@@ -368,10 +394,14 @@ download_files_parallel()
     }
     else
     {
-      echo "Error: Time limit reached without completing all downloads"
-      exit 1
+      # All files are complete
+      return 0
     }; fi
   }; done
+
+  # If we reach here, time limit was reached
+  log_error "Time limit reached without completing all downloads"
+  exit 1
 }
 
 # Main function
@@ -379,14 +409,18 @@ main()
 {
   process_params "$@"
 
-  mkdir -p "$CLONE_DIR"
+  if ! mkdir -p "$CLONE_DIR"; then
+  {
+    log_error "Failed to create or access database directory: $CLONE_DIR"
+    exit 1
+  }; fi
 
   acquire_lock
 
   # Fetch the clone URL from the trigger_clone endpoint
   if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
   {
-    echo "Error: Failed to retrieve clone URL from trigger endpoint"
+    log_error "Failed to retrieve clone URL from trigger endpoint"
     exit 1
   }; fi
 
@@ -395,20 +429,20 @@ main()
 
   if [[ -z "$REMOTE_DIR" ]]; then
   {
-    echo "Error: Empty URL from trigger_clone"
+    log_error "Empty URL from trigger_clone"
     exit 1
   }; fi
 
   if [[ ! "$REMOTE_DIR" =~ ^https?://[^[:space:]]+$ ]]; then
   {
-    echo "Error: Invalid URL from trigger_clone"
+    log_error "Invalid URL from trigger_clone"
     exit 1
   }; fi
 
   # Verify clone is accessible by fetching replicate_id
   if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/replicate_id" "$REMOTE_DIR/replicate_id"; then
   {
-    echo "Error: Clone not accessible"
+    log_error "Clone not accessible"
     exit 1
   }; fi
 
@@ -425,7 +459,7 @@ main()
     download_files_parallel "$FILES_ATTIC"
   }; fi
 
-  echo "Database ready"
+  log_message "Database ready"
 }
 
 # Set up signal handlers
