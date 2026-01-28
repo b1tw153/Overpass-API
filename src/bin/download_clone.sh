@@ -30,7 +30,6 @@
 
 # Global variables
 USAGE="Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
-EXEC_DIR="`pwd`/../"
 CLONE_DIR=
 REMOTE_DIR=
 SOURCE=
@@ -38,6 +37,7 @@ META=
 LOCK_FILE=
 INTERRUPTED=0
 PARALLEL_JOBS=3
+MAX_TIME=86400  # 24 hours
 
 FILES_BASE="\
 nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
@@ -131,7 +131,8 @@ cleanup()
   # Only remove lock file if it contains our PID
   if [[ -f "$LOCK_FILE" ]]; then
   {
-    local lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+    local lock_pid
+    lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
     if [[ "$lock_pid" == "$$" ]]; then
     {
       rm -f "$LOCK_FILE"
@@ -154,6 +155,8 @@ get_remote_file_info()
 {
   local url="$1"
   local headers
+  local size
+  local modified
 
   # Use HEAD request to get file metadata without downloading
   headers=$(curl -s -I -L --max-time 30 "$url" 2>/dev/null)
@@ -164,8 +167,8 @@ get_remote_file_info()
   fi
 
   # Extract Content-Length and Last-Modified
-  local size=$(echo "$headers" | grep -i "^Content-Length:" | tail -1 | awk '{print $2}' | tr -d '\r')
-  local modified=$(echo "$headers" | grep -i "^Last-Modified:" | tail -1 | cut -d' ' -f2- | tr -d '\r')
+  size=$(echo "$headers" | grep -i "^Content-Length:" | tail -1 | awk '{print $2}' | tr -d '\r')
+  modified=$(echo "$headers" | grep -i "^Last-Modified:" | tail -1 | cut -d' ' -f2- | tr -d '\r')
 
   # Both headers must be present
   if [[ -n "$size" && -n "$modified" ]]; then
@@ -190,6 +193,10 @@ is_file_complete()
 {
   local url="$1"
   local local_file="$2"
+  local remote_info
+  local remote_size
+  local remote_modified
+  local local_size
 
   # If local file doesn't exist, it's not complete
   if [[ ! -f "$local_file" ]]; then
@@ -197,15 +204,15 @@ is_file_complete()
   fi
 
   # Get remote file info
-  local remote_info=$(get_remote_file_info "$url")
+  remote_info=$(get_remote_file_info "$url")
   if [[ -z "$remote_info" ]]; then
     # Can't get remote info, assume file needs download
     return 1
   fi
 
-  local remote_size=$(echo "$remote_info" | cut -d'|' -f1)
-  local remote_modified=$(echo "$remote_info" | cut -d'|' -f2)
-  local local_size=$(stat -f%z "$local_file" 2>/dev/null || stat -c%s "$local_file" 2>/dev/null)
+  remote_size=$(echo "$remote_info" | cut -d'|' -f1)
+  remote_modified=$(echo "$remote_info" | cut -d'|' -f2)
+  local_size=$(stat -f%z "$local_file" 2>/dev/null || stat -c%s "$local_file" 2>/dev/null)
 
   # First check: sizes must match
   if [[ "$local_size" -ne "$remote_size" ]]; then
@@ -216,9 +223,12 @@ is_file_complete()
   # Second check: modification times should match (if available)
   if [[ -n "$remote_modified" ]]; then
   {
+    local remote_epoch
+    local local_epoch
+
     # Convert remote Last-Modified to epoch for comparison
-    local remote_epoch=$(date -d "$remote_modified" +%s 2>/dev/null || date -j -f "%a, %d %b %Y %H:%M:%S %Z" "$remote_modified" +%s 2>/dev/null)
-    local local_epoch=$(stat -f%m "$local_file" 2>/dev/null || stat -c%Y "$local_file" 2>/dev/null)
+    remote_epoch=$(date -d "$remote_modified" +%s 2>/dev/null || date -j -f "%a, %d %b %Y %H:%M:%S %Z" "$remote_modified" +%s 2>/dev/null)
+    local_epoch=$(stat -f%m "$local_file" 2>/dev/null || stat -c%Y "$local_file" 2>/dev/null)
 
     if [[ -n "$remote_epoch" && "$local_epoch" -ne "$remote_epoch" ]]; then
     {
@@ -236,7 +246,8 @@ acquire_lock()
 {
   if [[ -f "$LOCK_FILE" ]]; then
   {
-    local lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
+    local lock_pid
+    lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
     if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
     {
       echo "Error: Another instance of this script is already running (PID: $lock_pid)"
@@ -261,67 +272,106 @@ download_files_parallel()
   local files="$1"
   local curl_args=()
 
-  # Build list of files that need downloading
-  for file in $files; do
+  # deadline is current time + MAX_TIME
+  local DEADLINE=$(($(date '+%s') + MAX_TIME))
+
+  # while current time is less than deadline
+  while [[ $(date '+%s') -lt $DEADLINE ]]; do
   {
-    local data_file="$CLONE_DIR/$file"
-    local idx_file="$CLONE_DIR/$file.idx"
-    local data_url="$REMOTE_DIR/$file"
-    local idx_url="$REMOTE_DIR/$file.idx"
-
-    # Check data file
-    if ! is_file_complete "$data_url" "$data_file"; then
-    {
-      echo "Fetching $file"
-      curl_args+=("$data_url" -o "$data_file.tmp")
-    }; fi
-
-    # Check index file
-    if ! is_file_complete "$idx_url" "$idx_file"; then
-    {
-      echo "Fetching $file.idx"
-      curl_args+=("$idx_url" -o "$idx_file.tmp")
-    }; fi
-  }; done
-
-  # Download all files in parallel if there are any to download
-  if [[ ${#curl_args[@]} -gt 0 ]]; then
-  {
-    echo
-    curl --parallel --parallel-max "$PARALLEL_JOBS" \
-      -f -S -L \
-      --retry 240 \
-      --retry-delay 15 \
-      --retry-max-time 86400 \
-      -C - \
-      -R \
-      --progress-bar \
-      --http2 \
-      "${curl_args[@]}"
-
-    if [[ $? -ne 0 ]]; then
-    {
-      echo "Error: Parallel download failed"
-      exit 1
-    }; fi
-
-    # Move .tmp files to final destinations
+    # Build list of files that need downloading
     for file in $files; do
     {
-      local data_tmp="$CLONE_DIR/$file.tmp"
-      local idx_tmp="$CLONE_DIR/$file.idx.tmp"
+      local data_file="$CLONE_DIR/$file"
+      local idx_file="$CLONE_DIR/$file.idx"
+      local data_url="$REMOTE_DIR/$file"
+      local idx_url="$REMOTE_DIR/$file.idx"
 
-      if [[ -f "$data_tmp" ]]; then
+      # Check data file
+      if ! is_file_complete "$data_url" "$data_file"; then
       {
-        mv "$data_tmp" "$CLONE_DIR/$file" || exit 1
+        echo "Fetching $file"
+        curl_args+=("$data_url" -o "$data_file.tmp")
       }; fi
 
-      if [[ -f "$idx_tmp" ]]; then
+      # Check index file
+      if ! is_file_complete "$idx_url" "$idx_file"; then
       {
-        mv "$idx_tmp" "$CLONE_DIR/$file.idx" || exit 1
+        echo "Fetching $file.idx"
+        curl_args+=("$idx_url" -o "$idx_file.tmp")
       }; fi
     }; done
-  }; fi
+
+    # Download all files in parallel if there are any to download
+    if [[ ${#curl_args[@]} -gt 0 ]]; then
+    {
+      echo
+      curl --parallel --parallel-max "$PARALLEL_JOBS" \
+        -f -S -L \
+        --retry 240 \
+        --retry-delay 15 \
+        --retry-max-time 86400 \
+        -C - \
+        -R \
+        --progress-bar \
+        --http2 \
+        "${curl_args[@]}"
+
+      local CURL_EXIT=$?
+
+      if [[ CURL_EXIT -ne 0 ]]; then
+      {
+        echo "Batch download failed (curl exit code: $CURL_EXIT)"
+        
+        # Provide context for common error codes
+        case $CURL_EXIT in
+          6)  echo "Exit 6: Could not resolve host" ;;
+          7)  echo "Exit 7: Failed to connect to host" ;;
+          16) echo "Exit 16: HTTP/2 protocol error (connection reset or framing issue)" ;;
+          18) echo "Exit 18: Partial file transfer" ;;
+          22) echo "Exit 22: HTTP response code indicated failure" ;;
+          23) echo "Exit 23: Write error" ;;
+          28) echo "Exit 28: Operation timeout" ;;
+          35) echo "Exit 35: SSL connect error" ;;
+          52) echo "Exit 52: Empty reply from server" ;;
+          55) echo "Exit 55: Failed sending network data" ;;
+          56) echo "Exit 56: Failed receiving network data" ;;
+        esac
+        
+        # Log curl error details if available
+        if [[ -s "$CURL_ERROR_LOG" ]]; then
+          echo "Curl error output:"
+          while IFS= read -r line; do
+            echo "  $line"
+          done < "$CURL_ERROR_LOG"
+        fi        
+        rm -f "$CURL_ERROR_LOG"
+
+        exit 1
+      }; fi
+
+      # Move .tmp files to final destinations
+      for file in $files; do
+      {
+        local data_tmp="$CLONE_DIR/$file.tmp"
+        local idx_tmp="$CLONE_DIR/$file.idx.tmp"
+
+        if [[ -f "$data_tmp" ]]; then
+        {
+          mv "$data_tmp" "$CLONE_DIR/$file" || exit 1
+        }; fi
+
+        if [[ -f "$idx_tmp" ]]; then
+        {
+          mv "$idx_tmp" "$CLONE_DIR/$file.idx" || exit 1
+        }; fi
+      }; done
+    }
+    else
+    {
+      echo "Error: Time limit reached without completing all downloads"
+      exit 1
+    }; fi
+  }; done
 }
 
 # Main function
