@@ -170,14 +170,13 @@ handle_interrupt()
   cleanup
 }
 
-# Get remote file info using HTTP HEAD request
-# Returns: "size|last-modified" or empty string on error
-get_remote_file_info()
+# Get remote file size using HTTP HEAD request
+# Returns: size in bytes, or empty string on error
+get_remote_file_size()
 {
   local url="$1"
   local headers
   local size
-  local modified
 
   # Use HEAD request to get file metadata without downloading
   headers=$(curl -s -I -L --max-time 30 "$url" 2>/dev/null)
@@ -187,36 +186,25 @@ get_remote_file_info()
     return 1
   fi
 
-  # Extract Content-Length and Last-Modified
+  # Extract Content-Length
   size=$(echo "$headers" | grep -i "^Content-Length:" | tail -1 | awk '{print $2}' | tr -d '\r')
-  modified=$(echo "$headers" | grep -i "^Last-Modified:" | tail -1 | cut -d' ' -f2- | tr -d '\r')
 
-  # Both headers must be present
-  if [[ -n "$size" && -n "$modified" ]]; then
-    echo "${size}|${modified}"
+  if [[ -n "$size" ]]; then
+    echo "$size"
     return 0
   fi
 
-  if [[ -z "$size" ]]; then
-    log_warning "No Content-Length in response from $url"
-  fi
-
-  if [[ -z "$modified" ]]; then
-    log_warning "No Last-Modified in response from $url"
-  fi
-
+  log_warning "No Content-Length in response from $url"
   return 1
 }
 
-# Check if local file matches remote file (by size and modification time)
-# Returns 0 if file is complete and matches, 1 otherwise
+# Check if local file matches remote file by size
+# Returns 0 if file is complete, 1 otherwise
 is_file_complete()
 {
   local url="$1"
   local local_file="$2"
-  local remote_info
   local remote_size
-  local remote_modified
   local local_size
 
   # If local file doesn't exist, it's not complete
@@ -224,41 +212,20 @@ is_file_complete()
     return 1
   fi
 
-  # Get remote file info
-  remote_info=$(get_remote_file_info "$url")
-  if [[ -z "$remote_info" ]]; then
-    # Can't get remote info, assume file needs download
+  # Get remote file size
+  remote_size=$(get_remote_file_size "$url")
+  if [[ -z "$remote_size" ]]; then
+    # Can't get remote size, assume file needs download
     return 1
   fi
 
-  remote_size=$(echo "$remote_info" | cut -d'|' -f1)
-  remote_modified=$(echo "$remote_info" | cut -d'|' -f2)
   local_size=$(stat -f%z "$local_file" 2>/dev/null || stat -c%s "$local_file" 2>/dev/null)
 
-  # First check: sizes must match
+  # Sizes must match
   if [[ "$local_size" -ne "$remote_size" ]]; then
-    log_warning "Size mismatch for $local_file ($local_size <> $remote_size)"
     return 1
   fi
 
-  # Second check: modification times should match (if available)
-  if [[ -n "$remote_modified" ]]; then
-  {
-    local remote_epoch
-    local local_epoch
-
-    # Convert remote Last-Modified to epoch for comparison
-    remote_epoch=$(date -d "$remote_modified" +%s 2>/dev/null || date -j -f "%a, %d %b %Y %H:%M:%S %Z" "$remote_modified" +%s 2>/dev/null)
-    local_epoch=$(stat -f%m "$local_file" 2>/dev/null || stat -c%Y "$local_file" 2>/dev/null)
-
-    if [[ -n "$remote_epoch" && "$local_epoch" -ne "$remote_epoch" ]]; then
-    {
-      log_warning "Date mismatch for $local_file"
-      return 1
-    }; fi
-  }; fi
-
-  # Both size and date match - file is complete and correct
   return 0
 }
 
@@ -382,9 +349,7 @@ download_files_parallel()
               recoverable=1 ;;
 
           # Non-recoverable: local filesystem issues
-          23) log_error "Exit 23: Write error (non-recoverable)"
-              rm -f "$CURL_ERROR_LOG"
-              exit 1 ;;
+          23) log_error "Exit 23: Write error (non-recoverable)" ;;
 
           # HTTP errors: check the actual status codes
           22)
@@ -421,41 +386,43 @@ download_files_parallel()
               ;;
 
           # Unknown curl exit codes: treat as non-recoverable
-          *)  log_error "Exit $CURL_EXIT: unknown error (non-recoverable)"
-              rm -f "$CURL_ERROR_LOG"
-              exit 1 ;;
+          *)  log_error "Exit $CURL_EXIT: unknown error (non-recoverable)" ;;
         esac
 
-        rm -f "$CURL_ERROR_LOG"
-
-        if [[ $recoverable -eq 1 ]]; then
-          log_message "Retrying in 15 seconds..."
-          sleep 15
-          continue
+        # Non-recoverable: delete .tmp files and exit
+        if [[ $recoverable -eq 0 ]]; then
+          for file in $files; do
+            rm -f "$CLONE_DIR/$file.tmp" "$CLONE_DIR/$file.idx.tmp"
+          done
+          rm -f "$CURL_ERROR_LOG"
+          exit 1
         fi
-
-        exit 1
       }; fi
 
-      # Clean up error log on success
       rm -f "$CURL_ERROR_LOG"
 
-      # Move .tmp files to final destinations
+      # Move complete .tmp files to final destinations
       for file in $files; do
       {
         local data_tmp="$CLONE_DIR/$file.tmp"
         local idx_tmp="$CLONE_DIR/$file.idx.tmp"
+        local data_url="$REMOTE_DIR/$file"
+        local idx_url="$REMOTE_DIR/$file.idx"
 
-        if [[ -f "$data_tmp" ]]; then
-        {
+        if [[ -f "$data_tmp" ]] && is_file_complete "$data_url" "$data_tmp"; then
           mv "$data_tmp" "$CLONE_DIR/$file" || exit 1
-        }; fi
+        fi
 
-        if [[ -f "$idx_tmp" ]]; then
-        {
+        if [[ -f "$idx_tmp" ]] && is_file_complete "$idx_url" "$idx_tmp"; then
           mv "$idx_tmp" "$CLONE_DIR/$file.idx" || exit 1
-        }; fi
+        fi
       }; done
+
+      # Recoverable error: sleep and retry
+      if [[ $CURL_EXIT -ne 0 ]]; then
+        log_message "Retrying in 15 seconds..."
+        sleep 15
+      fi
     }
     else
     {
