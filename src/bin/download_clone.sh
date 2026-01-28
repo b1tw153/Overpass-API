@@ -295,6 +295,7 @@ download_files_parallel()
 {
   local files="$1"
   local curl_args
+  local CURL_ERROR_LOG="$CLONE_DIR/curl_error_$$.log"
 
   # deadline is current time + MAX_TIME
   local DEADLINE=$(($(date '+%s') + MAX_TIME))
@@ -340,40 +341,104 @@ download_files_parallel()
         -R \
         --progress-bar \
         --http2 \
-        "${curl_args[@]}"
+        "${curl_args[@]}" 2>"$CURL_ERROR_LOG"
 
       local CURL_EXIT=$?
 
-      if [[ CURL_EXIT -ne 0 ]]; then
+      if [[ $CURL_EXIT -ne 0 ]]; then
       {
-        log_error "Batch download failed (curl exit code: $CURL_EXIT)"
-        
-        # Provide context for common error codes
-        case $CURL_EXIT in
-          6)  log_message "Exit 6: Could not resolve host" ;;
-          7)  log_message "Exit 7: Failed to connect to host" ;;
-          16) log_message "Exit 16: HTTP/2 protocol error (connection reset or framing issue)" ;;
-          18) log_message "Exit 18: Partial file transfer" ;;
-          22) log_message "Exit 22: HTTP response code indicated failure" ;;
-          23) log_message "Exit 23: Write error" ;;
-          28) log_message "Exit 28: Operation timeout" ;;
-          35) log_message "Exit 35: SSL connect error" ;;
-          52) log_message "Exit 52: Empty reply from server" ;;
-          55) log_message "Exit 55: Failed sending network data" ;;
-          56) log_message "Exit 56: Failed receiving network data" ;;
-        esac
-        
+        log_warning "Batch download failed (curl exit code: $CURL_EXIT)"
+
         # Log curl error details if available
         if [[ -s "$CURL_ERROR_LOG" ]]; then
           log_message "Curl error output:"
           while IFS= read -r line; do
             log_message "  $line"
           done < "$CURL_ERROR_LOG"
-        fi        
+        fi
+
+        # Determine if error is recoverable
+        local recoverable=0
+
+        case $CURL_EXIT in
+          # Recoverable: transient network/server issues
+          6)  log_message "Exit 6: Could not resolve host (will retry)"
+              recoverable=1 ;;
+          7)  log_message "Exit 7: Failed to connect to host (will retry)"
+              recoverable=1 ;;
+          16) log_message "Exit 16: HTTP/2 protocol error (will retry)"
+              recoverable=1 ;;
+          18) log_message "Exit 18: Partial file transfer (will retry)"
+              recoverable=1 ;;
+          28) log_message "Exit 28: Operation timeout (will retry)"
+              recoverable=1 ;;
+          35) log_message "Exit 35: SSL connect error (will retry)"
+              recoverable=1 ;;
+          52) log_message "Exit 52: Empty reply from server (will retry)"
+              recoverable=1 ;;
+          55) log_message "Exit 55: Failed sending network data (will retry)"
+              recoverable=1 ;;
+          56) log_message "Exit 56: Failed receiving network data (will retry)"
+              recoverable=1 ;;
+
+          # Non-recoverable: local filesystem issues
+          23) log_error "Exit 23: Write error (non-recoverable)"
+              rm -f "$CURL_ERROR_LOG"
+              exit 1 ;;
+
+          # HTTP errors: check the actual status codes
+          22)
+              log_message "Exit 22: HTTP error - checking status codes"
+              # Extract HTTP status codes from curl error output
+              # Format: "curl: (22) The requested URL returned error: 404"
+              local http_codes
+              http_codes=$(sed -nE 's/.*\(22\).*error: ([0-9]+).*/\1/p' "$CURL_ERROR_LOG" | sort -u)
+
+              # Check for non-recoverable HTTP status codes
+              local has_non_recoverable=0
+              for code in $http_codes; do
+                case $code in
+                  # Recoverable HTTP errors
+                  408|429|500|502|503|504)
+                    log_message "  HTTP $code: recoverable (will retry)"
+                    ;;
+                  # Non-recoverable HTTP errors
+                  400|401|403|404|405|410)
+                    log_error "  HTTP $code: non-recoverable"
+                    has_non_recoverable=1
+                    ;;
+                  # Unknown HTTP errors: treat as non-recoverable to be safe
+                  *)
+                    log_error "  HTTP $code: unknown (treating as non-recoverable)"
+                    has_non_recoverable=1
+                    ;;
+                esac
+              done
+
+              if [[ $has_non_recoverable -eq 0 ]]; then
+                recoverable=1
+              fi
+              ;;
+
+          # Unknown curl exit codes: treat as non-recoverable
+          *)  log_error "Exit $CURL_EXIT: unknown error (non-recoverable)"
+              rm -f "$CURL_ERROR_LOG"
+              exit 1 ;;
+        esac
+
         rm -f "$CURL_ERROR_LOG"
+
+        if [[ $recoverable -eq 1 ]]; then
+          log_message "Retrying in 15 seconds..."
+          sleep 15
+          continue
+        fi
 
         exit 1
       }; fi
+
+      # Clean up error log on success
+      rm -f "$CURL_ERROR_LOG"
 
       # Move .tmp files to final destinations
       for file in $files; do
