@@ -385,7 +385,7 @@ download_replicate_batch()
   local STATE_FILE
 
   for (( ID=START+1; ID<=END; ID++ )); do
-    get_replicate_path $ID
+    get_replicate_path "$ID"
 
     REMOTE_BASE="$SOURCE_URL/$REPLICATE_PATH"
     DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
@@ -480,7 +480,7 @@ download_replicate_batch()
     
     # Clean up temp files
     for (( ID=START+1; ID<=END; ID++ )); do
-      get_replicate_path $ID
+      get_replicate_path "$ID"
       rm -f "$LOCAL_DIR/$REPLICATE_PATH.state.txt.tmp"
       rm -f "$LOCAL_DIR/$REPLICATE_PATH.osc.gz.tmp"
     done
@@ -493,7 +493,7 @@ download_replicate_batch()
   SUCCESS=1
 
   for (( ID=START+1; ID<=END; ID++ )); do
-    get_replicate_path $ID
+    get_replicate_path "$ID"
     DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
     STATE_FILE="$DIR_PATH/$DIGIT3.state.txt"
     OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
@@ -655,7 +655,7 @@ while true; do
     
     RETRY_COUNT=0
     while [[ $RETRY_COUNT -lt $QUICK_RETRY_COUNT ]]; do
-      sleep_with_interrupts $QUICK_RETRY_DELAY
+      sleep_with_interrupts "$QUICK_RETRY_DELAY"
       RETRY_COUNT=$((RETRY_COUNT + 1))
       
       MAX_AVAILABLE=$(get_latest_available_id)
@@ -676,7 +676,7 @@ while true; do
     # If still no new data after quick retries, fall back to slow retry
     if [[ -z "$MAX_AVAILABLE" || $MAX_AVAILABLE -le $CURRENT_ID ]]; then
       log_message "File $((CURRENT_ID + 1)) not available, falling back to ${UPDATE_FREQUENCY}s delays"
-      sleep_with_interrupts $UPDATE_FREQUENCY
+      sleep_with_interrupts "$UPDATE_FREQUENCY"
       continue
     fi
   fi
@@ -699,6 +699,6 @@ while true; do
     CURRENT_ID=$BATCH_END
   else
     log_error "Batch download failed, retrying"
-    sleep_with_interrupts $UPDATE_FREQUENCY
+    sleep_with_interrupts "$UPDATE_FREQUENCY"
   fi
 done
