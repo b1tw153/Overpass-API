@@ -49,10 +49,10 @@ if [[ -n "$4" ]]; then
 fi
 
 # Update timing configuration
-UPDATE_FREQUENCY=${FETCH_OSC_UPDATE_FREQUENCY:-60}         # Frequency of updates in seconds
-EXPECTED_UPDATE_TRIM=${FETCH_OSC_EXPECTED_UPDATE_TRIM:--6} # Seconds to adjust expected update time
-QUICK_RETRY_DELAY=${FETCH_OSC_QUICK_RETRY_DELAY:-1}        # Seconds between quick retries
-QUICK_RETRY_COUNT=${FETCH_OSC_QUICK_RETRY_COUNT:-10}       # Number of quick retries before slow retry
+UPDATE_FREQUENCY=${FETCH_OSC_UPDATE_FREQUENCY:-60}    # Frequency of updates in seconds
+UPDATE_TRIM=${FETCH_OSC_UPDATE_TRIM:--6}              # Seconds to adjust expected update time
+QUICK_RETRY_DELAY=${FETCH_OSC_QUICK_RETRY_DELAY:-1}   # Seconds between quick retries
+QUICK_RETRY_COUNT=${FETCH_OSC_QUICK_RETRY_COUNT:-10}  # Number of quick retries before slow retry
 
 # Batch configuration
 MAX_BATCH_SIZE=${FETCH_OSC_MAX_BATCH_SIZE:-360}       # Maximum OSC files per batch download
@@ -127,14 +127,14 @@ verify_globals()
     log_message "WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
   fi
 
-  if [[ ! "$EXPECTED_UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
-    log_error "Invalid EXPECTED_UPDATE_TRIM: $EXPECTED_UPDATE_TRIM"
+  if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
+    log_error "Invalid UPDATE_TRIM: $UPDATE_TRIM"
     exit 1
   fi
 
-  local ABS_TRIM=${EXPECTED_UPDATE_TRIM#-}
+  local ABS_TRIM=${UPDATE_TRIM#-}
   if [[ $ABS_TRIM -ge $((UPDATE_FREQUENCY / 10)) ]]; then
-    log_message "WARNING: EXPECTED_UPDATE_TRIM ($EXPECTED_UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    log_message "WARNING: UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
   fi
 
   if [[ ! "$QUICK_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
@@ -226,7 +226,7 @@ calculate_sleep_time()
   
   local NOW
   NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + UPDATE_FREQUENCY + EXPECTED_UPDATE_TRIM))
+  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
   
   if [[ $SLEEP_TIME -lt 0 ]]; then
