@@ -32,7 +32,7 @@ if [[ -z $3 ]]; then
   echo "  source_url:   Remote replication source (e.g., https://planet.openstreetmap.org/replication/minute)"
   echo "  local_dir:    Local directory for downloaded files"
   echo "  sleep:        (Optional, ignored - kept for compatibility)"
-  exit 0
+  exit 1
 }; fi
 
 # ============================================================================
@@ -48,25 +48,30 @@ if [[ -n "$4" ]]; then
   echo "WARNING: Sleep parameter is ignored (timing is now automatic)"
 fi
 
-# Download retry configuration
-CURL_MAX_RETRIES=20       # Max download attempts before giving up
-CURL_RETRY_DELAY=15       # Seconds between retry attempts
-CURL_CONNECT_TIMEOUT=30   # Connection timeout in seconds
-CURL_KEEPALIVE_TIME=20    # Seconds to retain previous connections
-MAX_BATCH_SIZE=360        # Maximum OSC files per batch download
+# Update timing configuration
+UPDATE_FREQUENCY=${FETCH_OSC_UPDATE_FREQUENCY:-60}         # Frequency of updates in seconds
+EXPECTED_UPDATE_TRIM=${FETCH_OSC_EXPECTED_UPDATE_TRIM:--6} # Seconds to adjust expected update time
+QUICK_RETRY_DELAY=${FETCH_OSC_QUICK_RETRY_DELAY:-1}        # Seconds between quick retries
+QUICK_RETRY_COUNT=${FETCH_OSC_QUICK_RETRY_COUNT:-10}       # Number of quick retries before slow retry
+
+# Batch configuration
+MAX_BATCH_SIZE=${FETCH_OSC_MAX_BATCH_SIZE:-360}       # Maximum OSC files per batch download
+MAX_BATCH_TIME=${FETCH_OSC_MAX_BATCH_TIME:-86400}     # Maximum time span of OSC files per batch (in seconds)
+
+# Download configuration
+CURL_MAX_RETRIES=${FETCH_OSC_MAX_RETRIES:-20}         # Max download attempts before giving up
+CURL_RETRY_DELAY=${FETCH_OSC_RETRY_DELAY:-15}         # Seconds between retry attempts
+CURL_CONNECT_TIMEOUT=${FETCH_OSC_CONNECT_TIMEOUT:-30} # Connection timeout in seconds
+CURL_KEEPALIVE_TIME=${FETCH_OSC_KEEPALIVE_TIME:-20}   # Seconds to retain previous connections
+CURL_PARALLEL_MAX=${FETCH_OSC_PARALLEL_MAX:-4}        # Maximum parallel connections for batch downloads
+CURL_SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}       # Minimum download speed in bytes/sec
+CURL_SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}           # Time in seconds to check for speed limit
 
 # Network outage handling
-OUTAGE_RETRY_DELAY=60     # Seconds to wait during detected network outages
 SOURCE_VERIFIED=false     # Flag to track if source URL has been verified
 
-# Update timing configuration
-EXPECTED_UPDATE_INTERVAL=53  # Seconds to wait before checking for next update
-QUICK_RETRY_DELAY=1          # Seconds between quick retries
-QUICK_RETRY_COUNT=10         # Number of quick retries before slow retry
-SLOW_RETRY_DELAY=60          # Seconds between retries when updates delayed
-
 # Timestamp tracking
-LAST_UPDATE_WALL_CLOCK=      # Wall clock time when last update was downloaded
+LAST_UPDATE_WALL_CLOCK=   # Wall clock time when last update was downloaded
 
 # Get execution directory (where binaries are located)
 EXEC_DIR="$(dirname "$0")/"
@@ -109,19 +114,119 @@ log_error()
 }
 
 # ============================================================================
+# VARIABLES
+# ============================================================================
+verify_globals()
+{
+  if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]+$ ]]; then
+    log_error "Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
+    exit 1
+  fi
+
+  if [[ UPDATE_FREQUENCY -ne 60 && UPDATE_FREQUENCY -ne 3600 && UPDATE_FREQUENCY -ne 86400 ]]; then
+    log_message "WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
+  fi
+
+  if [[ ! "$EXPECTED_UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
+    log_error "Invalid EXPECTED_UPDATE_TRIM: $EXPECTED_UPDATE_TRIM"
+    exit 1
+  fi
+
+  local ABS_TRIM=${EXPECTED_UPDATE_TRIM#-}
+  if [[ $ABS_TRIM -ge $((UPDATE_FREQUENCY / 10)) ]]; then
+    log_message "WARNING: EXPECTED_UPDATE_TRIM ($EXPECTED_UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+  fi
+
+  if [[ ! "$QUICK_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
+    exit 1
+  fi
+
+  if [[ $QUICK_RETRY_DELAY -gt $((UPDATE_FREQUENCY / 10)) ]]; then
+    log_message "WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+  fi
+
+  if [[ ! "$QUICK_RETRY_COUNT" =~ ^[0-9]+$ ]]; then
+    log_error "Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
+    exit 1
+  fi
+
+  if [[ ! "$MAX_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
+    exit 1
+  fi
+
+  local MAX_POSSIBLE_BATCH_TIME=$((MAX_BATCH_SIZE * UPDATE_FREQUENCY))
+  if [[ $MAX_POSSIBLE_BATCH_TIME -gt 86400 ]]; then
+    log_message "WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
+  fi
+
+  if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]+$ ]]; then
+    log_error "Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
+    exit 1
+  fi
+
+  # verify that MAX_BATCH_TIME is at least UPDATE_FREQUENCY
+  if [[ $MAX_BATCH_TIME -lt $UPDATE_FREQUENCY ]]; then
+    log_error "MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    exit 1
+  fi
+
+  # verify that MAX_BATCH_TIME is less than one day
+  if [[ $MAX_BATCH_TIME -gt 86400 ]]; then
+    log_message "WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
+  fi
+
+  if [[ ! "$CURL_MAX_RETRIES" =~ ^[0-9]+$ ]]; then
+    log_error "Invalid CURL_MAX_RETRIES: $CURL_MAX_RETRIES"
+    exit 1
+  fi
+
+  if [[ ! "$CURL_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "Invalid CURL_RETRY_DELAY: $CURL_RETRY_DELAY"
+    exit 1
+  fi
+
+  if [[ ! "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "Invalid CURL_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
+    exit 1
+  fi
+
+  if [[ ! "$CURL_KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "Invalid CURL_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
+    exit 1
+  fi
+
+  if [[ ! "$CURL_PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "Invalid CURL_PARALLEL_MAX: $CURL_PARALLEL_MAX"
+    exit 1
+  fi
+
+  if [[ ! "$CURL_SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
+    log_error "Invalid CURL_SPEED_LIMIT: $CURL_SPEED_LIMIT"
+    exit 1
+  fi
+
+  if [[ ! "$CURL_SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
+    log_error "Invalid CURL_SPEED_TIME: $CURL_SPEED_TIME"
+    exit 1
+  fi
+}
+
+# ============================================================================
 # TIMING
 # ============================================================================
 
 calculate_sleep_time()
 {
   if [[ -z "$LAST_UPDATE_WALL_CLOCK" ]]; then
-    echo 15
+    echo $((UPDATE_FREQUENCY / 4))
     return
   fi
   
   local NOW
   NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + EXPECTED_UPDATE_INTERVAL))
+  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + UPDATE_FREQUENCY + EXPECTED_UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
   
   if [[ $SLEEP_TIME -lt 0 ]]; then
@@ -156,10 +261,11 @@ get_latest_available_id()
   while true; do
     rm -f "$REMOTE_STATE_TMP"
     curl -fsSL \
-      --keepalive-time $CURL_KEEPALIVE_TIME \
+      --keepalive-time "$CURL_KEEPALIVE_TIME" \
       --connect-timeout "$CURL_CONNECT_TIMEOUT" \
       --retry 3 \
       --retry-delay 5 \
+      --retry-all-errors \
       -o "$REMOTE_STATE_TMP" "$SOURCE_URL/state.txt" 2>/dev/null
 
     local CURL_EXIT=$?
@@ -189,8 +295,8 @@ get_latest_available_id()
     if [[ "$SOURCE_VERIFIED" == "true" ]]; then
       # Source was previously working - this is likely a network outage
       # Wait patiently and retry
-      log_message "Unable to reach replication source (likely network outage), retrying in ${OUTAGE_RETRY_DELAY}s..."
-      sleep_with_interrupts "$OUTAGE_RETRY_DELAY"
+      log_message "Unable to reach replication source (likely network outage), retrying in ${UPDATE_FREQUENCY}s..."
+      sleep_with_interrupts "$UPDATE_FREQUENCY"
       # Continue loop to retry
     else
       # Source has never worked - might be a configuration error
@@ -330,14 +436,15 @@ download_replicate_batch()
   CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$$.log"
 
   curl -fsSL \
-    --keepalive-time $CURL_KEEPALIVE_TIME \
+    --keepalive-time "$CURL_KEEPALIVE_TIME" \
     --connect-timeout "$CURL_CONNECT_TIMEOUT" \
     --retry "$CURL_MAX_RETRIES" \
     --retry-delay "$CURL_RETRY_DELAY" \
     --parallel \
-    --parallel-max 4 \
-    --speed-limit 1024 \
-    --speed-time 30 \
+    --parallel-max "$CURL_PARALLEL_MAX" \
+    --parallel-immediate \
+    --speed-limit "$CURL_SPEED_LIMIT" \
+    --speed-time "$CURL_SPEED_TIME" \
     --config "$TEMP_CONFIG" 2>"$CURL_ERROR_LOG"
 
   CURL_EXIT=$?
@@ -482,6 +589,8 @@ trap 'shutdown 129' SIGHUP
 # MAIN EXECUTION
 # ============================================================================
 
+verify_globals
+
 log_message "Starting fetch from $SOURCE_URL to $LOCAL_DIR"
 
 if [[ "$START_ID" == "auto" ]]; then
@@ -566,17 +675,16 @@ while true; do
     
     # If still no new data after quick retries, fall back to slow retry
     if [[ -z "$MAX_AVAILABLE" || $MAX_AVAILABLE -le $CURRENT_ID ]]; then
-      log_message "File $((CURRENT_ID + 1)) not available, falling back to ${SLOW_RETRY_DELAY}s delays"
-      sleep_with_interrupts $SLOW_RETRY_DELAY
+      log_message "File $((CURRENT_ID + 1)) not available, falling back to ${UPDATE_FREQUENCY}s delays"
+      sleep_with_interrupts $UPDATE_FREQUENCY
       continue
     fi
   fi
   
   # Determine batch size
-  BATCH_END=$CURRENT_ID
-  for (( TEST_ID=CURRENT_ID+1; TEST_ID<=MAX_AVAILABLE && TEST_ID<=CURRENT_ID+MAX_BATCH_SIZE; TEST_ID++ )); do
-    BATCH_END=$TEST_ID
-  done
+  BATCH_END=$MAX_AVAILABLE
+  (( CURRENT_ID + MAX_BATCH_SIZE < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_SIZE))
+  (( CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY))
   
   BATCH_COUNT=$((BATCH_END - CURRENT_ID))
   if [[ $BATCH_COUNT -eq 1 ]]; then
@@ -591,6 +699,6 @@ while true; do
     CURRENT_ID=$BATCH_END
   else
     log_error "Batch download failed, retrying"
-    sleep_with_interrupts 60
+    sleep_with_interrupts $UPDATE_FREQUENCY
   fi
 done
