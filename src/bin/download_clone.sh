@@ -145,9 +145,10 @@ process_params()
 }
 
 # Cleanup function - called on exit or interruption
+# $1 - exit code (optional, defaults to $?)
 cleanup()
 {
-  local exit_code=$?
+  local exit_code=${1:-$?}
 
   if [[ $INTERRUPTED -eq 1 ]]; then
   {
@@ -171,10 +172,11 @@ cleanup()
 }
 
 # Signal handler for graceful interruption
+# $1 - exit code (128 + signal number)
 handle_interrupt()
 {
   INTERRUPTED=1
-  cleanup
+  cleanup "$1"
 }
 
 # Get remote file size using HTTP HEAD request
@@ -505,8 +507,10 @@ main()
   log_message "Database ready"
 }
 
-# Set up signal handlers
-trap handle_interrupt SIGINT SIGTERM SIGHUP
+# Set up signal handlers (exit code = 128 + signal number)
+trap 'handle_interrupt 143' SIGTERM
+trap 'handle_interrupt 130' SIGINT
+trap 'handle_interrupt 129' SIGHUP
 trap cleanup EXIT
 
 # Run main
