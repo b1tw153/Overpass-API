@@ -79,15 +79,18 @@ else
 fi
 
 # Batch configuration
-MAX_BATCH_SIZE_MB=512       # Maximum uncompressed size per batch (MB)
-MAX_BATCH_TIME_SECONDS=86400 # Maximum time span per batch (1 day = 86400 seconds)
+MAX_BATCH_MB=${APPLY_OSC_TO_DB_MAX_BATCH_MB:-512}       # Maximum uncompressed size per batch (MB)
+MAX_BATCH_TIME=${APPLY_OSC_TO_DB_MAX_BATCH_TIME:-86400} # Maximum time span per batch (1 day = 86400 seconds)
+
+# Update configuration
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds
+UPDATE_TRIM=${APPLY_OSC_TO_DB_UPDATE_TRIM:--3}          # Seconds to adjust expected update time
 
 # Timestamp tracking
-EXPECTED_UPDATE_INTERVAL=57 # Seconds to wait before checking for next update
-LAST_UPDATE_WALL_CLOCK=     # Wall clock time when last update was collected
+LAST_UPDATE_WALL_CLOCK=                                 # Wall clock time when last update was collected
 
 # Get execution directory
-EXEC_DIR="$(dirname $0)/"
+EXEC_DIR="$(dirname "$0")/"
 if [[ ! ${EXEC_DIR:0:1} == "/" ]]; then
   EXEC_DIR="$(pwd)/$EXEC_DIR"
 fi
@@ -98,7 +101,7 @@ if [[ ! ${REPLICATE_DIR:0:1} == "/" ]]; then
 fi
 
 # Get database directory
-DB_DIR=$($EXEC_DIR/dispatcher --show-dir)
+DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir)
 
 if [[ ! -d "$DB_DIR" ]]; then
   fail "ERROR: Database directory '$DB_DIR' does not exist"
@@ -159,10 +162,10 @@ update_state()
 get_replicate_path()
 {
   local ID=$1
-  printf -v DIGIT3 %03u $(($ID % 1000))
-  local ARG=$(($ID / 1000))
-  printf -v DIGIT2 %03u $(($ARG % 1000))
-  ARG=$(($ARG / 1000))
+  printf -v DIGIT3 %03u $((ID % 1000))
+  local ARG=$((ID / 1000))
+  printf -v DIGIT2 %03u $((ARG % 1000))
+  ARG=$((ARG / 1000))
   printf -v DIGIT1 %03u $ARG
   REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
 }
@@ -230,12 +233,12 @@ get_timestamp_epoch()
 collect_batch()
 {
   local START=$1
-  local ID=$(($START + 1))
+  local ID=$((START + 1))
 
   BATCH_END=$START
 
   local BATCH_SIZE_BYTES=0
-  local MAX_BATCH_SIZE_BYTES=$(($MAX_BATCH_SIZE_MB * 1024 * 1024))
+  local MAX_BATCH_SIZE_BYTES=$((MAX_BATCH_MB * 1024 * 1024))
   local BATCH_START_TIMESTAMP=""
 
   # Find contiguous downloaded files until size or time limit reached
@@ -269,7 +272,7 @@ collect_batch()
     fi
 
     # Check size limit: would adding this file exceed the limit?
-    local NEW_BATCH_SIZE=$(($BATCH_SIZE_BYTES + $UNCOMPRESSED_SIZE))
+    local NEW_BATCH_SIZE=$((BATCH_SIZE_BYTES + UNCOMPRESSED_SIZE))
     if [[ $NEW_BATCH_SIZE -gt $MAX_BATCH_SIZE_BYTES ]]; then
       break
     fi
@@ -288,22 +291,22 @@ collect_batch()
     fi
 
     # Check time limit: would adding this file exceed the time span?
-    local TIME_SPAN=$(($FILE_TIMESTAMP_EPOCH - $BATCH_START_TIMESTAMP))
-    if [[ $TIME_SPAN -ge $MAX_BATCH_TIME_SECONDS ]]; then
+    local TIME_SPAN=$((FILE_TIMESTAMP_EPOCH - BATCH_START_TIMESTAMP))
+    if [[ $TIME_SPAN -ge MAX_BATCH_TIME ]]; then
       break
     fi
 
     # File passes all checks - add it to the batch
     BATCH_END=$ID
     BATCH_SIZE_BYTES=$NEW_BATCH_SIZE
-    ID=$(($ID + 1))
+    ID=$((ID + 1))
   done
 
   if [[ $BATCH_END -le $START ]]; then
     return 1
   fi
 
-  local COUNT=$(($BATCH_END - $START))
+  local COUNT=$((BATCH_END - START))
   if [[ $COUNT -eq 1 ]]; then
     log_message "Collected one file: $BATCH_END"
   else
@@ -320,7 +323,7 @@ prepare_batch()
 {
   local START=$1
   local END=$2
-  local COUNT=$(($END - $START))
+  local COUNT=$((END - START))
   local OUT_DIR="$3"
 
   mkdir -p "$OUT_DIR"
@@ -331,8 +334,8 @@ prepare_batch()
     log_message "Decompressing batch: $START to $END ($COUNT files)"
   fi
 
-  for (( ID=$START+1; ID<=$END; ID++ )); do
-    get_replicate_path $ID
+  for (( ID=START+1; ID<=END; ID++ )); do
+    get_replicate_path "$ID"
 
     local OSC_GZ="$REPLICATE_DIR/$REPLICATE_PATH.osc.gz"
 
@@ -341,11 +344,9 @@ prepare_batch()
       return 1
     fi
 
-    printf -v OUT_FILE %09u $ID
+    printf -v OUT_FILE %09u "$ID"
 
-    gunzip <"$OSC_GZ" >"$OUT_DIR/$OUT_FILE.osc"
-
-    if [[ $? -ne 0 ]]; then
+    if ! gunzip -c "$OSC_GZ" >"$OUT_DIR/$OUT_FILE.osc"; then
       log_error "Failed to decompress $OSC_GZ"
       return 1
     fi
@@ -361,17 +362,18 @@ prepare_batch()
 get_timestamp()
 {
   local ID=$1
-  get_replicate_path $ID
+  get_replicate_path "$ID"
 
   local STATE_FILE_LOCAL="$REPLICATE_DIR/$REPLICATE_PATH.state.txt"
 
+  # read the local state file carefully, as it may not be fully written yet
   local TIMESTAMP_LINE=""
   local WAIT_COUNT=0
   while [[ -z "$TIMESTAMP_LINE" && $WAIT_COUNT -lt 10 ]]; do
     TIMESTAMP_LINE=$(grep "^timestamp" <"$STATE_FILE_LOCAL" 2>/dev/null)
     if [[ -z "$TIMESTAMP_LINE" ]]; then
       sleep_with_interrupts 1
-      WAIT_COUNT=$(($WAIT_COUNT + 1))
+      WAIT_COUNT=$((WAIT_COUNT + 1))
     fi
   done
 
@@ -401,7 +403,7 @@ apply_batch()
   local MAX_RETRIES=5
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" $META --flush-size=0 &
+    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" "$META" --flush-size=0 &
     wait "$!"
     local EXITCODE=$?
 
@@ -430,7 +432,7 @@ apply_batch()
       RETRY_COUNT=$((RETRY_COUNT + 1))
       if [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; then
         log_error "update_from_dir failed (exit code: $EXITCODE), attempt $((RETRY_COUNT + 1))/$MAX_RETRIES, retrying..."
-        sleep_with_interrupts 60
+        sleep_with_interrupts "$UPDATE_FREQUENCY"
       else
         log_error "update_from_dir error is not recoverable after $MAX_RETRIES attempts"
       fi
@@ -460,7 +462,7 @@ calculate_sleep_time()
 
   local NOW
   NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + EXPECTED_UPDATE_INTERVAL))
+  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
 
   if [[ $SLEEP_TIME -lt 1 ]]; then
@@ -476,7 +478,7 @@ calculate_sleep_time()
 
 sleep_with_interrupts()
 {
-  sleep $1 &
+  sleep "$1" &
   wait $!
 }
 
@@ -501,7 +503,7 @@ shutdown()
   rm -rf "$WORK_DIR"
 
   log_message "Shutdown complete"
-  exit $EXIT_CODE
+  exit "$EXIT_CODE"
 }
 
 trap 'shutdown 143' SIGTERM
@@ -545,14 +547,13 @@ START_TIME=$(date +%s)
 
 while true; do
   # Try to collect a batch
-  if ! collect_batch $CURRENT_ID; then
-    if [[ -n "$START_TIME" && $(date +%s) -gt $((START_TIME + 65)) ]]; then
-      log_error "Waited more than one minute for the first file, exiting."
-      fail "ERROR: No new files to process after one minute. Is fetch_osc.sh running?"
+  if ! collect_batch "$CURRENT_ID"; then
+    if [[ -n "$START_TIME" && $(date +%s) -gt $((START_TIME + UPDATE_FREQUENCY * 2)) ]]; then
+      fail "ERROR: No new files to process after two update cycles. Is fetch_osc.sh running?"
     fi
     SLEEP_TIME=$(calculate_sleep_time)
     log_message "No new files available, waiting $SLEEP_TIME s"
-    sleep_with_interrupts $SLEEP_TIME
+    sleep_with_interrupts "$SLEEP_TIME"
     continue
   fi
 
@@ -565,18 +566,18 @@ while true; do
   mkdir -p "$PROCESS_DIR"
 
   # Decompress batch
-  if ! prepare_batch $CURRENT_ID $BATCH_END "$PROCESS_DIR"; then
+  if ! prepare_batch "$CURRENT_ID" "$BATCH_END" "$PROCESS_DIR"; then
     log_error "Failed to prepare batch, skipping"
     rm -rf "$PROCESS_DIR"
-    sleep_with_interrupts 60
+    sleep_with_interrupts "$UPDATE_FREQUENCY"
     continue
   fi
 
   # Get timestamp
-  if ! get_timestamp $BATCH_END; then
+  if ! get_timestamp "$BATCH_END"; then
     log_error "Failed to get timestamp, skipping batch"
     rm -rf "$PROCESS_DIR"
-    sleep_with_interrupts 60
+    sleep_with_interrupts "$UPDATE_FREQUENCY"
     continue
   fi
 
@@ -584,7 +585,7 @@ while true; do
   if ! apply_batch "$PROCESS_DIR"; then
     log_error "Failed to apply batch, will retry"
     rm -rf "$PROCESS_DIR"
-    sleep_with_interrupts 60
+    sleep_with_interrupts "$UPDATE_FREQUENCY"
     continue
   fi
 

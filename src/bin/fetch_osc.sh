@@ -49,7 +49,7 @@ if [[ -n "$4" ]]; then
 fi
 
 # Update timing configuration
-UPDATE_FREQUENCY=${FETCH_OSC_UPDATE_FREQUENCY:-60}    # Frequency of updates in seconds
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}     # Frequency of updates in seconds
 UPDATE_TRIM=${FETCH_OSC_UPDATE_TRIM:--6}              # Seconds to adjust expected update time
 QUICK_RETRY_DELAY=${FETCH_OSC_QUICK_RETRY_DELAY:-1}   # Seconds between quick retries
 QUICK_RETRY_COUNT=${FETCH_OSC_QUICK_RETRY_COUNT:-10}  # Number of quick retries before slow retry
