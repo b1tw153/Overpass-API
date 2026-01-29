@@ -144,6 +144,52 @@ process_params()
   LOCK_FILE="$CLONE_DIR/.download_clone.lock"
 }
 
+# Verify global variables
+verify_globals()
+{
+  if [[ ! $PARALLEL_JOBS =~ ^[1-9][0-9]*$ ]]; then
+  {
+    log_error "Invalid value for parallel jobs: $PARALLEL_JOBS"
+    exit 1
+  }; fi
+
+  if [[ ! $MAX_TIME =~ ^[1-9][0-9]*$ ]]; then
+  {
+    log_error "Invalid value for max time: $MAX_TIME"
+    exit 1
+  }; fi
+
+  if [[ ! $CONNECT_TIMEOUT =~ ^[1-9][0-9]*$ ]]; then
+  {
+    log_error "Invalid value for connect timeout: $CONNECT_TIMEOUT"
+    exit 1
+  }; fi
+
+  if [[ ! $RETRY_COUNT =~ ^[0-9]+$ ]]; then
+  {
+    log_error "Invalid value for retry count: $RETRY_COUNT"
+    exit 1
+  }; fi
+
+  if [[ ! $RETRY_DELAY =~ ^[0-9]+$ ]]; then
+  {
+    log_error "Invalid value for retry delay: $RETRY_DELAY"
+    exit 1
+  }; fi
+
+  if [[ ! $SPEED_LIMIT =~ ^[0-9]+$ ]]; then
+  {
+    log_error "Invalid value for speed limit: $SPEED_LIMIT"
+    exit 1
+  }; fi
+
+  if [[ ! $SPEED_TIME =~ ^[1-9][0-9]*$ ]]; then
+  {
+    log_error "Invalid value for speed time: $SPEED_TIME"
+    exit 1
+  }; fi
+}
+
 # Cleanup function - called on exit or interruption
 # $1 - exit code (optional, defaults to $?)
 cleanup()
@@ -453,6 +499,8 @@ download_files_parallel()
 main()
 {
   process_params "$@"
+
+  verify_globals
 
   if ! mkdir -p "$CLONE_DIR"; then
   {
