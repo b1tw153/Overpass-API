@@ -36,8 +36,15 @@ SOURCE=
 META=
 LOCK_FILE=
 INTERRUPTED=0
-PARALLEL_JOBS=3
-MAX_TIME=86400  # 24 hours
+
+# Download parameters
+PARALLEL_JOBS=${DOWNLOAD_CLONE_PARALLEL_JOBS:-3}      # Number of parallel downloads
+MAX_TIME=${DOWNLOAD_CLONE_MAX_TIME:-86400}            # 24 hours - total time limit for all downloads
+CONNECT_TIMEOUT=${DOWNLOAD_CLONE_CONNECT_TIMEOUT:-30} # Timeout for initial connection
+RETRY_COUNT=${DOWNLOAD_CLONE_RETRY_COUNT:-240}        # Number of retries per file
+RETRY_DELAY=${DOWNLOAD_CLONE_RETRY_DELAY:-15}         # Seconds between retries
+SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-1024}       # Minimum bytes/sec before considering stalled
+SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-30}           # Seconds below speed limit before aborting
 
 FILES_BASE="\
 nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
@@ -179,7 +186,7 @@ get_remote_file_size()
   local size
 
   # Use HEAD request to get file metadata without downloading
-  headers=$(curl -s -I -L --max-time 30 "$url" 2>/dev/null)
+  headers=$(curl -s -I -L --max-time "$CONNECT_TIMEOUT" "$url" 2>/dev/null)
 
   if [[ $? -ne 0 ]]; then
     log_warning "HEAD request failed for $url"
@@ -299,11 +306,13 @@ download_files_parallel()
     if [[ ${#curl_args[@]} -gt 0 ]]; then
     {
       echo
-      curl --parallel --parallel-max "$PARALLEL_JOBS" \
+      curl --parallel --parallel-immediate --parallel-max "$PARALLEL_JOBS" \
         -f -S -L \
-        --retry 240 \
-        --retry-delay 15 \
-        --retry-max-time $MAX_TIME \
+        --retry "$RETRY_COUNT" \
+        --retry-delay "$RETRY_DELAY" \
+        --retry-max-time "$MAX_TIME" \
+        --speed-limit "$SPEED_LIMIT" \
+        --speed-time "$SPEED_TIME" \
         -C - \
         -R \
         --progress-bar \
@@ -311,6 +320,8 @@ download_files_parallel()
         "${curl_args[@]}" 2>"$CURL_ERROR_LOG"
 
       local CURL_EXIT=$?
+
+      echo "curl command completed"
 
       if [[ $CURL_EXIT -ne 0 ]]; then
       {
@@ -420,8 +431,8 @@ download_files_parallel()
 
       # Recoverable error: sleep and retry
       if [[ $CURL_EXIT -ne 0 ]]; then
-        log_message "Retrying in 15 seconds..."
-        sleep 15
+        log_message "Retrying in $RETRY_DELAY seconds..."
+        sleep "$RETRY_DELAY"
       fi
     }
     else
@@ -450,7 +461,7 @@ main()
   acquire_lock
 
   # Fetch the clone URL from the trigger_clone endpoint
-  if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
+  if ! curl -f -s -S -L --max-time "$CONNECT_TIMEOUT" -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
   {
     log_error "Failed to retrieve clone URL from trigger endpoint"
     exit 1
@@ -472,7 +483,7 @@ main()
   }; fi
 
   # Verify clone is accessible by fetching replicate_id
-  if ! curl -f -s -S -L --max-time 30 -o "$CLONE_DIR/replicate_id" "$REMOTE_DIR/replicate_id"; then
+  if ! curl -f -s -S -L --max-time "$CONNECT_TIMEOUT" -o "$CLONE_DIR/replicate_id" "$REMOTE_DIR/replicate_id"; then
   {
     log_error "Clone not accessible"
     exit 1
