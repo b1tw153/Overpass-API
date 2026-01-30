@@ -575,7 +575,7 @@ apply_minute_diffs()
       return 1
     elif [[ $EXITCODE -eq 126 || $EXITCODE -eq 127 ]]; then
       log_error "update_from_dir not found or not executable (exit code: $EXITCODE)"
-      return 1
+      exit 1
     elif [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
       log_message "update_from_dir terminated by signal (exit code: $EXITCODE)"
       shutdown $EXITCODE
@@ -686,7 +686,10 @@ pushd "$EXEC_DIR" > /dev/null || exit 1
 # Run database migration
 log_message "Running database migration"
 ./migrate_database --migrate &
-wait $!
+if ! wait $!; then
+  log_error "Database migration failed"
+  exit 1
+fi
 
 while true; do
   log_message "Updating from $CURRENT_ID"
