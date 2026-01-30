@@ -42,6 +42,12 @@ if [[ -z "$1" ]]; then
   exit 0
 }; fi
 
+if [[ -n "$2" ]]; then
+  echo "Error: Too many arguments" >&2
+  echo "Usage: $0 diff_url" >&2
+  exit 1
+fi
+
 SOURCE_URL="$1"
 
 # ============================================================================
