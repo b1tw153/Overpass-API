@@ -235,35 +235,6 @@ get_replicate_path()
 }
 
 # ============================================================================
-# FILE VERIFICATION
-# ============================================================================
-
-verify_file()
-{
-  local FILE="$1"
-  local TYPE="$2"
-
-  if [[ ! -s "$FILE" ]]; then
-    return 1
-  fi
-
-  if [[ "$TYPE" == "gzip" ]]; then
-    gunzip -t <"$FILE" 2>/dev/null
-    return $?
-  elif [[ "$TYPE" == "text" ]]; then
-    if ! grep -q "^sequenceNumber=" "$FILE" 2>/dev/null; then
-      return 1
-    fi
-    if ! grep -q "^timestamp=" "$FILE" 2>/dev/null; then
-      return 1
-    fi
-    return 0
-  fi
-
-  return 1
-}
-
-# ============================================================================
 # REMOTE STATE CHECKING
 # ============================================================================
 
@@ -286,16 +257,14 @@ get_latest_available_id()
     local CURL_EXIT=$?
 
     if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
-      if verify_file "$REMOTE_STATE_TMP" "text"; then
+      local SEQ_LINE
+      SEQ_LINE=$(grep -E '^sequenceNumber=' "$REMOTE_STATE_TMP")
+      if [[ -n "$SEQ_LINE" ]]; then
         mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
-        local SEQ_LINE
-        SEQ_LINE=$(grep -E '^sequenceNumber=' "$REMOTE_STATE")
-        if [[ -n "$SEQ_LINE" ]]; then
-          echo "$((${SEQ_LINE#*=} + 0))"
-          return 0
-        fi
+        echo "$((${SEQ_LINE#*=} + 0))"
+        return 0
       else
-        log_error "Downloaded state.txt failed validation"
+        log_error "Downloaded state.txt missing sequenceNumber"
         rm -f "$REMOTE_STATE_TMP"
       fi
     else
@@ -320,7 +289,6 @@ download_file()
 {
   local URL="$1"
   local OUTPUT="$2"
-  local FILE_TYPE="$3"
   local TMP_FILE="$OUTPUT.tmp"
 
   curl -fsSL \
@@ -340,12 +308,13 @@ download_file()
     return $CURL_EXIT
   fi
 
-  if ! verify_file "$TMP_FILE" "$FILE_TYPE"; then
+  if [[ ! -s "$TMP_FILE" ]]; then
     rm -f "$TMP_FILE"
     return 1
   fi
 
   mv "$TMP_FILE" "$OUTPUT"
+  log_message "Downloaded $URL to $OUTPUT"
   return 0
 }
 
@@ -396,13 +365,13 @@ collect_minute_diffs()
     OSC_FILE_DECOMPRESSED="$TEMP_TARGET_DIR/$TARGET_FILE.osc"
 
     # Download state file
-    if ! download_file "$STATE_URL" "$STATE_FILE_LOCAL" "text"; then
+    if ! download_file "$STATE_URL" "$STATE_FILE_LOCAL"; then
       log_error "Failed to download state file for $ID"
       break
     fi
 
     # Download OSC file
-    if ! download_file "$OSC_URL" "$OSC_FILE_LOCAL" "gzip"; then
+    if ! download_file "$OSC_URL" "$OSC_FILE_LOCAL"; then
       log_error "Failed to download OSC file for $ID"
       break
     fi
