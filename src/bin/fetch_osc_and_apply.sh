@@ -67,7 +67,6 @@ CURL_CONNECT_TIMEOUT=${FETCH_OSC_CONNECT_TIMEOUT:-30}
 CURL_KEEPALIVE_TIME=${FETCH_OSC_KEEPALIVE_TIME:-20}
 CURL_MAX_RETRIES=${FETCH_OSC_MAX_RETRIES:-10}
 CURL_RETRY_DELAY=${FETCH_OSC_RETRY_DELAY:-15}
-CURL_PARALLEL_MAX=${FETCH_OSC_PARALLEL_MAX:-4}
 CURL_SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}
 CURL_SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}
 
@@ -166,11 +165,6 @@ verify_globals()
 
   if [[ ! "$CURL_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid FETCH_OSC_RETRY_DELAY: $CURL_RETRY_DELAY"
-    exit 1
-  fi
-
-  if [[ ! "$CURL_PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid FETCH_OSC_PARALLEL_MAX: $CURL_PARALLEL_MAX"
     exit 1
   fi
 
@@ -319,55 +313,15 @@ get_latest_available_id()
 }
 
 # ============================================================================
-# BATCH DOWNLOAD
+# FILE DOWNLOAD
 # ============================================================================
 
-download_batch()
+download_file()
 {
-  local START=$1
-  local END=$2
-  local BATCH_COUNT=$((END - START))
-
-  local URL_ARRAY=()
-  local OUTPUT_ARRAY=()
-  local TYPE_ARRAY=()
-  local ID
-  local TARGET_FILE
-  local TEMP_CONFIG
-  local CURL_EXIT
-  local IDX
-
-  # Build arrays of URLs and output files
-  for (( ID=START+1; ID<=END; ID++ )); do
-    get_replicate_path "$ID"
-    printf -v TARGET_FILE %09u "$ID"
-
-    # State file
-    URL_ARRAY+=("$SOURCE_URL/$REPLICATE_PATH.state.txt")
-    OUTPUT_ARRAY+=("$TEMP_SOURCE_DIR/$TARGET_FILE.state.txt")
-    TYPE_ARRAY+=("text")
-
-    # OSC file
-    URL_ARRAY+=("$SOURCE_URL/$REPLICATE_PATH.osc.gz")
-    OUTPUT_ARRAY+=("$TEMP_SOURCE_DIR/$TARGET_FILE.osc.gz")
-    TYPE_ARRAY+=("gzip")
-  done
-
-  if [[ ${#URL_ARRAY[@]} -eq 0 ]]; then
-    return 0
-  fi
-
-  # Create curl config file
-  TEMP_CONFIG="$TEMP_SOURCE_DIR/curl_batch.txt"
-  rm -f "$TEMP_CONFIG"
-
-  for (( IDX=0; IDX<${#URL_ARRAY[@]}; IDX++ )); do
-    echo "url = \"${URL_ARRAY[$IDX]}\"" >> "$TEMP_CONFIG"
-    echo "output = \"${OUTPUT_ARRAY[$IDX]}.tmp\"" >> "$TEMP_CONFIG"
-  done
-
-  # Download all files with connection reuse and parallel transfers
-  local CURL_ERROR_LOG="$TEMP_SOURCE_DIR/curl_error_$$.log"
+  local URL="$1"
+  local OUTPUT="$2"
+  local FILE_TYPE="$3"
+  local TMP_FILE="$OUTPUT.tmp"
 
   curl -fsSL \
     --keepalive-time "$CURL_KEEPALIVE_TIME" \
@@ -375,85 +329,24 @@ download_batch()
     --retry "$CURL_MAX_RETRIES" \
     --retry-delay "$CURL_RETRY_DELAY" \
     --retry-all-errors \
-    --parallel \
-    --parallel-max "$CURL_PARALLEL_MAX" \
-    --parallel-immediate \
     --speed-limit "$CURL_SPEED_LIMIT" \
     --speed-time "$CURL_SPEED_TIME" \
-    --config "$TEMP_CONFIG" 2>"$CURL_ERROR_LOG"
+    -o "$TMP_FILE" "$URL" 2>/dev/null
 
-  CURL_EXIT=$?
-  rm -f "$TEMP_CONFIG"
+  local CURL_EXIT=$?
 
   if [[ $CURL_EXIT -ne 0 ]]; then
-    log_error "Batch download failed (curl exit code: $CURL_EXIT)"
+    rm -f "$TMP_FILE"
+    return $CURL_EXIT
+  fi
 
-    # Log curl error details if available
-    if [[ -s "$CURL_ERROR_LOG" ]]; then
-      log_error "Curl error output:"
-      while IFS= read -r line; do
-        log_error "  $line"
-      done < "$CURL_ERROR_LOG"
-    fi
-
-    # Provide context for common error codes
-    case $CURL_EXIT in
-      6)  log_error "Exit 6: Could not resolve host" ;;
-      7)  log_error "Exit 7: Failed to connect to host" ;;
-      16) log_error "Exit 16: HTTP/2 protocol error (connection reset or framing issue)" ;;
-      18) log_error "Exit 18: Partial file transfer" ;;
-      22) log_error "Exit 22: HTTP response code indicated failure" ;;
-      23) log_error "Exit 23: Write error" ;;
-      28) log_error "Exit 28: Operation timeout" ;;
-      35) log_error "Exit 35: SSL connect error" ;;
-      52) log_error "Exit 52: Empty reply from server" ;;
-      55) log_error "Exit 55: Failed sending network data" ;;
-      56) log_error "Exit 56: Failed receiving network data" ;;
-    esac
-
-    rm -f "$CURL_ERROR_LOG"
-
-    # Clean up temp files
-    for (( IDX=0; IDX<${#OUTPUT_ARRAY[@]}; IDX++ )); do
-      rm -f "${OUTPUT_ARRAY[$IDX]}.tmp"
-    done
+  if ! verify_file "$TMP_FILE" "$FILE_TYPE"; then
+    rm -f "$TMP_FILE"
     return 1
   fi
 
-  # Clean up error log on success
-  rm -f "$CURL_ERROR_LOG"
-
-  # Verify and move files
-  local SUCCESS=1
-  for (( IDX=0; IDX<${#OUTPUT_ARRAY[@]}; IDX++ )); do
-    local TMP_FILE="${OUTPUT_ARRAY[$IDX]}.tmp"
-    local FINAL_FILE="${OUTPUT_ARRAY[$IDX]}"
-    local FILE_TYPE="${TYPE_ARRAY[$IDX]}"
-
-    if [[ -f "$TMP_FILE" ]]; then
-      if verify_file "$TMP_FILE" "$FILE_TYPE"; then
-        mv "$TMP_FILE" "$FINAL_FILE"
-      else
-        log_error "File failed verification: $FINAL_FILE"
-        rm -f "$TMP_FILE"
-        SUCCESS=0
-      fi
-    else
-      log_error "File not downloaded: $FINAL_FILE"
-      SUCCESS=0
-    fi
-  done
-
-  if [[ $SUCCESS -eq 1 ]]; then
-    if [[ $BATCH_COUNT -eq 1 ]]; then
-      log_message "Downloaded $END"
-    else
-      log_message "Downloaded $BATCH_COUNT files ($((START + 1)) to $END)"
-    fi
-    return 0
-  else
-    return 1
-  fi
+  mv "$TMP_FILE" "$OUTPUT"
+  return 0
 }
 
 # ============================================================================
@@ -477,24 +370,38 @@ collect_minute_diffs()
     return 1
   fi
 
-  # Download all files in the potential batch
-  if ! download_batch "$CURRENT_ID" "$POTENTIAL_END"; then
-    return 1
-  fi
-
-  # Decompress and check cumulative size, trimming batch if needed
+  # Download, decompress, and check size one file at a time
   local BATCH_SIZE_BYTES=0
   local ID
   local TARGET_FILE
+  local STATE_URL
+  local OSC_URL
+  local STATE_FILE_LOCAL
   local OSC_FILE_LOCAL
   local OSC_FILE_DECOMPRESSED
   local FILE_SIZE
 
   for (( ID=CURRENT_ID+1; ID<=POTENTIAL_END; ID++ )); do
+    get_replicate_path "$ID"
     printf -v TARGET_FILE %09u "$ID"
 
+    STATE_URL="$SOURCE_URL/$REPLICATE_PATH.state.txt"
+    OSC_URL="$SOURCE_URL/$REPLICATE_PATH.osc.gz"
+    STATE_FILE_LOCAL="$TEMP_SOURCE_DIR/$TARGET_FILE.state.txt"
     OSC_FILE_LOCAL="$TEMP_SOURCE_DIR/$TARGET_FILE.osc.gz"
     OSC_FILE_DECOMPRESSED="$TEMP_TARGET_DIR/$TARGET_FILE.osc"
+
+    # Download state file
+    if ! download_file "$STATE_URL" "$STATE_FILE_LOCAL" "text"; then
+      log_error "Failed to download state file for $ID"
+      break
+    fi
+
+    # Download OSC file
+    if ! download_file "$OSC_URL" "$OSC_FILE_LOCAL" "gzip"; then
+      log_error "Failed to download OSC file for $ID"
+      break
+    fi
 
     # Decompress
     if ! gunzip <"$OSC_FILE_LOCAL" >"$OSC_FILE_DECOMPRESSED" 2>/dev/null; then
