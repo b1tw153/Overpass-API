@@ -356,7 +356,6 @@ download_file()
 collect_minute_diffs()
 {
   local MAX_AVAILABLE=$1
-  local MAX_BATCH_BYTES=$((MAX_BATCH_MB * 1024 * 1024))
 
   BATCH_END=$CURRENT_ID
 
@@ -371,7 +370,6 @@ collect_minute_diffs()
   fi
 
   # Download, decompress, and check size one file at a time
-  local BATCH_SIZE_BYTES=0
   local ID
   local TARGET_FILE
   local STATE_URL
@@ -379,9 +377,15 @@ collect_minute_diffs()
   local STATE_FILE_LOCAL
   local OSC_FILE_LOCAL
   local OSC_FILE_DECOMPRESSED
-  local FILE_SIZE
+  local CURRENT_SIZE_MB
 
   for (( ID=CURRENT_ID+1; ID<=POTENTIAL_END; ID++ )); do
+    # Check size before downloading next file (like master branch)
+    CURRENT_SIZE_MB=$(du -m "$TEMP_TARGET_DIR" 2>/dev/null | awk '{print $1}')
+    if [[ ${CURRENT_SIZE_MB:-0} -gt $MAX_BATCH_MB ]]; then
+      break
+    fi
+
     get_replicate_path "$ID"
     printf -v TARGET_FILE %09u "$ID"
 
@@ -409,24 +413,6 @@ collect_minute_diffs()
       break
     fi
 
-    # Get file size
-    FILE_SIZE=$(stat -c%s "$OSC_FILE_DECOMPRESSED" 2>/dev/null || stat -f%z "$OSC_FILE_DECOMPRESSED" 2>/dev/null)
-
-    if [[ -z "$FILE_SIZE" ]]; then
-      log_error "Cannot determine file size for $ID"
-      rm -f "$OSC_FILE_DECOMPRESSED"
-      break
-    fi
-
-    # Check if adding this file would exceed batch size limit
-    local NEW_BATCH_SIZE=$((BATCH_SIZE_BYTES + FILE_SIZE))
-    if [[ $BATCH_SIZE_BYTES -gt 0 && $NEW_BATCH_SIZE -gt $MAX_BATCH_BYTES ]]; then
-      # Remove this file, we've hit the size limit
-      rm -f "$OSC_FILE_DECOMPRESSED"
-      break
-    fi
-
-    BATCH_SIZE_BYTES=$NEW_BATCH_SIZE
     BATCH_END=$ID
   done
 
