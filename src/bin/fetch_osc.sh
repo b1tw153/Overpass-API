@@ -133,7 +133,7 @@ verify_globals()
   fi
 
   local ABS_TRIM=${UPDATE_TRIM#-}
-  if [[ $ABS_TRIM -ge $((UPDATE_FREQUENCY / 10)) ]]; then
+  if [[ $ABS_TRIM -gt $((UPDATE_FREQUENCY / 10)) ]]; then
     log_message "WARNING: UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
   fi
 
