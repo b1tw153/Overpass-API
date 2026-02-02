@@ -430,24 +430,35 @@ apply_minute_diffs()
     wait $!
     local EXITCODE=$?
 
-    if [[ $EXITCODE -eq 0 ]]; then
-      SUCCESS=1
-    elif [[ $EXITCODE -eq 3 ]]; then
-      log_error "update_from_dir failed due to dispatcher error (exit code: $EXITCODE)"
-      return 1
-    elif [[ $EXITCODE -eq 126 || $EXITCODE -eq 127 ]]; then
-      log_error "update_from_dir not found or not executable (exit code: $EXITCODE)"
-      exit 1
-    elif [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
-      log_message "update_from_dir terminated by signal (exit code: $EXITCODE)"
-      shutdown $EXITCODE
-    else
-      RETRY_COUNT=$((RETRY_COUNT + 1))
-      if [[ $RETRY_COUNT -lt $APPLY_MAX_RETRIES ]]; then
-        log_error "update_from_dir failed (exit code: $EXITCODE), attempt $((RETRY_COUNT + 1))/$APPLY_MAX_RETRIES"
-        sleep_with_interrupts "$UPDATE_FREQUENCY"
-      fi
-    fi
+    case $EXITCODE in
+      0)
+        SUCCESS=1
+        ;;
+      3)
+        log_error "update_from_dir failed due to dispatcher error (exit code: $EXITCODE)"
+        return 1
+        ;;
+      15)
+        log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
+        shutdown 143
+        ;;
+      126|127)
+        log_error "update_from_dir not found or not executable (exit code: $EXITCODE)"
+        exit 1
+        ;;
+      *)
+        if [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
+          log_message "update_from_dir terminated by signal (exit code: $EXITCODE)"
+          shutdown $EXITCODE
+        else
+          RETRY_COUNT=$((RETRY_COUNT + 1))
+          if [[ $RETRY_COUNT -lt $APPLY_MAX_RETRIES ]]; then
+            log_error "update_from_dir failed (exit code: $EXITCODE), attempt $((RETRY_COUNT + 1))/$APPLY_MAX_RETRIES"
+            sleep_with_interrupts "$UPDATE_FREQUENCY"
+          fi
+        fi
+        ;;
+    esac
   done
 
   if [[ $SUCCESS -eq 0 ]]; then
