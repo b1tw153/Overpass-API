@@ -258,7 +258,7 @@ get_latest_available_id()
 
     if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
       local SEQ_LINE
-      SEQ_LINE=$(grep -E '^sequenceNumber=' "$REMOTE_STATE_TMP")
+      SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE_TMP")
       if [[ -n "$SEQ_LINE" ]]; then
         mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
         echo "$((${SEQ_LINE#*=} + 0))"
@@ -404,7 +404,8 @@ get_data_version()
   local STATE_FILE_LOCAL="$TEMP_SOURCE_DIR/$TARGET_FILE.state.txt"
   local TIMESTAMP_LINE
 
-  TIMESTAMP_LINE=$(grep "^timestamp" <"$STATE_FILE_LOCAL" 2>/dev/null)
+  # timestamp=YYYY-MM-DDTHH\:MM\:SSZ
+  TIMESTAMP_LINE=$(grep -E "^timestamp=[0-9\-]{10}T[0-9\\\:]{10}Z" <"$STATE_FILE_LOCAL" 2>/dev/null)
 
   if [[ -z "$TIMESTAMP_LINE" ]]; then
     log_error "Could not extract timestamp from state file for $ID"
