@@ -277,7 +277,7 @@ get_latest_available_id()
         # Valid - move to final location and parse
         mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
         local SEQ_LINE
-        SEQ_LINE=$(grep -E '^sequenceNumber' "$REMOTE_STATE")
+        SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE")
         if [[ -n "$SEQ_LINE" ]]; then
           # Parse the number (format is "sequenceNumber=12345")
           echo $((${SEQ_LINE#*=} + 0))
@@ -345,10 +345,10 @@ verify_file()
     gunzip -t <"$FILE" 2>/dev/null
     return $?
   elif [[ "$TYPE" == "text" ]]; then
-    if ! grep -q "^sequenceNumber=" "$FILE" 2>/dev/null; then
+    if ! grep -q '^sequenceNumber=[1-9][0-9]*$' "$FILE" 2>/dev/null; then
       return 1
     fi
-    if ! grep -q "^timestamp=" "$FILE" 2>/dev/null; then
+    if ! grep -q '^timestamp=[0-9\-]{10}T[0-9\\\:]{10}Z$' "$FILE" 2>/dev/null; then
       return 1
     fi
     return 0
