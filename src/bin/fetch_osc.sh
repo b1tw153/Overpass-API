@@ -523,13 +523,13 @@ download_replicate_batch()
     if [[ $BATCH_COUNT -eq 1 ]]; then
       log_message "Downloaded $END"
     else
-      log_message "Downloaded $BATCH_COUNT files ($((START + 1)) to END)"
+      log_message "Downloaded $BATCH_COUNT files ($((START + 1)) to $END)"
     fi
   else
     if [[ $BATCH_COUNT -eq 1 ]]; then
       log_error "File failed verification: OSC file $END"
     else
-      log_error "Some files failed verification in batch $((START + 1)) to END"
+      log_error "Some files failed verification in batch $((START + 1)) to $END"
     fi
   fi
   
