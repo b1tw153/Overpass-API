@@ -575,7 +575,7 @@ shutdown()
 
   log_message "Shutdown signal received, cleaning up..."
   if [[ -n "$LOCAL_DIR" && -d "$LOCAL_DIR" ]]; then
-    rm -f "$LOCAL_DIR"/*.tmp
+    find "$LOCAL_DIR" -name "*.tmp" -type f -delete
   fi
   log_message "Shutdown complete"
   exit "$EXIT_CODE"
