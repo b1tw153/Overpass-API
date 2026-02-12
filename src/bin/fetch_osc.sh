@@ -247,6 +247,35 @@ sleep_with_interrupts()
 }
 
 # ============================================================================
+# FILE VERIFICATION
+# ============================================================================
+
+verify_file()
+{
+  local FILE="$1"
+  local TYPE="$2"
+  
+  if [[ ! -s "$FILE" ]]; then
+    return 1
+  fi
+  
+  if [[ "$TYPE" == "gzip" ]]; then
+    gunzip -t <"$FILE" 2>/dev/null
+    return $?
+  elif [[ "$TYPE" == "text" ]]; then
+    if ! grep -qE '^sequenceNumber=[1-9][0-9]*$' "$FILE" 2>/dev/null; then
+      return 1
+    fi
+    if ! grep -qE '^timestamp=[0-9\-]{10}T[0-9\\\:]{10}Z$' "$FILE" 2>/dev/null; then
+      return 1
+    fi
+    return 0
+  fi
+  
+  return 1
+}
+
+# ============================================================================
 # REMOTE STATE CHECKING
 # ============================================================================
 
@@ -326,35 +355,6 @@ get_replicate_path()
   ARG=$((ARG / 1000))
   DIGIT1=$(printf '%03u' $ARG)
   REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
-}
-
-# ============================================================================
-# FILE VERIFICATION
-# ============================================================================
-
-verify_file()
-{
-  local FILE="$1"
-  local TYPE="$2"
-  
-  if [[ ! -s "$FILE" ]]; then
-    return 1
-  fi
-  
-  if [[ "$TYPE" == "gzip" ]]; then
-    gunzip -t <"$FILE" 2>/dev/null
-    return $?
-  elif [[ "$TYPE" == "text" ]]; then
-    if ! grep -q '^sequenceNumber=[1-9][0-9]*$' "$FILE" 2>/dev/null; then
-      return 1
-    fi
-    if ! grep -q '^timestamp=[0-9\-]{10}T[0-9\\\:]{10}Z$' "$FILE" 2>/dev/null; then
-      return 1
-    fi
-    return 0
-  fi
-  
-  return 1
 }
 
 # ============================================================================
