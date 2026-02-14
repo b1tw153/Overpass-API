@@ -137,16 +137,16 @@ log_error()
 verify_globals()
 {
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]+$ ]]; then
-    log_error "Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
+    echo "ERROR: Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
     exit 1
   fi
 
   if [[ UPDATE_FREQUENCY -ne 60 && UPDATE_FREQUENCY -ne 3600 && UPDATE_FREQUENCY -ne 86400 ]]; then
-    log_message "WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
+    echo "WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
   fi
 
   if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
-    log_error "Invalid UPDATE_TRIM: $UPDATE_TRIM"
+    echo "ERROR: Invalid UPDATE_TRIM: $UPDATE_TRIM"
     exit 1
   fi
 
@@ -156,77 +156,77 @@ verify_globals()
   fi
 
   if [[ ! "$QUICK_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
+    echo "ERROR: Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
     exit 1
   fi
 
   if [[ $QUICK_RETRY_DELAY -gt $((UPDATE_FREQUENCY / 10)) ]]; then
-    log_message "WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    echo "WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
   fi
 
   if [[ ! "$QUICK_RETRY_COUNT" =~ ^[0-9]+$ ]]; then
-    log_error "Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
+    echo "ERROR: Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
     exit 1
   fi
 
   if [[ ! "$MAX_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
+    echo "ERROR: Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
     exit 1
   fi
 
   local MAX_POSSIBLE_BATCH_TIME=$((MAX_BATCH_SIZE * UPDATE_FREQUENCY))
   if [[ $MAX_POSSIBLE_BATCH_TIME -gt 86400 ]]; then
-    log_message "WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
+    echo "WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
   fi
 
   if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]+$ ]]; then
-    log_error "Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
+    echo "ERROR: Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
     exit 1
   fi
 
   # verify that MAX_BATCH_TIME is at least UPDATE_FREQUENCY
   if [[ $MAX_BATCH_TIME -lt $UPDATE_FREQUENCY ]]; then
-    log_error "MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    echo "ERROR: MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
     exit 1
   fi
 
   # verify that MAX_BATCH_TIME is less than one day
   if [[ $MAX_BATCH_TIME -gt 86400 ]]; then
-    log_message "WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
+    echo "WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
   fi
 
   if [[ ! "$CURL_MAX_RETRIES" =~ ^[0-9]+$ ]]; then
-    log_error "Invalid CURL_MAX_RETRIES: $CURL_MAX_RETRIES"
+    echo "ERROR: Invalid CURL_MAX_RETRIES: $CURL_MAX_RETRIES"
     exit 1
   fi
 
   if [[ ! "$CURL_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid CURL_RETRY_DELAY: $CURL_RETRY_DELAY"
+    echo "ERROR: Invalid CURL_RETRY_DELAY: $CURL_RETRY_DELAY"
     exit 1
   fi
 
   if [[ ! "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid CURL_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
+    echo "ERROR: Invalid CURL_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
     exit 1
   fi
 
   if [[ ! "$CURL_KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid CURL_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
+    echo "ERROR: Invalid CURL_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
     exit 1
   fi
 
   if [[ ! "$CURL_PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid CURL_PARALLEL_MAX: $CURL_PARALLEL_MAX"
+    echo "ERROR: Invalid CURL_PARALLEL_MAX: $CURL_PARALLEL_MAX"
     exit 1
   fi
 
   if [[ ! "$CURL_SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
-    log_error "Invalid CURL_SPEED_LIMIT: $CURL_SPEED_LIMIT"
+    echo "ERROR: Invalid CURL_SPEED_LIMIT: $CURL_SPEED_LIMIT"
     exit 1
   fi
 
   if [[ ! "$CURL_SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid CURL_SPEED_TIME: $CURL_SPEED_TIME"
+    echo "ERROR: Invalid CURL_SPEED_TIME: $CURL_SPEED_TIME"
     exit 1
   fi
 }
@@ -652,7 +652,7 @@ while true; do
   # get_latest_available_id will wait during outages if source was previously verified
   # If it returns without a value and source was never verified, there's a config error
   if [[ -z "$MAX_AVAILABLE" ]]; then
-    log_error "Fatal: Cannot initialize - replication source unreachable"
+    echo "ERROR: Cannot initialize - replication source unreachable or invalid"
     exit 1
   fi
   
