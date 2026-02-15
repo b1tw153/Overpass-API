@@ -405,7 +405,11 @@ download_replicate_batch()
 
     REMOTE_BASE="$SOURCE_URL/$REPLICATE_PATH"
     DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
-    mkdir -p "$DIR_PATH"
+    if ! mkdir -p "$DIR_PATH"; then
+    {
+      log_error "Fatal error: unable to create $DIR_PATH directory."
+      exit 1
+    }; fi
 
     OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
     STATE_FILE_LOCAL="$DIR_PATH/$DIGIT3.state.txt"
