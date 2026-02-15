@@ -55,9 +55,9 @@ if [[ ! "$SOURCE_URL" =~ ^https?:// ]]; then
   exit 1
 fi
 
-# Validate local_dir: must be non-empty
-if [[ -z "$LOCAL_DIR" ]]; then
-  echo "ERROR: local_dir must not be empty"
+# Validate local_dir: must be usable as a directory
+if ! mkdir -p "$LOCAL_DIR" 2>/dev/null; then
+  echo "ERROR: local_dir '$LOCAL_DIR' is not writable or cannot be created"
   exit 1
 fi
 
@@ -108,8 +108,6 @@ fi
 # Database state file (tracks what's been applied)
 DB_STATE_FILE="$DB_DIR/replicate_id"
 
-# Create local directory if needed
-mkdir -p "$LOCAL_DIR"
 
 # Log file
 LOG_FILE="$LOCAL_DIR/fetch_osc.log"
