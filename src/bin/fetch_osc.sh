@@ -66,24 +66,37 @@ if [[ -n "$4" ]]; then
   echo "WARNING: Sleep parameter is ignored (timing is now automatic)"
 fi
 
+# Download tool configuration
+if which "curl" > /dev/null 2>&1; then
+  PREFERRED_DOWNLOAD_TOOL="curl"
+elif which "wget" > /dev/null 2>&1; then
+  PREFERRED_DOWNLOAD_TOOL="wget"
+else
+  echo "ERROR: Neither curl nor wget is available"
+  exit 1
+fi
+
+DOWNLOAD_TOOL=${FETCH_OSC_DOWNLOAD_TOOL:-$PREFERRED_DOWNLOAD_TOOL} # Either "wget" or "curl"
+
 # Update timing configuration
-UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}     # Frequency of updates in seconds
-UPDATE_TRIM=${FETCH_OSC_UPDATE_TRIM:--6}              # Seconds to adjust expected update time
-QUICK_RETRY_DELAY=${FETCH_OSC_QUICK_RETRY_DELAY:-1}   # Seconds between quick retries
-QUICK_RETRY_COUNT=${FETCH_OSC_QUICK_RETRY_COUNT:-10}  # Number of quick retries before slow retry
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds
+UPDATE_TRIM=${FETCH_OSC_UPDATE_TRIM:--6}                # Seconds to adjust expected update time
+QUICK_RETRY_DELAY=${FETCH_OSC_QUICK_RETRY_DELAY:-1}     # Seconds between quick retries
+QUICK_RETRY_COUNT=${FETCH_OSC_QUICK_RETRY_COUNT:-10}    # Number of quick retries before slow retry
 
 # Batch configuration
-MAX_BATCH_SIZE=${FETCH_OSC_MAX_BATCH_SIZE:-360}       # Maximum OSC files per batch download
-MAX_BATCH_TIME=${FETCH_OSC_MAX_BATCH_TIME:-86400}     # Maximum time span of OSC files per batch (in seconds)
+MAX_BATCH_SIZE=${FETCH_OSC_MAX_BATCH_SIZE:-360}         # Maximum OSC files per batch download
+MAX_BATCH_TIME=${FETCH_OSC_MAX_BATCH_TIME:-86400}       # Maximum time span of OSC files per batch (in seconds)
 
 # Download configuration
-CURL_MAX_RETRIES=${FETCH_OSC_MAX_RETRIES:-20}         # Max download attempts before giving up
-CURL_RETRY_DELAY=${FETCH_OSC_RETRY_DELAY:-15}         # Seconds between retry attempts
-CURL_CONNECT_TIMEOUT=${FETCH_OSC_CONNECT_TIMEOUT:-30} # Connection timeout in seconds
-CURL_KEEPALIVE_TIME=${FETCH_OSC_KEEPALIVE_TIME:-20}   # Seconds to retain previous connections
-CURL_PARALLEL_MAX=${FETCH_OSC_PARALLEL_MAX:-4}        # Maximum parallel connections for batch downloads
-CURL_SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}       # Minimum download speed in bytes/sec
-CURL_SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}           # Time in seconds to check for speed limit
+MAX_RETRIES=${FETCH_OSC_MAX_RETRIES:-20}                # Max download attempts before giving up
+RETRY_DELAY=${FETCH_OSC_RETRY_DELAY:-15}                # Seconds between retry attempts
+CONNECT_TIMEOUT=${FETCH_OSC_CONNECT_TIMEOUT:-30}        # Connection timeout in seconds
+KEEPALIVE_TIME=${FETCH_OSC_KEEPALIVE_TIME:-20}          # Seconds to retain previous connections
+PARALLEL_MAX=${FETCH_OSC_PARALLEL_MAX:-4}               # Maximum parallel connections for batch downloads
+PARALLEL_MODE=${FETCH_OSC_PARALLEL_MODE:-"multiplexed"} # Either "immediate" or "multiplexed"
+SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}              # Minimum download speed in bytes/sec
+SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}                  # Time in seconds to check for speed limit
 
 # Suggested environment variables for hourly replication
 # OVERPASS_UPDATE_FREQUENCY=3600
@@ -215,38 +228,50 @@ verify_globals()
     echo "WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
   fi
 
-  if [[ ! "$CURL_MAX_RETRIES" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid CURL_MAX_RETRIES: $CURL_MAX_RETRIES"
+  if [[ ! "$MAX_RETRIES" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Invalid MAX_RETRIES: $MAX_RETRIES"
     exit 1
   fi
 
-  if [[ ! "$CURL_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_RETRY_DELAY: $CURL_RETRY_DELAY"
+  if [[ ! "$RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: Invalid RETRY_DELAY: $RETRY_DELAY"
     exit 1
   fi
 
-  if [[ ! "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
+  if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: Invalid CONNECT_TIMEOUT: $CONNECT_TIMEOUT"
     exit 1
   fi
 
-  if [[ ! "$CURL_KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
+  if [[ ! "$KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: Invalid KEEPALIVE_TIME: $KEEPALIVE_TIME"
     exit 1
   fi
 
-  if [[ ! "$CURL_PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_PARALLEL_MAX: $CURL_PARALLEL_MAX"
+  if [[ ! "$PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: Invalid PARALLEL_MAX: $PARALLEL_MAX"
     exit 1
   fi
 
-  if [[ ! "$CURL_SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid CURL_SPEED_LIMIT: $CURL_SPEED_LIMIT"
+  if [[ ! "$PARALLEL_MODE" =~ ^(immediate|multiplexed)$ ]]; then
+    echo "ERROR: Invalid PARALLEL_MODE: $PARALLEL_MODE"
+    echo "PARALLEL_MODE must be either \"immediate\" or \"multiplexed\""
     exit 1
   fi
 
-  if [[ ! "$CURL_SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_SPEED_TIME: $CURL_SPEED_TIME"
+  if [[ ! "$SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: Invalid SPEED_LIMIT: $SPEED_LIMIT"
+    exit 1
+  fi
+
+  if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: Invalid SPEED_TIME: $SPEED_TIME"
+    exit 1
+  fi
+
+  if [[ ! "$DOWNLOAD_TOOL" =~ ^(curl|wget)$ ]]; then
+    echo "ERROR: Invalid DOWNLOAD_TOOL: $DOWNLOAD_TOOL"
+    echo "DOWNLOAD_TOOL must be either \"curl\" or \"wget\""
     exit 1
   fi
 }
@@ -324,17 +349,34 @@ get_latest_available_id()
 
   while true; do
     rm -f "$REMOTE_STATE_TMP"
-    curl -fsSL \
-      --keepalive-time "$CURL_KEEPALIVE_TIME" \
-      --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-      --retry 3 \
-      --retry-delay 5 \
-      --retry-all-errors \
-      -o "$REMOTE_STATE_TMP" "$SOURCE_URL/state.txt" 2>/dev/null
 
-    local CURL_EXIT=$?
+    if [[ $DOWNLOAD_TOOL = "curl" ]] ; then
+      curl -fsSL \
+        --keepalive-time "$KEEPALIVE_TIME" \
+        --connect-timeout "$CONNECT_TIMEOUT" \
+        --retry 3 \
+        --retry-delay 5 \
+        --retry-all-errors \
+        -o "$REMOTE_STATE_TMP" \
+        "$SOURCE_URL/state.txt" \
+        2>/dev/null
+    elif [[ $DOWNLOAD_TOOL = "wget" ]]; then
+      wget \
+        --quiet \
+        --timeout="$CONNECT_TIMEOUT" \
+        --tries=3 \
+        --waitretry=5 \
+        --retry-connrefused \
+        --output-document="$REMOTE_STATE_TMP" \
+        "$SOURCE_URL/state.txt" \
+        2>/dev/null
+    else
+      log_error "Invalid DOWNLOAD_TOOL: $DOWNLOAD_TOOL"
+    fi
 
-    if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
+    local TOOL_EXIT=$?
+
+    if [[ $TOOL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
       if verify_file "$REMOTE_STATE_TMP" "text"; then
         mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
         local SEQ_LINE
@@ -368,7 +410,7 @@ get_latest_available_id()
 # PATH CONVERSION
 # ============================================================================
 
-get_replicate_path()
+get_path()
 {
   local ID=$1
   local ARG
@@ -378,111 +420,62 @@ get_replicate_path()
   DIGIT2=$(printf '%03u' $((ARG % 1000)))
   ARG=$((ARG / 1000))
   DIGIT1=$(printf '%03u' $ARG)
-  REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
+  URL_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
 }
 
 # ============================================================================
-# BATCH DOWNLOAD
+# DOWNLOAD HELPERS
 # ============================================================================
 
-download_replicate_batch()
+download_batch_with_curl()
 {
-  local START=$1
-  local END=$2
-  local BATCH_COUNT=$((END - START))
-
-  local URL_ARRAY=()
-  local STATE_ARRAY=()
-  local OSC_ARRAY=()
-  local REMOTE_BASE
-  local DIR_PATH
-  local OSC_FILE
-  local STATE_FILE
-  local ID
-  local TEMP_CONFIG
-  local STATE_IDX
-  local OSC_IDX
   local URL
+  local INDEX
+  local CURL_CONFIG
   local CURL_ERROR_LOG
+  local PARALLEL_IMMEDIATE
   local CURL_EXIT
-  local SUCCESS
+  local LINE
 
-  for (( ID=START+1; ID<=END; ID++ )); do
-    get_replicate_path "$ID"
+  CURL_CONFIG="$LOCAL_DIR/curl_batch.txt"
+  rm -f "$CURL_CONFIG"
 
-    REMOTE_BASE="$SOURCE_URL/$REPLICATE_PATH"
-    DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
-    if ! mkdir -p "$DIR_PATH"; then
-    {
-      log_error "Fatal error: unable to create $DIR_PATH directory."
-      exit 1
-    }; fi
-
-    OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
-    STATE_FILE="$DIR_PATH/$DIGIT3.state.txt"
-
-    if ! verify_file "$STATE_FILE" "text"; then
-      URL_ARRAY+=("$REMOTE_BASE.state.txt")
-      STATE_ARRAY+=("$STATE_FILE")
-    fi
-
-    if ! verify_file "$OSC_FILE" "gzip"; then
-      URL_ARRAY+=("$REMOTE_BASE.osc.gz")
-      OSC_ARRAY+=("$OSC_FILE")
-    fi
-  done
-
-  if [[ ${#URL_ARRAY[@]} -eq 0 ]]; then
-    if [[ $BATCH_COUNT -eq 1 ]]; then
-      log_message "Downloaded $END (cached)"
-    else
-      log_message "Downloaded $BATCH_COUNT files (all cached)"
-    fi
-    return 0
-  fi
-
-  TEMP_CONFIG="$LOCAL_DIR/curl_batch.txt"
-  rm -f "$TEMP_CONFIG"
-
-  STATE_IDX=0
-  OSC_IDX=0
+  INDEX=0
 
   for URL in "${URL_ARRAY[@]}"; do
-    if [[ $URL == *.state.txt ]]; then
-      echo "url = \"$URL\"" >> "$TEMP_CONFIG"
-      echo "output = \"${STATE_ARRAY[$STATE_IDX]}.tmp\"" >> "$TEMP_CONFIG"
-      STATE_IDX=$((STATE_IDX + 1))
-    else
-      echo "url = \"$URL\"" >> "$TEMP_CONFIG"
-      echo "output = \"${OSC_ARRAY[$OSC_IDX]}.tmp\"" >> "$TEMP_CONFIG"
-      OSC_IDX=$((OSC_IDX + 1))
-    fi
+    echo "url = \"$URL\"" >> "$CURL_CONFIG"
+    echo "output = \"${FILE_ARRAY[$INDEX]}.tmp\"" >> "$CURL_CONFIG"
+    ((INDEX += 1))
   done
   
   CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$$.log"
 
+  PARALLEL_IMMEDIATE=
+  [[ $PARALLEL_MODE = "immediate" ]] && PARALLEL_IMMEDIATE="--parallel-immediate"
+
   curl -fsSL \
-    --keepalive-time "$CURL_KEEPALIVE_TIME" \
-    --connect-timeout "$CURL_CONNECT_TIMEOUT" \
-    --retry "$CURL_MAX_RETRIES" \
-    --retry-delay "$CURL_RETRY_DELAY" \
+    --keepalive-time "$KEEPALIVE_TIME" \
+    --connect-timeout "$CONNECT_TIMEOUT" \
+    --retry "$MAX_RETRIES" \
+    --retry-delay "$RETRY_DELAY" \
     --parallel \
-    --parallel-max "$CURL_PARALLEL_MAX" \
-    --parallel-immediate \
-    --speed-limit "$CURL_SPEED_LIMIT" \
-    --speed-time "$CURL_SPEED_TIME" \
-    --config "$TEMP_CONFIG" 2>"$CURL_ERROR_LOG"
+    --parallel-max "$PARALLEL_MAX" \
+    $PARALLEL_IMMEDIATE \
+    --speed-limit "$SPEED_LIMIT" \
+    --speed-time "$SPEED_TIME" \
+    --config "$CURL_CONFIG" \
+    2>"$CURL_ERROR_LOG"
 
   CURL_EXIT=$?
-  rm -f "$TEMP_CONFIG"
+  rm -f "$CURL_CONFIG"
   
   if [[ $CURL_EXIT -ne 0 ]]; then
     log_error "Batch download failed (curl exit code: $CURL_EXIT)"
     
     if [[ -s "$CURL_ERROR_LOG" ]]; then
       log_error "Curl error output:"
-      while IFS= read -r line; do
-        log_error "  $line"
+      while IFS= read -r LINE; do
+        log_error "  $LINE"
       done < "$CURL_ERROR_LOG"
     fi
     
@@ -502,31 +495,140 @@ download_replicate_batch()
   fi
   
   rm -f "$CURL_ERROR_LOG"
+}
 
-  SUCCESS=1
+download_batch_with_wget()
+{
+  local WGET_ERROR_LOG
+  local INDEX
+  local URL
+  local WGET_EXIT
+  local LINE
 
-  for STATE_FILE in "${STATE_ARRAY[@]}"; do
-    if [[ -f "$STATE_FILE.tmp" ]]; then
-      if verify_file "$STATE_FILE.tmp" "text"; then
-        mv "$STATE_FILE.tmp" "$STATE_FILE"
-      else
-        log_error "State file failed verification: $STATE_FILE"
-        rm -f "$STATE_FILE.tmp"
-        SUCCESS=0
+  WGET_ERROR_LOG="$LOCAL_DIR/wget_error_$$.log"
+  rm -f "$WGET_ERROR_LOG"
+
+  INDEX=0
+
+  for URL in "${URL_ARRAY[@]}"; do
+    wget \
+      --quiet \
+      --tries="$MAX_RETRIES" \
+      --waitretry="$RETRY_DELAY" \
+      --timeout="$CONNECT_TIMEOUT" \
+      --output-document="${FILE_ARRAY[$INDEX]}.tmp" \
+      "$URL" \
+      2>"$WGET_ERROR_LOG"
+
+    WGET_EXIT=$?
+
+    if [[ $WGET_EXIT -ne 0 ]]; then
+      log_error "Batch download failed (wget exit code: $WGET_EXIT)"
+      
+      if [[ -s "$WGET_ERROR_LOG" ]]; then
+        log_error "Wget error output:"
+        while IFS= read -r LINE; do
+          log_error "  $LINE"
+        done < "$WGET_ERROR_LOG"
       fi
-    else
-      SUCCESS=0
+      
+      case $WGET_EXIT in
+        1) log_error "Exit 1: Generic wget failure" ;;
+        2) log_error "Exit 2: Parse error (likely script bug)" ;;
+        3) log_error "Exit 3: File I/O error" ;;
+        4) log_error "Exit 4: Network failure" ;;
+        5) log_error "Exit 5: TLS verification failure" ;;
+        6) log_error "Exit 6: Username/password authentication failure" ;;
+        7) log_error "Exit 7: Protocol error" ;;
+        8) log_error "Exit 8: Server error response" ;;
+      esac
+
+      break
+    fi
+
+    (( INDEX += 1 ))
+  done
+
+  rm -f "$WGET_ERROR_LOG"
+}
+
+# ============================================================================
+# BATCH DOWNLOAD
+# ============================================================================
+
+download_batch()
+{
+  local START=$1
+  local END=$2
+  local BATCH_COUNT=$((END - START))
+
+  local ID
+  local REMOTE_BASE
+  local DIR_PATH
+  local FILE
+  local URL_ARRAY=()
+  local FILE_ARRAY=()
+  local SUCCESS
+
+  for (( ID=START+1; ID<=END; ID++ )); do
+    get_path "$ID"
+
+    REMOTE_BASE="$SOURCE_URL/$URL_PATH"
+    DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
+    if ! mkdir -p "$DIR_PATH"; then
+    {
+      log_error "Fatal error: unable to create $DIR_PATH directory."
+      exit 1
+    }; fi
+
+    FILE="$DIR_PATH/$DIGIT3.state.txt"
+    if ! verify_file "$FILE" "text"; then
+      URL_ARRAY+=("$REMOTE_BASE.state.txt")
+      FILE_ARRAY+=("$FILE")
+    fi
+
+    FILE="$DIR_PATH/$DIGIT3.osc.gz"
+    if ! verify_file "$FILE" "gzip"; then
+      URL_ARRAY+=("$REMOTE_BASE.osc.gz")
+      FILE_ARRAY+=("$FILE")
     fi
   done
 
-  for OSC_FILE in "${OSC_ARRAY[@]}"; do
-    if [[ -f "$OSC_FILE.tmp" ]]; then
-      if verify_file "$OSC_FILE.tmp" "gzip"; then
-        mv "$OSC_FILE.tmp" "$OSC_FILE"
-      else
-        log_error "OSC file failed verification: $OSC_FILE"
-        rm -f "$OSC_FILE.tmp"
-        SUCCESS=0
+  if [[ ${#URL_ARRAY[@]} -eq 0 ]]; then
+    if [[ $BATCH_COUNT -eq 1 ]]; then
+      log_message "Downloaded $END (cached)"
+    else
+      log_message "Downloaded $BATCH_COUNT files (all cached)"
+    fi
+    return 0
+  fi
+
+  if [[ $DOWNLOAD_TOOL = "curl" ]]; then
+    download_batch_with_curl
+  elif [[ $DOWNLOAD_TOOL = "wget" ]]; then
+    download_batch_with_wget
+  fi
+
+  SUCCESS=1
+
+  for FILE in "${FILE_ARRAY[@]}"; do
+    if [[ -f "$FILE.tmp" ]]; then
+      if [[ $FILE =~ .*\.state\.txt$ ]]; then
+        if verify_file "$FILE.tmp" "text"; then
+          mv "$FILE.tmp" "$FILE"
+        else
+          log_error "State file failed verification: $FILE"
+          rm -f "$FILE.tmp"
+          SUCCESS=0
+        fi
+      elif [[ $FILE =~ .*\.osc\.gz$ ]]; then
+        if verify_file "$FILE.tmp" "gzip"; then
+          mv "$FILE.tmp" "$FILE"
+        else
+          log_error "OSC file failed verification: $FILE"
+          rm -f "$FILE.tmp"
+          SUCCESS=0
+        fi
       fi
     else
       SUCCESS=0
@@ -666,7 +768,7 @@ while true; do
     RETRY_COUNT=0
     while [[ $RETRY_COUNT -lt $QUICK_RETRY_COUNT ]]; do
       sleep_with_interrupts "$QUICK_RETRY_DELAY"
-      RETRY_COUNT=$((RETRY_COUNT + 1))
+      ((RETRY_COUNT += 1))
       
       MAX_AVAILABLE=$(get_latest_available_id)
       
@@ -698,7 +800,7 @@ while true; do
     log_message "Fetching $BATCH_COUNT files ($((CURRENT_ID + 1)) to $BATCH_END)"
   fi
   
-  if download_replicate_batch "$CURRENT_ID" "$BATCH_END"; then
+  if download_batch "$CURRENT_ID" "$BATCH_END"; then
     LAST_UPDATE_TIME=$(date +%s)
     update_fetch_state "$BATCH_END"
     CURRENT_ID=$BATCH_END
