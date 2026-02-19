@@ -110,13 +110,11 @@ CURL_SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}           # Time in seconds to check
 # FETCH_OSC_SPEED_LIMIT=102400
 # FETCH_OSC_SPEED_TIME=120
 
-# Network outage handling
-SOURCE_VERIFIED=false     # Flag to track if source URL has been verified
+SOURCE_VERIFIED=false  # Flag to track if source URL has been verified
 
-# Timestamp tracking
-LAST_UPDATE_WALL_CLOCK=   # Wall clock time when last update was downloaded
+LAST_UPDATE_TIME=      # Time when last update was downloaded
 
-# Get execution directory (where binaries are located)
+# Get execution directory
 EXEC_DIR="$(dirname "$0")/"
 if [[ ! "${EXEC_DIR:0:1}" == "/" ]]; then
   EXEC_DIR="$(pwd)/$EXEC_DIR"
@@ -130,14 +128,13 @@ if [[ ! -d "$DB_DIR" ]]; then
   exit 1
 fi
 
-# Database state file (tracks what's been applied)
+# Database state file
 DB_STATE_FILE="$DB_DIR/replicate_id"
-
 
 # Log file
 LOG_FILE="$LOCAL_DIR/fetch_osc.log"
 
-# Fetch state tracking file
+# Fetch state file
 FETCH_STATE_FILE="$LOCAL_DIR/replicate_id"
 
 # ============================================================================
@@ -149,9 +146,16 @@ log_message()
   echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
 }
 
+log_warning()
+{
+  echo "$(date -u '+%F %T'): WARNING: $1" >> "$LOG_FILE"
+  echo "WARNING: $1"
+}
+
 log_error()
 {
   echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
+  echo "ERROR: $1"
 }
 
 # ============================================================================
@@ -160,96 +164,96 @@ log_error()
 verify_globals()
 {
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]+$ ]]; then
-    echo "ERROR: Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
+    log_error "Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
     exit 1
   fi
 
   if [[ UPDATE_FREQUENCY -ne 60 && UPDATE_FREQUENCY -ne 3600 && UPDATE_FREQUENCY -ne 86400 ]]; then
-    echo "WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
+    log_warning "Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
   fi
 
   if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
-    echo "ERROR: Invalid UPDATE_TRIM: $UPDATE_TRIM"
+    log_error "Invalid UPDATE_TRIM: $UPDATE_TRIM"
     exit 1
   fi
 
   local ABS_TRIM=${UPDATE_TRIM#-}
   if [[ $ABS_TRIM -gt $((UPDATE_FREQUENCY / 10)) ]]; then
-    log_message "WARNING: UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    log_warning "UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
   fi
 
   if [[ ! "$QUICK_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
+    log_error "Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
     exit 1
   fi
 
   if [[ $QUICK_RETRY_DELAY -gt $((UPDATE_FREQUENCY / 10)) ]]; then
-    echo "WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    log_warning "QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
   fi
 
   if [[ ! "$QUICK_RETRY_COUNT" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
+    log_error "Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
     exit 1
   fi
 
   if [[ ! "$MAX_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
+    log_error "Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
     exit 1
   fi
 
   local MAX_POSSIBLE_BATCH_TIME=$((MAX_BATCH_SIZE * UPDATE_FREQUENCY))
   if [[ $MAX_POSSIBLE_BATCH_TIME -gt 86400 ]]; then
-    echo "WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
+    log_warning "MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
   fi
 
   if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]+$ ]]; then
-    echo "ERROR: Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
+    log_error "Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
     exit 1
   fi
 
   # verify that MAX_BATCH_TIME is at least UPDATE_FREQUENCY
   if [[ $MAX_BATCH_TIME -lt $UPDATE_FREQUENCY ]]; then
-    echo "ERROR: MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    log_error "MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
     exit 1
   fi
 
   # verify that MAX_BATCH_TIME is less than one day
   if [[ $MAX_BATCH_TIME -gt 86400 ]]; then
-    echo "WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
+    log_warning "MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
   fi
 
   if [[ ! "$CURL_MAX_RETRIES" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid CURL_MAX_RETRIES: $CURL_MAX_RETRIES"
+    log_error "Invalid CURL_MAX_RETRIES: $CURL_MAX_RETRIES"
     exit 1
   fi
 
   if [[ ! "$CURL_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_RETRY_DELAY: $CURL_RETRY_DELAY"
+    log_error "Invalid CURL_RETRY_DELAY: $CURL_RETRY_DELAY"
     exit 1
   fi
 
   if [[ ! "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
+    log_error "Invalid CURL_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
     exit 1
   fi
 
   if [[ ! "$CURL_KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
+    log_error "Invalid CURL_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
     exit 1
   fi
 
   if [[ ! "$CURL_PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_PARALLEL_MAX: $CURL_PARALLEL_MAX"
+    log_error "Invalid CURL_PARALLEL_MAX: $CURL_PARALLEL_MAX"
     exit 1
   fi
 
   if [[ ! "$CURL_SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid CURL_SPEED_LIMIT: $CURL_SPEED_LIMIT"
+    log_error "Invalid CURL_SPEED_LIMIT: $CURL_SPEED_LIMIT"
     exit 1
   fi
 
   if [[ ! "$CURL_SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CURL_SPEED_TIME: $CURL_SPEED_TIME"
+    log_error "Invalid CURL_SPEED_TIME: $CURL_SPEED_TIME"
     exit 1
   fi
 }
@@ -260,14 +264,14 @@ verify_globals()
 
 calculate_sleep_time()
 {
-  if [[ -z "$LAST_UPDATE_WALL_CLOCK" ]]; then
+  if [[ -z "$LAST_UPDATE_TIME" ]]; then
     echo $((UPDATE_FREQUENCY / 4))
     return
   fi
   
   local NOW
   NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + UPDATE_FREQUENCY + UPDATE_TRIM))
+  local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
   
   if [[ $SLEEP_TIME -lt 0 ]]; then
@@ -320,9 +324,6 @@ verify_file()
 # REMOTE STATE CHECKING
 # ============================================================================
 
-# Fetch and parse remote state.txt to get latest available replicate ID
-# During network outages (after source has been verified), waits patiently
-# Outputs the sequence number to stdout, or nothing on failure
 get_latest_available_id()
 {
   local REMOTE_STATE="$LOCAL_DIR/state.txt"
@@ -340,31 +341,24 @@ get_latest_available_id()
 
     local CURL_EXIT=$?
 
-    # If download succeeded, verify before using
     if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
-      # Verify file is valid (not HTML, has required fields)
       if verify_file "$REMOTE_STATE_TMP" "text"; then
-        # Valid - move to final location and parse
         mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
         local SEQ_LINE
         SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE")
         if [[ -n "$SEQ_LINE" ]]; then
-          # Parse the number (format is "sequenceNumber=12345")
           echo $((${SEQ_LINE#*=} + 0))
           return 0
         fi
       else
-        # Invalid file (HTML error page, corrupted, missing fields)
         log_error "Downloaded state.txt failed validation (may be HTML error page or corrupted data)"
         rm -f "$REMOTE_STATE_TMP"
       fi
     fi
 
     # Download failed or file invalid
-    # Check the SOURCE_VERIFIED flag (set in main loop, not here due to subshell)
     if [[ "$SOURCE_VERIFIED" == "true" ]]; then
-      # Source was previously working - this is likely a network outage
-      # Wait patiently and retry
+      # Source was previously working - wait patiently and retry
       log_message "Unable to reach replication source (likely network outage), retrying in ${UPDATE_FREQUENCY}s..."
       sleep_with_interrupts "$UPDATE_FREQUENCY"
       # Continue loop to retry
@@ -381,10 +375,6 @@ get_latest_available_id()
 # PATH CONVERSION
 # ============================================================================
 
-# Convert replicate ID to directory path
-# Usage: get_replicate_path <id>
-# Sets global variables: DIGIT1, DIGIT2, DIGIT3, REPLICATE_PATH
-# Note: These are intentionally global to avoid subshell overhead in tight loops
 get_replicate_path()
 {
   local ID=$1
@@ -399,7 +389,7 @@ get_replicate_path()
 }
 
 # ============================================================================
-# BATCH DOWNLOAD WITH CONNECTION REUSE
+# BATCH DOWNLOAD
 # ============================================================================
 
 download_replicate_batch()
@@ -414,7 +404,7 @@ download_replicate_batch()
   local REMOTE_BASE
   local DIR_PATH
   local OSC_FILE
-  local STATE_FILE_LOCAL
+  local STATE_FILE
   local ID
   local TEMP_CONFIG
   local STATE_IDX
@@ -423,7 +413,6 @@ download_replicate_batch()
   local CURL_ERROR_LOG
   local CURL_EXIT
   local SUCCESS
-  local STATE_FILE
 
   for (( ID=START+1; ID<=END; ID++ )); do
     get_replicate_path "$ID"
@@ -437,11 +426,11 @@ download_replicate_batch()
     }; fi
 
     OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
-    STATE_FILE_LOCAL="$DIR_PATH/$DIGIT3.state.txt"
+    STATE_FILE="$DIR_PATH/$DIGIT3.state.txt"
 
-    if ! verify_file "$STATE_FILE_LOCAL" "text"; then
+    if ! verify_file "$STATE_FILE" "text"; then
       URL_ARRAY+=("$REMOTE_BASE.state.txt")
-      STATE_ARRAY+=("$STATE_FILE_LOCAL")
+      STATE_ARRAY+=("$STATE_FILE")
     fi
 
     if ! verify_file "$OSC_FILE" "gzip"; then
@@ -477,7 +466,6 @@ download_replicate_batch()
     fi
   done
   
-  # Download all files with connection reuse
   CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$$.log"
 
   curl -fsSL \
@@ -498,7 +486,6 @@ download_replicate_batch()
   if [[ $CURL_EXIT -ne 0 ]]; then
     log_error "Batch download failed (curl exit code: $CURL_EXIT)"
     
-    # Log curl error details if available
     if [[ -s "$CURL_ERROR_LOG" ]]; then
       log_error "Curl error output:"
       while IFS= read -r line; do
@@ -506,7 +493,6 @@ download_replicate_batch()
       done < "$CURL_ERROR_LOG"
     fi
     
-    # Provide context for common error codes
     case $CURL_EXIT in
       6)  log_error "Exit 6: Could not resolve host" ;;
       7)  log_error "Exit 7: Failed to connect to host" ;;
@@ -520,50 +506,40 @@ download_replicate_batch()
       55) log_error "Exit 55: Failed sending network data" ;;
       56) log_error "Exit 56: Failed receiving network data" ;;
     esac
-    
-    rm -f "$CURL_ERROR_LOG"
-    
-    # Clean up temp files
-    for (( ID=START+1; ID<=END; ID++ )); do
-      get_replicate_path "$ID"
-      rm -f "$LOCAL_DIR/$REPLICATE_PATH.state.txt.tmp"
-      rm -f "$LOCAL_DIR/$REPLICATE_PATH.osc.gz.tmp"
-    done
-    return 1
   fi
   
-  # Clean up error log if successful
   rm -f "$CURL_ERROR_LOG"
 
   SUCCESS=1
 
-  for (( ID=START+1; ID<=END; ID++ )); do
-    get_replicate_path "$ID"
-    DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
-    STATE_FILE="$DIR_PATH/$DIGIT3.state.txt"
-    OSC_FILE="$DIR_PATH/$DIGIT3.osc.gz"
-    
+  for STATE_FILE in "${STATE_ARRAY[@]}"; do
     if [[ -f "$STATE_FILE.tmp" ]]; then
       if verify_file "$STATE_FILE.tmp" "text"; then
         mv "$STATE_FILE.tmp" "$STATE_FILE"
       else
-        log_error "State file failed verification: $ID"
+        log_error "State file failed verification: $STATE_FILE"
         rm -f "$STATE_FILE.tmp"
         SUCCESS=0
       fi
+    else
+      SUCCESS=0
     fi
-    
+  done
+
+  for OSC_FILE in "${OSC_ARRAY[@]}"; do
     if [[ -f "$OSC_FILE.tmp" ]]; then
       if verify_file "$OSC_FILE.tmp" "gzip"; then
         mv "$OSC_FILE.tmp" "$OSC_FILE"
       else
-        log_error "OSC file failed verification: $ID"
+        log_error "OSC file failed verification: $OSC_FILE"
         rm -f "$OSC_FILE.tmp"
         SUCCESS=0
       fi
+    else
+      SUCCESS=0
     fi
   done
-  
+
   if [[ $SUCCESS -eq 1 ]]; then
     if [[ $BATCH_COUNT -eq 1 ]]; then
       log_message "Downloaded $END"
@@ -639,8 +615,6 @@ verify_globals
 log_message "Starting fetch from $SOURCE_URL to $LOCAL_DIR"
 
 if [[ "$START_ID" == "auto" ]]; then
-  # In auto mode, start from the database state (what's been applied)
-  # Check that database state file exists and has valid content
   if [[ ! -f "$DB_STATE_FILE" || ! -s "$DB_STATE_FILE" ]]; then
     echo "ERROR: $DB_STATE_FILE does not exist and start set to auto"
     echo "Auto mode requires an existing replicate_id to resume from"
@@ -651,14 +625,12 @@ if [[ "$START_ID" == "auto" ]]; then
   DB_ID=$(read_db_state)
   FETCH_ID=$(read_fetch_state)
 
-  # Sanity check - state should be a valid number > 0
   if [[ $DB_ID -eq 0 && $FETCH_ID -eq 0 ]]; then
     echo "ERROR: Both database and fetch state are 0 in auto mode"
     echo "Cannot determine where to resume from"
     exit 1
   fi
 
-  # Use whichever is higher (in case fetch was ahead when restarted)
   if [[ $FETCH_ID -gt $DB_ID ]]; then
     CURRENT_ID=$FETCH_ID
     log_message "Auto mode: resuming from $CURRENT_ID (fetch ahead of apply)"
@@ -704,12 +676,8 @@ while true; do
       RETRY_COUNT=$((RETRY_COUNT + 1))
       
       MAX_AVAILABLE=$(get_latest_available_id)
-      # get_latest_available_id will retry internally if SOURCE_VERIFIED=true
-      # If it returns empty, there's a serious problem, but we should still
-      # fall back to slow retry rather than exiting
       
       if [[ -n "$MAX_AVAILABLE" && $MAX_AVAILABLE -gt $CURRENT_ID ]]; then
-        # New data found!
         break
       fi
       
@@ -726,7 +694,6 @@ while true; do
     fi
   fi
   
-  # Determine batch size
   BATCH_END=$MAX_AVAILABLE
   (( CURRENT_ID + MAX_BATCH_SIZE < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_SIZE))
   (( CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY))
@@ -739,7 +706,7 @@ while true; do
   fi
   
   if download_replicate_batch "$CURRENT_ID" "$BATCH_END"; then
-    LAST_UPDATE_WALL_CLOCK=$(date +%s)
+    LAST_UPDATE_TIME=$(date +%s)
     update_fetch_state "$BATCH_END"
     CURRENT_ID=$BATCH_END
   else
