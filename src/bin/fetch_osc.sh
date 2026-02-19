@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Copyright 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018 Roland Olbricht et al.
-# With improvements in 2025 by Kai Johnson
+# With improvements in 2025, 2026 by Kai Johnson
 #
 # This file is part of Overpass_API.
 #
@@ -20,7 +20,7 @@
 
 # ============================================================================
 # Script: fetch_osc.sh
-# Purpose: Downloads minutely OpenStreetMap change files from remote source
+# Purpose: Downloads OpenStreetMap replication files from remote source
 #          with atomic operations, integrity checking, and connection reuse
 # ============================================================================
 
@@ -378,10 +378,10 @@ get_latest_available_id()
 
     if [[ $TOOL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
       if verify_file "$REMOTE_STATE_TMP" "text"; then
-        mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
         local SEQ_LINE
-        SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE")
+        SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE_TMP")
         if [[ -n "$SEQ_LINE" ]]; then
+          mv "$REMOTE_STATE_TMP" "$REMOTE_STATE" || log_error "Unable to update $REMOTE_STATE"
           echo $((${SEQ_LINE#*=} + 0))
           return 0
         fi
@@ -445,7 +445,7 @@ download_batch_with_curl()
   for URL in "${URL_ARRAY[@]}"; do
     echo "url = \"$URL\"" >> "$CURL_CONFIG"
     echo "output = \"${FILE_ARRAY[$INDEX]}.tmp\"" >> "$CURL_CONFIG"
-    ((INDEX += 1))
+    ((++INDEX))
   done
   
   CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$$.log"
@@ -546,7 +546,7 @@ download_batch_with_wget()
       break
     fi
 
-    (( INDEX += 1 ))
+    ((++INDEX))
   done
 
   rm -f "$WGET_ERROR_LOG"
@@ -568,8 +568,10 @@ download_batch()
   local FILE
   local URL_ARRAY=()
   local FILE_ARRAY=()
+  local CACHED_COUNT
   local SUCCESS
 
+  CACHED_COUNT=0
   for (( ID=START+1; ID<=END; ID++ )); do
     get_path "$ID"
 
@@ -585,14 +587,20 @@ download_batch()
     if ! verify_file "$FILE" "text"; then
       URL_ARRAY+=("$REMOTE_BASE.state.txt")
       FILE_ARRAY+=("$FILE")
+    else
+      ((++CACHED_COUNT))
     fi
 
     FILE="$DIR_PATH/$DIGIT3.osc.gz"
     if ! verify_file "$FILE" "gzip"; then
       URL_ARRAY+=("$REMOTE_BASE.osc.gz")
       FILE_ARRAY+=("$FILE")
+    else
+      ((++CACHED_COUNT))
     fi
   done
+
+  [[ $CACHED_COUNT -gt 0 ]] && log_message "Verified ($((CACHED_COUNT * 50 / BATCH_COUNT))%) of files already cached"
 
   if [[ ${#URL_ARRAY[@]} -eq 0 ]]; then
     if [[ $BATCH_COUNT -eq 1 ]]; then
@@ -615,7 +623,11 @@ download_batch()
     if [[ -f "$FILE.tmp" ]]; then
       if [[ $FILE =~ .*\.state\.txt$ ]]; then
         if verify_file "$FILE.tmp" "text"; then
-          mv "$FILE.tmp" "$FILE"
+          if ! mv "$FILE.tmp" "$FILE"; then
+            log_error "Unable to save $FILE"
+            rm -f "$FILE.tmp"
+            SUCCESS=0
+          fi
         else
           log_error "State file failed verification: $FILE"
           rm -f "$FILE.tmp"
@@ -623,7 +635,11 @@ download_batch()
         fi
       elif [[ $FILE =~ .*\.osc\.gz$ ]]; then
         if verify_file "$FILE.tmp" "gzip"; then
-          mv "$FILE.tmp" "$FILE"
+          if ! mv "$FILE.tmp" "$FILE"; then
+            log_error "Unable to save $FILE"
+            rm -f "$FILE.tmp"
+            SUCCESS=0
+          fi
         else
           log_error "OSC file failed verification: $FILE"
           rm -f "$FILE.tmp"
@@ -678,7 +694,7 @@ update_fetch_state()
 {
   local NEW_ID=$1
   echo "$NEW_ID" > "$FETCH_STATE_FILE.tmp"
-  mv "$FETCH_STATE_FILE.tmp" "$FETCH_STATE_FILE"
+  mv "$FETCH_STATE_FILE.tmp" "$FETCH_STATE_FILE" || log_error "Unable to update $FETCH_STATE_FILE"
 }
 
 # ============================================================================
@@ -768,7 +784,7 @@ while true; do
     RETRY_COUNT=0
     while [[ $RETRY_COUNT -lt $QUICK_RETRY_COUNT ]]; do
       sleep_with_interrupts "$QUICK_RETRY_DELAY"
-      ((RETRY_COUNT += 1))
+      ((++RETRY_COUNT))
       
       MAX_AVAILABLE=$(get_latest_available_id)
       
