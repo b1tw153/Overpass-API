@@ -569,6 +569,7 @@ download_batch()
   local URL_ARRAY=()
   local FILE_ARRAY=()
   local CACHED_COUNT
+  local TYPE
   local SUCCESS
 
   CACHED_COUNT=0
@@ -622,29 +623,20 @@ download_batch()
   for FILE in "${FILE_ARRAY[@]}"; do
     if [[ -f "$FILE.tmp" ]]; then
       if [[ $FILE =~ .*\.state\.txt$ ]]; then
-        if verify_file "$FILE.tmp" "text"; then
-          if ! mv "$FILE.tmp" "$FILE"; then
-            log_error "Unable to save $FILE"
-            rm -f "$FILE.tmp"
-            SUCCESS=0
-          fi
-        else
-          log_error "State file failed verification: $FILE"
-          rm -f "$FILE.tmp"
-          SUCCESS=0
-        fi
+        TYPE="text"
       elif [[ $FILE =~ .*\.osc\.gz$ ]]; then
-        if verify_file "$FILE.tmp" "gzip"; then
-          if ! mv "$FILE.tmp" "$FILE"; then
-            log_error "Unable to save $FILE"
-            rm -f "$FILE.tmp"
-            SUCCESS=0
-          fi
-        else
-          log_error "OSC file failed verification: $FILE"
+        TYPE="gzip"
+      fi
+      if verify_file "$FILE.tmp" "$TYPE"; then
+        if ! mv "$FILE.tmp" "$FILE"; then
+          log_error "Unable to save $FILE"
           rm -f "$FILE.tmp"
           SUCCESS=0
         fi
+      else
+        log_error "File failed verification: $FILE"
+        rm -f "$FILE.tmp"
+        SUCCESS=0
       fi
     else
       SUCCESS=0
