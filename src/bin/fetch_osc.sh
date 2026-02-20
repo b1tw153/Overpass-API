@@ -169,109 +169,150 @@ log_error()
 # ============================================================================
 verify_globals()
 {
+  local MESSAGE
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]+$ ]]; then
-    echo "ERROR: Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
+    MESSAGE="Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ UPDATE_FREQUENCY -ne 60 && UPDATE_FREQUENCY -ne 3600 && UPDATE_FREQUENCY -ne 86400 ]]; then
-    echo "WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
+    MESSAGE="WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
+    log_message "$MESSAGE"
+    echo "$MESSAGE"
   fi
 
   if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
-    echo "ERROR: Invalid UPDATE_TRIM: $UPDATE_TRIM"
+    MESSAGE="Invalid UPDATE_TRIM: $UPDATE_TRIM"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   local ABS_TRIM=${UPDATE_TRIM#-}
   if [[ $ABS_TRIM -gt $((UPDATE_FREQUENCY / 10)) ]]; then
-    echo "WARNING: UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    MESSAGE="WARNING: UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    log_message "$MESSAGE"
+    echo "$MESSAGE"
   fi
 
   if [[ ! "$QUICK_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
+    MESSAGE="Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ $QUICK_RETRY_DELAY -gt $((UPDATE_FREQUENCY / 10)) ]]; then
-    echo "WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    MESSAGE="WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    log_message "$MESSAGE"
+    echo "$MESSAGE"
   fi
 
   if [[ ! "$QUICK_RETRY_COUNT" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
+    MESSAGE="Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$MAX_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
+    MESSAGE="Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   local MAX_POSSIBLE_BATCH_TIME=$((MAX_BATCH_SIZE * UPDATE_FREQUENCY))
   if [[ $MAX_POSSIBLE_BATCH_TIME -gt 86400 ]]; then
-    echo "WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
+    MESSAGE="WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
+    log_message "$MESSAGE"
+    echo "$MESSAGE"
   fi
 
   if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]+$ ]]; then
-    echo "ERROR: Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
+    MESSAGE="Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   # verify that MAX_BATCH_TIME is at least UPDATE_FREQUENCY
   if [[ $MAX_BATCH_TIME -lt $UPDATE_FREQUENCY ]]; then
-    echo "ERROR: MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    MESSAGE="MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   # verify that MAX_BATCH_TIME is less than one day
   if [[ $MAX_BATCH_TIME -gt 86400 ]]; then
-    echo "WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
+    MESSAGE="WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
+    log_message "$MESSAGE"
+    echo "$MESSAGE"
   fi
 
   if [[ ! "$MAX_RETRIES" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid MAX_RETRIES: $MAX_RETRIES"
+    MESSAGE="Invalid MAX_RETRIES: $MAX_RETRIES"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid RETRY_DELAY: $RETRY_DELAY"
+    MESSAGE="Invalid RETRY_DELAY: $RETRY_DELAY"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid CONNECT_TIMEOUT: $CONNECT_TIMEOUT"
+    MESSAGE="Invalid CONNECT_TIMEOUT: $CONNECT_TIMEOUT"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid KEEPALIVE_TIME: $KEEPALIVE_TIME"
+    MESSAGE="Invalid KEEPALIVE_TIME: $KEEPALIVE_TIME"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid PARALLEL_MAX: $PARALLEL_MAX"
+    MESSAGE="Invalid PARALLEL_MAX: $PARALLEL_MAX"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$PARALLEL_MODE" =~ ^(immediate|multiplexed)$ ]]; then
-    echo "ERROR: Invalid PARALLEL_MODE: $PARALLEL_MODE"
-    echo "PARALLEL_MODE must be either \"immediate\" or \"multiplexed\""
+    MESSAGE="Invalid PARALLEL_MODE: $PARALLEL_MODE (must be \"immediate\" or \"multiplexed\")"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: Invalid SPEED_LIMIT: $SPEED_LIMIT"
+    MESSAGE="Invalid SPEED_LIMIT: $SPEED_LIMIT"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: Invalid SPEED_TIME: $SPEED_TIME"
+    MESSAGE="Invalid SPEED_TIME: $SPEED_TIME"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$DOWNLOAD_TOOL" =~ ^(curl|wget)$ ]]; then
-    echo "ERROR: Invalid DOWNLOAD_TOOL: $DOWNLOAD_TOOL"
-    echo "DOWNLOAD_TOOL must be either \"curl\" or \"wget\""
+    MESSAGE="Invalid DOWNLOAD_TOOL: $DOWNLOAD_TOOL (must be \"curl\" or \"wget\")"
+    log_error "$MESSAGE"
+    echo "ERROR: $MESSAGE"
     exit 1
   fi
 }
@@ -719,9 +760,10 @@ log_message "Starting fetch from $SOURCE_URL to $LOCAL_DIR"
 
 if [[ "$START_ID" == "auto" ]]; then
   if [[ ! -f "$DB_STATE_FILE" || ! -s "$DB_STATE_FILE" ]]; then
-    echo "ERROR: $DB_STATE_FILE does not exist and start set to auto"
-    echo "Auto mode requires an existing replicate_id to resume from"
-    echo "Use an explicit replicate ID instead of 'auto' to start fresh"
+    log_error "$DB_STATE_FILE does not exist and start set to auto"
+    log_error "Auto mode requires an existing replicate_id to resume from"
+    log_error "Use an explicit replicate ID instead of 'auto'"
+    echo "ERROR: Start set to auto and database has no replicate_id file"
     exit 1
   fi
 
@@ -729,8 +771,9 @@ if [[ "$START_ID" == "auto" ]]; then
   FETCH_ID=$(read_fetch_state)
 
   if [[ $DB_ID -eq 0 && $FETCH_ID -eq 0 ]]; then
-    echo "ERROR: Both database and fetch state are 0 in auto mode"
-    echo "Cannot determine where to resume from"
+    log_error "Cannot resume because both database and fetch state are 0 in auto mode"
+    log_error "Use an explicit replicate ID instead of 'auto'"
+    echo "ERROR: Cannot resume because both database and fetch state are 0 in auto mode"
     exit 1
   fi
 
@@ -754,6 +797,7 @@ while true; do
   # get_latest_available_id will wait during outages if source was previously verified
   # If it returns without a value and source was never verified, there's a config error
   if [[ -z "$MAX_AVAILABLE" ]]; then
+    log_error "Cannot initialize - replication source unreachable or invalid"
     echo "ERROR: Cannot initialize - replication source unreachable or invalid"
     exit 1
   fi
