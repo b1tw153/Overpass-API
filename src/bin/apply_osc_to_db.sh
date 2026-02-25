@@ -45,7 +45,7 @@ if [[ -z $3 ]]; then
   echo "  replicate_dir: Directory containing downloaded replicate files"
   echo "  start_id:      Starting replicate ID or 'auto' to resume from database state"
   echo "  --meta:        Metadata handling mode (attic=full history, yes=metadata, no=current only)"
-  exit 0
+  exit 1
 }; fi
 
 # ============================================================================
