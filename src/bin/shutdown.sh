@@ -133,8 +133,7 @@ stop_apply_osc() {
     local log_file="${DB_DIR}/apply_osc_to_db.log"
     if [[ -f "${log_file}" ]]; then
         local recent_activity
-        recent_activity=$(tail -n 10 "${log_file}" 2>/dev/null | grep -cE "Applying batch|Decompressing batch" || echo "0")
-        recent_activity=$(echo "${recent_activity}" | tr -d '\n' | head -c 10)  # Clean output
+        recent_activity=$(tail -n 10 "${log_file}" 2>/dev/null | grep -cE "Applying batch|Decompressing batch") || recent_activity=0
         
         if [[ ${recent_activity} -gt 0 ]]; then
             log "INFO" "${process_name} is currently applying a batch, waiting for completion..."
@@ -148,8 +147,7 @@ stop_apply_osc() {
                 
                 # Check if batch application finished (look for success message)
                 local completed
-                completed=$(tail -n 5 "${log_file}" 2>/dev/null | grep -cE "Successfully applied batch|No new OSC files available" || echo "0")
-                completed=$(echo "${completed}" | tr -d '\n' | head -c 10)  # Clean output
+                completed=$(tail -n 5 "${log_file}" 2>/dev/null | grep -cE "Successfully applied batch|No new OSC files available") || completed=0
                 
                 if [[ ${completed} -gt 0 ]]; then
                     log "INFO" "${process_name} completed its batch application"
@@ -165,7 +163,7 @@ stop_apply_osc() {
                 wait_count=$((wait_count + 1))
                 
                 if [[ $((wait_count % 6)) -eq 0 ]]; then
-                    log "INFO" "Still waiting for ${process_name} to complete batch (${wait_count} minutes elapsed)..."
+                    log "INFO" "Still waiting for ${process_name} to complete batch ($((wait_count * 10)) seconds elapsed)..."
                 fi
             done
             
