@@ -49,16 +49,6 @@ if [[ -z $3 ]]; then
 }; fi
 
 # ============================================================================
-# FAILURE HANDLING
-# ============================================================================
-
-fail()
-{
-  echo "$1"
-  exit 1
-}
-
-# ============================================================================
 # CONFIGURATION
 # ============================================================================
 
@@ -75,7 +65,8 @@ elif [[ $META_ARG == "--meta=yes" || $META_ARG == "--meta" ]]; then
 elif [[ $META_ARG == "--meta=no" ]]; then
   META=
 else
-  fail "ERROR: You must specify --meta=attic, --meta=yes, or --meta=no"
+  echo "ERROR: You must specify --meta=attic, --meta=yes, or --meta=no"
+  exit 1
 fi
 
 # Batch configuration
@@ -102,9 +93,12 @@ fi
 
 # Get database directory
 DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir)
+# Strip trailing slash if present
+DB_DIR="${DB_DIR%/}"
 
 if [[ ! -d "$DB_DIR" ]]; then
-  fail "ERROR: Database directory '$DB_DIR' does not exist"
+  echo "ERROR: Database directory '$DB_DIR' does not exist"
+  exit 1
 fi
 
 # State file
@@ -115,7 +109,10 @@ LOG_FILE="$DB_DIR/apply_osc_to_db.log"
 
 # Working directory for decompressed files
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/osm-3s_update_XXXXXX")
-mkdir -p "$WORK_DIR" || fail "ERROR: Unable to create working directory"
+if [[ ! -d "$WORK_DIR" ]]; then
+  log_error "Unable to create working directory"
+  exit 1
+fi
 
 # ============================================================================
 # LOGGING
@@ -128,7 +125,7 @@ log_message()
 
 log_error()
 {
-  echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
+  echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
 }
 
 # ============================================================================
@@ -136,20 +133,25 @@ log_error()
 # ============================================================================
 
 # Detect the meta mode of the database by checking for characteristic files
-# Returns: "no", "yes", or "attic"
+# Returns: "no", "yes", or "attic" via stdout
+# Returns 1 if base files are missing (database not initialized)
 detect_database_meta_state()
 {
   # Check for attic files (most specific check first)
   if [[ -f "$DB_DIR/nodes_attic.bin" || -f "$DB_DIR/node_changelog.bin" || -f "$DB_DIR/ways_attic.bin" ]]; then
     echo "attic"
+    return 0
+  fi
 
   # Check for meta files
-  elif [[ -f "$DB_DIR/nodes_meta.bin" || -f "$DB_DIR/ways_meta.bin" || -f "$DB_DIR/user_data.bin" ]]; then
+  if [[ -f "$DB_DIR/nodes_meta.bin" || -f "$DB_DIR/ways_meta.bin" || -f "$DB_DIR/user_data.bin" ]]; then
     echo "yes"
+    return 0
+  fi
 
   # No meta or attic files found - verify base files exist
-  elif [[ ! -f "$DB_DIR/nodes.bin" || ! -f "$DB_DIR/ways.bin" || ! -f "$DB_DIR/relations.bin" ]]; then
-    log_message "WARNING: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)\nThe database may not be properly initialized"
+  if [[ ! -f "$DB_DIR/nodes.bin" || ! -f "$DB_DIR/ways.bin" || ! -f "$DB_DIR/relations.bin" ]]; then
+    return 1
   fi
 
   echo "no"
@@ -165,6 +167,11 @@ validate_meta_mode()
   # Detect actual database state
   local DB_STATE
   DB_STATE=$(detect_database_meta_state)
+  if [[ $? -ne 0 ]]; then
+    log_message "WARNING: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
+    log_message "The database may not be properly initialized"
+    return 0
+  fi
 
   # Compare user mode with database state
   if [[ "$USER_MODE" != "$DB_STATE" ]]; then
@@ -181,8 +188,9 @@ read_current_state()
 {
   if [[ -f "$STATE_FILE" && -s "$STATE_FILE" ]]; then
     cat "$STATE_FILE"
+    return 0
   else
-    fail "ERROR: $STATE_FILE does not exist and start set to auto\nAuto mode requires an existing replicate_id to resume from\nUse an explicit replicate ID specify the starting point"
+    return 1
   fi
 }
 
@@ -190,10 +198,12 @@ update_state()
 {
   local NEW_ID=$1
   if ! {  echo "$NEW_ID" > "$STATE_FILE.tmp"; }; then
-    fail "ERROR: Failed to write new state to temporary file"
+    log_error "Failed to write new state to temporary file"
+    exit 1
   fi
   if ! mv "$STATE_FILE.tmp" "$STATE_FILE"; then
-    fail "ERROR: Failed to update state file"
+    log_error "Failed to update state file"
+    exit 1
   fi
 }
 
@@ -438,7 +448,10 @@ apply_batch()
 
   log_message "Applying batch to database (version: ${DATA_VERSION//\\/})"
 
-  cd "$EXEC_DIR" || fail "ERROR: Unable to cd to execution directory"
+  if ! cd "$EXEC_DIR"; then
+    log_error "Unable to cd to execution directory"
+    exit 1
+  fi
 
   local SUCCESS=0
   local RETRY_COUNT=0
@@ -455,7 +468,8 @@ apply_batch()
       log_error "update_from_dir failed due to context error (exit code: $EXITCODE)"
       log_message "Resolve the problem with the dispatcher before retrying"
       cd - >/dev/null || true
-      fail "ERROR: Dispatcher failure, cannot proceed"
+      log_error "Dispatcher failure, cannot proceed"
+      exit 1
     elif [[ $EXITCODE -eq 15 ]]; then
       log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
       cd - >/dev/null || true
@@ -464,7 +478,8 @@ apply_batch()
       # Unrecoverable errors: command not executable (126) or not found (127)
       log_error "Unable to run update_from_dir (exit code: $EXITCODE)"
       cd - >/dev/null || true
-      fail "ERROR: update_from_dir is not available or not executable"
+      log_error "update_from_dir is not available or not executable"
+      exit 1
     elif [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
       # Signal-based exits: process was killed/crashed (128+N where N is signal number)
       log_error "update_from_dir terminated by signal (exit code: $EXITCODE), cleaning up..."
@@ -481,7 +496,10 @@ apply_batch()
     fi
   done
 
-  cd - >/dev/null || fail "ERROR: Unable to cd back to previous directory"
+  if ! cd - >/dev/null; then
+    log_error "Unable to cd back to previous directory"
+    exit 1
+  fi
 
   if [[ $SUCCESS -eq 0 ]]; then
     log_error "Failed to apply batch after $MAX_RETRIES attempts"
@@ -560,14 +578,22 @@ log_message "Starting apply process from $REPLICATE_DIR with $META_ARG"
 
 if [[ "$START_ID" == "auto" ]]; then
   CURRENT_ID=$(read_current_state)
+  if [[ $? -ne 0 ]]; then
+    log_error "$STATE_FILE does not exist and start set to auto"
+    log_error "Auto mode requires an existing replicate_id to resume from"
+    log_error "Use an explicit replicate ID to specify the starting point"
+    exit 1
+  fi
   if [[ $CURRENT_ID -lt 0 ]]; then
-    fail "ERROR: Current replicate ID in database is invalid: $CURRENT_ID"
+    log_error "Current replicate ID in database is invalid: $CURRENT_ID"
+    exit 1
   fi
   log_message "Auto mode: resuming from $CURRENT_ID"
 else
   CURRENT_ID=$START_ID
   if [[ $CURRENT_ID -lt 0 ]]; then
-    fail "ERROR: Specified start replicate ID is invalid: $CURRENT_ID"
+    log_error "Specified start replicate ID is invalid: $CURRENT_ID"
+    exit 1
   fi
   log_message "Starting from $CURRENT_ID"
 fi
@@ -576,12 +602,19 @@ validate_meta_mode
 
 # Run database migration
 log_message "Running database migration"
-cd "$EXEC_DIR" || fail "ERROR: Unable to cd to execution directory"
+if ! cd "$EXEC_DIR"; then
+  log_error "Unable to cd to execution directory"
+  exit 1
+fi
 ./migrate_database --migrate &
 if ! wait "$!"; then
-  fail "ERROR: Database migration failed"
+  log_error "Database migration failed"
+  exit 1
 fi
-cd - >/dev/null || fail "ERROR: Unable to cd back to previous directory"
+if ! cd - >/dev/null; then
+  log_error "Unable to cd back to previous directory"
+  exit 1
+fi
 
 # Delete old temp files
 log_message "Deleting old temporary files and directories"
@@ -593,7 +626,8 @@ while true; do
   # Try to collect a batch
   if ! collect_batch "$CURRENT_ID"; then
     if [[ -n "$START_TIME" && $(date +%s) -gt $((START_TIME + UPDATE_FREQUENCY * 2)) ]]; then
-      fail "ERROR: No new files to process after two update cycles. Is fetch_osc.sh running?"
+      log_error "No new files to process after two update cycles. Is fetch_osc.sh running?"
+      exit 1
     fi
     SLEEP_TIME=$(calculate_sleep_time)
     log_message "No new files available, waiting $SLEEP_TIME s"
