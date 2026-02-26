@@ -518,13 +518,13 @@ log_message "Starting apply process from $REPLICATE_DIR with $META_ARG"
 
 if [[ "$START_ID" == "auto" ]]; then
   CURRENT_ID=$(read_current_state)
-  if [[ CURRENT_ID -le 0 ]]; then
+  if [[ $CURRENT_ID -lt 0 ]]; then
     fail "ERROR: Current replicate ID in database is invalid: $CURRENT_ID"
   fi
   log_message "Auto mode: resuming from $CURRENT_ID"
 else
   CURRENT_ID=$START_ID
-  if [[ $CURRENT_ID -le 0 ]]; then
+  if [[ $CURRENT_ID -lt 0 ]]; then
     fail "ERROR: Specified start replicate ID is invalid: $CURRENT_ID"
   fi
   log_message "Starting from $CURRENT_ID"
