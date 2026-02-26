@@ -132,6 +132,48 @@ log_error()
 }
 
 # ============================================================================
+# DATABASE STATE DETECTION
+# ============================================================================
+
+# Detect the meta mode of the database by checking for characteristic files
+# Returns: "no", "yes", or "attic"
+detect_database_meta_state()
+{
+  # Check for attic files (most specific check first)
+  if [[ -f "$DB_DIR/nodes_attic.bin" || -f "$DB_DIR/node_changelog.bin" || -f "$DB_DIR/ways_attic.bin" ]]; then
+    echo "attic"
+
+  # Check for meta files
+  elif [[ -f "$DB_DIR/nodes_meta.bin" || -f "$DB_DIR/ways_meta.bin" || -f "$DB_DIR/user_data.bin" ]]; then
+    echo "yes"
+
+  # No meta or attic files found - verify base files exist
+  elif [[ ! -f "$DB_DIR/nodes.bin" || ! -f "$DB_DIR/ways.bin" || ! -f "$DB_DIR/relations.bin" ]]; then
+    log_message "WARNING: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)\nThe database may not be properly initialized"
+  fi
+
+  echo "no"
+  return 0
+}
+
+# Validate that user-specified meta mode matches database state
+validate_meta_mode()
+{
+  # Extract the mode from the argument
+  local USER_MODE="${META_ARG#--meta=}"
+
+  # Detect actual database state
+  local DB_STATE
+  DB_STATE=$(detect_database_meta_state)
+
+  # Compare user mode with database state
+  if [[ "$USER_MODE" != "$DB_STATE" ]]; then
+    log_message "WARNING: Meta mode mismatch. Argument: --meta=$USER_MODE; Database: --meta=$DB_STATE"
+    log_message "Proceeding with user-specified mode: --meta=$USER_MODE"
+  fi
+}
+
+# ============================================================================
 # STATE MANAGEMENT
 # ============================================================================
 
@@ -529,6 +571,8 @@ else
   fi
   log_message "Starting from $CURRENT_ID"
 fi
+
+validate_meta_mode
 
 # Run database migration
 log_message "Running database migration"
