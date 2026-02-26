@@ -770,13 +770,6 @@ if [[ "$START_ID" == "auto" ]]; then
   DB_ID=$(read_db_state)
   FETCH_ID=$(read_fetch_state)
 
-  if [[ $DB_ID -eq 0 && $FETCH_ID -eq 0 ]]; then
-    log_error "Cannot resume because both database and fetch state are 0 in auto mode"
-    log_error "Use an explicit replicate ID instead of 'auto'"
-    echo "ERROR: Cannot resume because both database and fetch state are 0 in auto mode"
-    exit 1
-  fi
-
   if [[ $FETCH_ID -gt $DB_ID ]]; then
     CURRENT_ID=$FETCH_ID
     log_message "Auto mode: resuming from $CURRENT_ID (fetch ahead of apply)"
