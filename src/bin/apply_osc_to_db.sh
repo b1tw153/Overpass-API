@@ -403,7 +403,7 @@ apply_batch()
   local MAX_RETRIES=5
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" "$META" --flush-size=0 &
+    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" $META --flush-size=0 &
     wait "$!"
     local EXITCODE=$?
 
