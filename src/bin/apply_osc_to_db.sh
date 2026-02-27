@@ -323,11 +323,12 @@ collect_batch()
       break
     fi
 
-    # Check size limit: would adding this file exceed the limit?
-    local NEW_BATCH_SIZE=$((BATCH_SIZE_BYTES + UNCOMPRESSED_SIZE))
-    if [[ $NEW_BATCH_SIZE -gt $MAX_BATCH_SIZE_BYTES ]]; then
+    # Check size limit: is the current batch already at or over the limit?
+    if [[ $BATCH_SIZE_BYTES -gt $MAX_BATCH_SIZE_BYTES ]]; then
       break
     fi
+
+    local NEW_BATCH_SIZE=$((BATCH_SIZE_BYTES + UNCOMPRESSED_SIZE))
 
     # Get timestamp for this file
     local FILE_TIMESTAMP_EPOCH
