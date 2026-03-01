@@ -599,6 +599,12 @@ else
   log_message "Starting from $CURRENT_ID"
 fi
 
+# Pre-flight check: verify state file is writeable before doing any work
+if ! touch "$STATE_FILE"; then
+  log_error "State file $STATE_FILE is not writeable"
+  exit 1
+fi
+
 validate_meta_mode
 
 # Run database migration
