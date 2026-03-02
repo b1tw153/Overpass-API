@@ -126,6 +126,7 @@ SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}                  # Time in seconds to che
 SOURCE_VERIFIED=false  # Flag to track if source URL has been verified
 
 LAST_UPDATE_TIME=      # Time when last update was downloaded
+LATEST_AVAILABLE_ID=   # Result of get_latest_available_id
 
 # Get execution directory
 EXEC_DIR="$(dirname "$0")/"
@@ -156,12 +157,12 @@ FETCH_STATE_FILE="$LOCAL_DIR/replicate_id"
 
 log_message()
 {
-  echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
+  echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
 }
 
 log_error()
 {
-  echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
+  echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
 }
 
 # ============================================================================
@@ -173,20 +174,17 @@ verify_globals()
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]+$ ]]; then
     MESSAGE="Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ UPDATE_FREQUENCY -ne 60 && UPDATE_FREQUENCY -ne 3600 && UPDATE_FREQUENCY -ne 86400 ]]; then
     MESSAGE="WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
     log_message "$MESSAGE"
-    echo "$MESSAGE"
   fi
 
   if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
     MESSAGE="Invalid UPDATE_TRIM: $UPDATE_TRIM"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
@@ -194,33 +192,28 @@ verify_globals()
   if [[ $ABS_TRIM -gt $((UPDATE_FREQUENCY / 10)) ]]; then
     MESSAGE="WARNING: UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
     log_message "$MESSAGE"
-    echo "$MESSAGE"
   fi
 
   if [[ ! "$QUICK_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ $QUICK_RETRY_DELAY -gt $((UPDATE_FREQUENCY / 10)) ]]; then
     MESSAGE="WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
     log_message "$MESSAGE"
-    echo "$MESSAGE"
   fi
 
   if [[ ! "$QUICK_RETRY_COUNT" =~ ^[0-9]+$ ]]; then
     MESSAGE="Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$MAX_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
@@ -228,13 +221,11 @@ verify_globals()
   if [[ $MAX_POSSIBLE_BATCH_TIME -gt 86400 ]]; then
     MESSAGE="WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
     log_message "$MESSAGE"
-    echo "$MESSAGE"
   fi
 
   if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]+$ ]]; then
     MESSAGE="Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
@@ -242,7 +233,6 @@ verify_globals()
   if [[ $MAX_BATCH_TIME -lt $UPDATE_FREQUENCY ]]; then
     MESSAGE="MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
@@ -250,69 +240,59 @@ verify_globals()
   if [[ $MAX_BATCH_TIME -gt 86400 ]]; then
     MESSAGE="WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
     log_message "$MESSAGE"
-    echo "$MESSAGE"
   fi
 
   if [[ ! "$MAX_RETRIES" =~ ^[0-9]+$ ]]; then
     MESSAGE="Invalid MAX_RETRIES: $MAX_RETRIES"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid RETRY_DELAY: $RETRY_DELAY"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid CONNECT_TIMEOUT: $CONNECT_TIMEOUT"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid KEEPALIVE_TIME: $KEEPALIVE_TIME"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid PARALLEL_MAX: $PARALLEL_MAX"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$PARALLEL_MODE" =~ ^(immediate|multiplexed)$ ]]; then
     MESSAGE="Invalid PARALLEL_MODE: $PARALLEL_MODE (must be \"immediate\" or \"multiplexed\")"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
     MESSAGE="Invalid SPEED_LIMIT: $SPEED_LIMIT"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid SPEED_TIME: $SPEED_TIME"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 
   if [[ ! "$DOWNLOAD_TOOL" =~ ^(curl|wget)$ ]]; then
     MESSAGE="Invalid DOWNLOAD_TOOL: $DOWNLOAD_TOOL (must be \"curl\" or \"wget\")"
     log_error "$MESSAGE"
-    echo "ERROR: $MESSAGE"
     exit 1
   fi
 }
@@ -385,6 +365,7 @@ verify_file()
 
 get_latest_available_id()
 {
+  LATEST_AVAILABLE_ID=
   local REMOTE_STATE="$LOCAL_DIR/state.txt"
   local REMOTE_STATE_TMP="$REMOTE_STATE.tmp"
 
@@ -423,7 +404,7 @@ get_latest_available_id()
         SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE_TMP")
         if [[ -n "$SEQ_LINE" ]]; then
           mv "$REMOTE_STATE_TMP" "$REMOTE_STATE" || log_error "Unable to update $REMOTE_STATE"
-          echo $((${SEQ_LINE#*=} + 0))
+          LATEST_AVAILABLE_ID=$((${SEQ_LINE#*=} + 0))
           return 0
         fi
       else
@@ -763,7 +744,6 @@ if [[ "$START_ID" == "auto" ]]; then
     log_error "$DB_STATE_FILE does not exist and start set to auto"
     log_error "Auto mode requires an existing replicate_id to resume from"
     log_error "Use an explicit replicate ID instead of 'auto'"
-    echo "ERROR: Start set to auto and database has no replicate_id file"
     exit 1
   fi
 
@@ -785,15 +765,11 @@ else
 fi
 
 while true; do
-  MAX_AVAILABLE=$(get_latest_available_id)
-  
-  # get_latest_available_id will wait during outages if source was previously verified
-  # If it returns without a value and source was never verified, there's a config error
-  if [[ -z "$MAX_AVAILABLE" ]]; then
+  if ! get_latest_available_id; then
     log_error "Cannot initialize - replication source unreachable or invalid"
-    echo "ERROR: Cannot initialize - replication source unreachable or invalid"
     exit 1
   fi
+  MAX_AVAILABLE=$LATEST_AVAILABLE_ID
   
   # Mark source as verified after first successful fetch
   if [[ "$SOURCE_VERIFIED" != "true" ]]; then
@@ -815,8 +791,9 @@ while true; do
       sleep_with_interrupts "$QUICK_RETRY_DELAY"
       ((++RETRY_COUNT))
       
-      MAX_AVAILABLE=$(get_latest_available_id)
-      
+      get_latest_available_id
+      MAX_AVAILABLE=$LATEST_AVAILABLE_ID
+
       if [[ -n "$MAX_AVAILABLE" && $MAX_AVAILABLE -gt $CURRENT_ID ]]; then
         break
       fi
