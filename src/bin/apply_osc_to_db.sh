@@ -107,12 +107,8 @@ STATE_FILE="$DB_DIR/replicate_id"
 # Log file
 LOG_FILE="$DB_DIR/apply_osc_to_db.log"
 
-# Working directory for decompressed files
-WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/osm-3s_update_XXXXXX")
-if [[ ! -d "$WORK_DIR" ]]; then
-  log_error "Unable to create working directory"
-  exit 1
-fi
+# Working directory for decompressed files (created in main execution section)
+WORK_DIR=
 
 # ============================================================================
 # LOGGING
@@ -626,6 +622,13 @@ fi
 # Delete old temp files
 log_message "Deleting old temporary files and directories"
 rm -rf "${TMPDIR:-/tmp}"/osm-3s_update_*
+
+# Create working directory for decompressed files
+WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/osm-3s_update_XXXXXX")
+if [[ ! -d "$WORK_DIR" ]]; then
+  log_error "Unable to create working directory"
+  exit 1
+fi
 
 START_TIME=$(date +%s)
 
