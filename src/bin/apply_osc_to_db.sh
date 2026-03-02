@@ -375,7 +375,10 @@ prepare_batch()
   local COUNT=$((END - START))
   local OUT_DIR="$3"
 
-  mkdir -p "$OUT_DIR"
+  if ! mkdir -p "$OUT_DIR"; then
+    log_error "Unable to create output directory $OUT_DIR"
+    return 1
+  fi
 
   if [[ $COUNT -eq 1 ]]; then
     log_message "Decompressing file: $END"
@@ -651,7 +654,10 @@ while true; do
   # Prepare processing directory
   PROCESS_DIR="$WORK_DIR/process_$BATCH_END"
   rm -rf "$PROCESS_DIR"
-  mkdir -p "$PROCESS_DIR"
+  if ! mkdir -p "$PROCESS_DIR"; then
+    log_error "Unable to create processing directory $PROCESS_DIR"
+    exit 1
+  fi
 
   # Decompress batch
   if ! prepare_batch "$CURRENT_ID" "$BATCH_END" "$PROCESS_DIR"; then
