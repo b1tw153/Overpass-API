@@ -70,12 +70,12 @@ else
 fi
 
 # Batch configuration
-MAX_BATCH_MB=${APPLY_OSC_TO_DB_MAX_BATCH_MB:-512}       # Maximum uncompressed size per batch (MB)
-MAX_BATCH_TIME=${APPLY_OSC_TO_DB_MAX_BATCH_TIME:-86400} # Maximum time span per batch (1 day = 86400 seconds)
+MAX_BATCH_MB=${APPLY_OSC_MAX_BATCH_MB:-512}       # Maximum uncompressed size per batch (MB)
+MAX_BATCH_TIME=${APPLY_OSC_MAX_BATCH_TIME:-86400} # Maximum time span per batch (1 day = 86400 seconds)
 
 # Update configuration
 UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds
-UPDATE_TRIM=${APPLY_OSC_TO_DB_UPDATE_TRIM:--3}          # Seconds to adjust expected update time
+UPDATE_TRIM=${APPLY_OSC_UPDATE_TRIM:--3}          # Seconds to adjust expected update time
 
 # Timestamp tracking
 LAST_UPDATE_WALL_CLOCK=                                 # Wall clock time when last update was collected
