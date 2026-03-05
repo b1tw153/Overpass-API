@@ -142,6 +142,11 @@ int main(int argc, char* argv[])
         break;
     }
   }
+  if (source_dir.empty())
+  {
+    std::cerr<<argv[0]<<": --osc-dir is required\n";
+    abort = true;
+  }
   if (abort)
   {
     std::cerr<<"Usage: "<<argv[0]<<" --osc-dir=DIR"
