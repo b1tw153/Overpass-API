@@ -23,6 +23,7 @@
 #include <sstream>
 
 #include <dirent.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -91,41 +92,55 @@ int main(int argc, char* argv[])
   bool abort = false;
   unsigned int flush_limit = 16*1024*1024;
 
-  int argpos(1);
-  while (argpos < argc)
+  enum { OPT_DB_DIR = 1, OPT_OSC_DIR, OPT_VERSION,
+         OPT_DATA_ONLY, OPT_META, OPT_KEEP_ATTIC, OPT_FLUSH_SIZE };
+  static const struct option long_options[] = {
+    {"db-dir",     required_argument, nullptr, OPT_DB_DIR},
+    {"osc-dir",    required_argument, nullptr, OPT_OSC_DIR},
+    {"version",    required_argument, nullptr, OPT_VERSION},
+    {"data-only",  no_argument,       nullptr, OPT_DATA_ONLY},
+    {"meta",       no_argument,       nullptr, OPT_META},
+    {"keep-attic", no_argument,       nullptr, OPT_KEEP_ATTIC},
+    {"flush-size", required_argument, nullptr, OPT_FLUSH_SIZE},
+    {nullptr,      0,                 nullptr, 0}
+  };
+
+  int opt;
+  while ((opt = getopt_long(argc, argv, "", long_options, nullptr)) != -1)
   {
-    if (!(strncmp(argv[argpos], "--db-dir=", 9)))
+    switch (opt)
     {
-      db_dir = ((std::string)argv[argpos]).substr(9);
-      if ((db_dir.size() > 0) && (db_dir[db_dir.size()-1] != '/'))
-	db_dir += '/';
+      case OPT_DB_DIR:
+        db_dir = optarg;
+        if (!db_dir.empty() && db_dir.back() != '/')
+          db_dir += '/';
+        break;
+      case OPT_OSC_DIR:
+        source_dir = optarg;
+        if (!source_dir.empty() && source_dir.back() != '/')
+          source_dir += '/';
+        break;
+      case OPT_VERSION:
+        data_version = optarg;
+        break;
+      case OPT_DATA_ONLY:
+        meta.set_mode(Database_Meta_State::only_data);
+        break;
+      case OPT_META:
+        meta.set_mode(Database_Meta_State::keep_meta);
+        break;
+      case OPT_KEEP_ATTIC:
+        meta.set_mode(Database_Meta_State::keep_attic);
+        break;
+      case OPT_FLUSH_SIZE:
+        flush_limit = atoll(optarg) * 1024 * 1024;
+        if (flush_limit == 0)
+          flush_limit = std::numeric_limits< unsigned int >::max();
+        break;
+      default:
+        abort = true;
+        break;
     }
-    else if (!(strncmp(argv[argpos], "--osc-dir=", 10)))
-    {
-      source_dir = ((std::string)argv[argpos]).substr(10);
-      if ((source_dir.size() > 0) && (source_dir[source_dir.size()-1] != '/'))
-	source_dir += '/';
-    }
-    else if (!(strncmp(argv[argpos], "--version=", 10)))
-      data_version = ((std::string)argv[argpos]).substr(10);
-    else if (!(strncmp(argv[argpos], "--data-only", 11)))
-      meta.set_mode(Database_Meta_State::only_data);
-    else if (!(strncmp(argv[argpos], "--meta", 6)))
-      meta.set_mode(Database_Meta_State::keep_meta);
-    else if (!(strncmp(argv[argpos], "--keep-attic", 12)))
-      meta.set_mode(Database_Meta_State::keep_attic);
-    else if (!(strncmp(argv[argpos], "--flush-size=", 13)))
-    {
-      flush_limit = atoll(std::string(argv[argpos]).substr(13).c_str()) *1024*1024;
-      if (flush_limit == 0)
-        flush_limit = std::numeric_limits< unsigned int >::max();
-    }
-    else
-    {
-      std::cerr<<"Unkown argument: "<<argv[argpos]<<'\n';
-      abort = true;
-    }
-    ++argpos;
   }
   if (abort)
   {
