@@ -133,10 +133,19 @@ int main(int argc, char* argv[])
         meta.set_mode(Database_Meta_State::keep_attic);
         break;
       case OPT_FLUSH_SIZE:
-        flush_limit = atoll(optarg) * 1024 * 1024;
-        if (flush_limit == 0)
+      {
+        long long flush_size = atoll(optarg);
+        if (flush_size == 0)
           flush_limit = std::numeric_limits< unsigned int >::max();
+        else if (flush_size < 0 || flush_size > std::numeric_limits< unsigned int >::max() / (1024 * 1024))
+        {
+          std::cerr<<argv[0]<<": --flush-size value out of range: "<<optarg<<'\n';
+          abort = true;
+        }
+        else
+          flush_limit = static_cast< unsigned int >(flush_size * 1024 * 1024);
         break;
+      }
       default:
         abort = true;
         break;
