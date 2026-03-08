@@ -577,3 +577,69 @@ If a single index group exceeds `block_size`, it spans multiple consecutive bloc
 | Block write / flush logic | `src/template_db/block_backend_write.h` | 27–73 |
 | Compression constants | `src/template_db/types.h` | 86–90 |
 | `Block_Backend` API | `src/template_db/block_backend.h` | 499–540 |
+
+---
+
+## Documentation Status
+
+Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by a `.bin.idx` index file (same format for all); `.map` files use a separate random-access format.
+
+### Base files (`FILES_BASE`)
+
+- [x] `nodes.bin` / `nodes.bin.idx` — Node_Skeleton records (this document)
+- [ ] `nodes.map` — random-access node ID → ll_upper index map
+- [ ] `node_tags_local.bin` — per-node tags indexed by spatial tile
+- [ ] `node_tags_global.bin` — per-node tags indexed by (key, value) pair
+- [ ] `node_frequent_tags.bin` — frequent-tag optimised index for nodes
+- [ ] `node_keys.bin` — key string table for node tags
+- [x] `ways.bin` / `ways.bin.idx` — Way_Skeleton records (this document)
+- [ ] `ways.map` — random-access way ID → index map
+- [ ] `way_tags_local.bin` — per-way tags indexed by spatial tile
+- [ ] `way_tags_global.bin` — per-way tags indexed by (key, value) pair
+- [ ] `way_frequent_tags.bin` — frequent-tag optimised index for ways
+- [ ] `way_keys.bin` — key string table for way tags
+- [x] `relations.bin` / `relations.bin.idx` — Relation_Skeleton records (this document)
+- [ ] `relations.map` — random-access relation ID → index map
+- [ ] `relation_roles.bin` — role string table for relation members
+- [ ] `relation_tags_local.bin` — per-relation tags indexed by spatial tile
+- [ ] `relation_tags_global.bin` — per-relation tags indexed by (key, value) pair
+- [ ] `relation_frequent_tags.bin` — frequent-tag optimised index for relations
+- [ ] `relation_keys.bin` — key string table for relation tags
+
+### Meta files (`FILES_META`, `--meta=yes`)
+
+- [ ] `nodes_meta.bin` — changeset/uid/timestamp metadata for current nodes
+- [ ] `ways_meta.bin` — changeset/uid/timestamp metadata for current ways
+- [ ] `relations_meta.bin` — changeset/uid/timestamp metadata for current relations
+- [ ] `user_data.bin` — user ID → display name mapping
+- [ ] `user_indices.bin` — index of edits per user
+
+### Attic files (`FILES_ATTIC`, `--meta=attic`)
+
+- [x] `nodes_attic.bin` / `nodes_attic.bin.idx` — Attic\<Node_Skeleton\> historical records (this document)
+- [ ] `nodes_attic.map` — random-access node ID → attic index map
+- [ ] `node_attic_indexes.bin` — per-node list of historical index values
+- [ ] `nodes_attic_undeleted.bin` — node IDs present in attic but not deleted
+- [ ] `nodes_meta_attic.bin` — metadata for historical node versions
+- [ ] `node_changelog.bin` — per-tile log of node changes
+- [ ] `node_tags_local_attic.bin` — historical node tags by spatial tile
+- [ ] `node_tags_global_attic.bin` — historical node tags by (key, value)
+- [ ] `node_frequent_tags_attic.bin` — historical frequent-tag index for nodes
+- [x] `ways_attic.bin` / `ways_attic.bin.idx` — Way_Delta historical records (this document)
+- [ ] `ways_attic.map` — random-access way ID → attic index map
+- [ ] `way_attic_indexes.bin` — per-way list of historical index values
+- [ ] `ways_attic_undeleted.bin` — way IDs present in attic but not deleted
+- [ ] `ways_meta_attic.bin` — metadata for historical way versions
+- [ ] `way_changelog.bin` — per-tile log of way changes
+- [ ] `way_tags_local_attic.bin` — historical way tags by spatial tile
+- [ ] `way_tags_global_attic.bin` — historical way tags by (key, value)
+- [ ] `way_frequent_tags_attic.bin` — historical frequent-tag index for ways
+- [x] `relations_attic.bin` / `relations_attic.bin.idx` — Relation_Delta historical records (this document)
+- [ ] `relations_attic.map` — random-access relation ID → attic index map
+- [ ] `relation_attic_indexes.bin` — per-relation list of historical index values
+- [ ] `relations_attic_undeleted.bin` — relation IDs present in attic but not deleted
+- [ ] `relations_meta_attic.bin` — metadata for historical relation versions
+- [ ] `relation_changelog.bin` — per-tile log of relation changes
+- [ ] `relation_tags_local_attic.bin` — historical relation tags by spatial tile
+- [ ] `relation_tags_global_attic.bin` — historical relation tags by (key, value)
+- [ ] `relation_frequent_tags_attic.bin` — historical frequent-tag index for relations
