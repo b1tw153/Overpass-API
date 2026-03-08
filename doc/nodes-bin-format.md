@@ -1,61 +1,117 @@
-# nodes.bin File Format
+# OSM Binary File Formats: nodes.bin, ways.bin, relations.bin
 
 ## Overview
 
-`nodes.bin` is the primary binary database file for OSM node skeleton data in Overpass API. It is a block-structured binary file managed by the **Block Backend** system, paired with a companion index file `nodes.bin.idx`. Together they provide efficient spatial lookup of OSM node IDs and geographic coordinates.
+Overpass API stores OSM element skeleton data in three paired binary files:
 
-The file stores `Node_Skeleton` records — the minimal node representation containing only an OSM node ID and packed geographic coordinates — grouped into fixed-size, optionally-compressed blocks, spatially indexed by a 32-bit quadtile key (`Uint32_Index`).
+| File pair | OSM type | Record type | Index type |
+|-----------|----------|-------------|------------|
+| `nodes.bin` / `nodes.bin.idx` | Nodes | `Node_Skeleton` (fixed 12 B) | `Uint32_Index` |
+| `ways.bin` / `ways.bin.idx` | Ways | `Way_Skeleton` / `Way_Delta` (variable) | `Uint31_Index` |
+| `relations.bin` / `relations.bin.idx` | Relations | `Relation_Skeleton` / `Relation_Delta` (variable) | `Uint31_Index` |
 
-**Associated files:**
+All three use the same **Block Backend** container format — an identical outer structure of fixed-size, optionally-compressed blocks with a companion index file. The differences lie in the index key type, block size, and the record layout stored inside the blocks.
+
+**Associated files for each element type:**
 
 | File | Purpose |
 |------|---------|
-| `{db_dir}/nodes.bin` | Block data — the node skeleton records |
-| `{db_dir}/nodes.bin.idx` | Block index — maps spatial keys to block positions |
-| `{db_dir}/nodes.bin.map` | Random-access ID→index map (separate format) |
-| `{db_dir}/nodes.bin.shadow` | Shadow copy used during write transactions |
+| `{db_dir}/{type}.bin` | Block data — skeleton records |
+| `{db_dir}/{type}.bin.idx` | Block index — maps spatial keys to block positions |
+| `{db_dir}/{type}.bin.map` | Random-access ID→index map (separate format) |
+| `{db_dir}/{type}.bin.shadow` | Shadow copy used during write transactions |
+
+Attic (historical) data lives under a parallel set of files: `nodes_attic.bin`, `ways_attic.bin`, `relations_attic.bin`, etc.
 
 ---
 
 ## File Properties
 
-Configured in `src/overpass_api/core/settings.cc` at line 125:
+Configured in `src/overpass_api/core/settings.cc`:
+
+| Property | nodes.bin | ways.bin | relations.bin |
+|----------|-----------|----------|---------------|
+| Settings line | line 125 | line 137 | line 149 |
+| `OSM_File_Properties<>` | `Uint32_Index` | `Uint31_Index` | `Uint31_Index` |
+| Block size | 128 KiB | 128 KiB | **512 KiB** |
+| Map block size | 256 KiB | 256 KiB | 256 KiB |
+| Compression factor | 8× | 8× | 8× |
+| Compression method | LZ4 / ZLIB | LZ4 / ZLIB | LZ4 / ZLIB |
 
 ```cpp
+// src/overpass_api/core/settings.cc:125
 NODES(new OSM_File_Properties< Uint32_Index >("nodes", 128*1024, 256*1024))
+// src/overpass_api/core/settings.cc:137
+WAYS(new OSM_File_Properties< Uint31_Index >("ways", 128*1024, 256*1024))
+// src/overpass_api/core/settings.cc:149
+RELATIONS(new OSM_File_Properties< Uint31_Index >("relations", 512*1024, 256*1024))
 ```
 
-| Property | Value | Notes |
-|----------|-------|-------|
-| File name trunk | `nodes` | → `nodes.bin`, `nodes.bin.idx`, etc. |
-| Data suffix | `.bin` | Defined in `Basic_Settings` (`settings.cc:96`) |
-| Index suffix | `.idx` | Defined in `Basic_Settings` (`settings.cc:97`) |
-| ID/map suffix | `.map` | Defined in `Basic_Settings` (`settings.cc:98`) |
-| Shadow suffix | `.shadow` | Defined in `Basic_Settings` (`settings.cc:99`) |
-| Block size | 128 KiB (131,072 bytes) | `block_size` param ÷ 8: `128*1024/8 = 16,384` uint64 words |
-| Map block size | 256 KiB | For the `.map` random-access index |
-| Compression factor | 8× | Decompressed block = 8 × compressed block |
-| Compression method | LZ4 (if available) or ZLIB | `settings.cc:108–111` |
-| Index type | `Uint32_Index` (4 bytes) | Spatial quadtile hash |
+Relations use 512 KiB blocks (4× larger than nodes/ways) because relation skeletons are large — they embed full member lists and member index arrays.
 
 > **Note on block size units:** `OSM_File_Properties::get_block_size()` returns `block_size/8`
-> (`settings.cc:51`). The block size stored in the index header is an exponent (log₂), so
+> (`settings.cc:51`). The block size stored in the index header is a log₂ exponent, so
 > 16,384 uint64 words × 8 bytes = 131,072 bytes = 128 KiB per block.
+
+---
+
+## Index Key Types
+
+### `Uint32_Index` — used by nodes.bin
+
+**Source:** `src/overpass_api/core/basic_types.h:38–99`
+
+A plain 32-bit spatial quadtile hash (`ll_upper`). All 32 bits are significant. Nodes with the same `ll_upper` value are grouped into the same block.
+
+```cpp
+struct Uint32_Index {
+  uint32 value;
+  uint32 size_of() const { return 4; }
+  void to_data(void* data) const { *(uint32*)data = value; }
+  Uint32_Index(void* data) : value(*(uint32*)data) {}
+};
+```
+
+### `Uint31_Index` — used by ways.bin and relations.bin
+
+**Source:** `src/overpass_api/core/basic_types.h:120–163`
+
+Inherits from `Uint32_Index` but reserves **bit 31 (MSB = `0x80000000`)** as a special flag. When set, the index value is a "multi-tile geometry" index rather than a normal quadtile, and comparison ignores the MSB:
+
+```cpp
+struct Uint31_Index : Uint32_Index {
+  bool less(void* rhs) const {
+    if ((value & 0x7fffffff) != (*(uint32*)rhs & 0x7fffffff))
+      return (value & 0x7fffffff) < (*(uint32*)rhs & 0x7fffffff);
+    return value < *(uint32*)rhs;
+  }
+};
+```
+
+The MSB flag is used when a way or relation spans multiple quadtiles — its index encodes the *bounding box* of that span using lower bits as a resolution indicator (`type_way.h:61–64`):
+
+```cpp
+static bool indicates_geometry(Uint31_Index index) {
+  return ((index.val() & 0x80000000) != 0 && ((index.val() & 0x1) == 0));
+}
+```
+
+This means way/relation records with a multi-tile index are stored in a "geometry" group separate from records with a normal tile index. The index wire size is still 4 bytes.
 
 ---
 
 ## Coordinate Encoding
 
-Each node's latitude/longitude is encoded as two 32-bit unsigned integers using a **quadtile / Z-order (Morton code)** scheme. The encoding is defined in `src/overpass_api/core/index_computations.h`.
+Coordinates are shared across all three element types. Each node's (and each way node's) lat/lon is encoded as two 32-bit unsigned integers using a **quadtile / Z-order (Morton code)** scheme.
+
+**Source:** `src/overpass_api/core/index_computations.h`
 
 ### Integer latitude/longitude
 
-Before bit-interleaving, floating-point lat/lon are converted to unsigned 32-bit integers:
+- **ilat** = `(lat + 90.0) / 180.0 × 2^32`
+- **ilon** = `(lon + 180.0) / 360.0 × 2^32`
 
-- **ilat** = `(lat + 90.0) / 180.0 × 2^32` — latitude in \[0, 2³²)
-- **ilon** = `(lon + 180.0) / 360.0 × 2^32` — longitude in \[0, 2³²)
-
-### `ll_upper` — spatial index (upper 32 bits of quadtile)
+### `ll_upper` — upper 32 bits of Morton code
 
 `src/overpass_api/core/index_computations.h:59–82`:
 
@@ -80,294 +136,171 @@ inline uint32 ll_upper(uint32 ilat, uint32 ilon)
 }
 ```
 
-The result interleaves the top 16 bits of `ilat` (into even bit positions) and the top 16 bits of `ilon` (into odd bit positions), producing a 32-bit Morton code. This is the **block index key** (`Uint32_Index`) stored in both the `.idx` file and the data block header.
+A XOR with `0x40000000` is applied when constructing from float coordinates to shift the longitude origin (`index_computations.h:84–87`).
 
-When constructing a `Node` from float coordinates, a XOR with `0x40000000` is applied to shift the longitude origin:
+### `ll_lower` — lower 32 bits of Morton code
 
-`src/overpass_api/core/index_computations.h:84–87`:
-```cpp
-inline uint32 ll_upper_(uint32 ilat, int32 ilon)
-{
-  return (ll_upper(ilat, ilon) ^ 0x40000000);
-}
-```
-
-### `ll_lower` — lower 32 bits of quadtile
-
-`ll_lower` stores the lower 32 bits of the full 64-bit Morton code — the bits of `ilat` and `ilon` below the top 16 bits, interleaved. Combined, `ll_upper || ll_lower` forms a full 64-bit quadtile coordinate:
+`ll_lower` holds the lower 32 bits of the interleaved coordinate, providing sub-tile precision. Together, `ll_upper || ll_lower` forms a full 64-bit quadtile:
 
 ```cpp
 struct Quad_Coord {         // src/overpass_api/core/basic_types.h:227–239
-  uint32 ll_upper;          // top 32 bits of Morton code = spatial index
-  uint32 ll_lower;          // bottom 32 bits of Morton code = stored in Node_Skeleton
+  uint32 ll_upper;          // top 32 bits of Morton code = spatial index key
+  uint32 ll_lower;          // bottom 32 bits of Morton code
 };
 ```
 
-To recover lat/lon from a `(ll_upper, ll_lower)` pair, use `ilat(ll_upper, ll_lower)` and `ilon(ll_upper, ll_lower)` from `src/overpass_api/core/index_computations.h`.
+To recover lat/lon: use `ilat(ll_upper, ll_lower)` and `ilon(ll_upper, ll_lower)` (`index_computations.h:89–115`).
 
 ---
 
-## Node_Skeleton Record Format
+## Record Formats
 
-Each OSM node is stored as a `Node_Skeleton` record. This is the smallest serializable unit in `nodes.bin`.
+### Node_Skeleton — fixed 12 bytes
 
 **Source:** `src/overpass_api/core/type_node.h:87–139`
 
+Node ID type is `Uint64` (8 bytes) because OSM node IDs exceed 2³².
+
+```
+Offset  Size  Type    Field      Description
+------  ----  ------  ---------  ----------------------------------------
+0       8     uint64  id         OSM node ID (little-endian)
+8       4     uint32  ll_lower   Lower 32 bits of Morton-code coordinate
+```
+
 ```cpp
-struct Node_Skeleton
+uint32 size_of() const { return 12; }
+
+void to_data(void* data) const {
+  *(Id_Type*)data = id.val();
+  *(uint32*)((uint8*)data+8) = ll_lower;
+}
+
+Node_Skeleton(void* data)
+  : id(*(Id_Type*)data), ll_lower(*(uint32*)((uint8*)data+8)) {}
+```
+
+---
+
+### Way_Skeleton — variable length
+
+**Source:** `src/overpass_api/core/type_way.h:87–156`
+
+Way ID type is `Uint32_Index` (4 bytes) — way IDs fit in 32 bits. The record embeds the full ordered list of member node IDs and, optionally, cached geometry for each node.
+
+Size formula: `8 + 8 × nds_count + 8 × geometry_count` bytes
+
+```
+Offset         Size      Type      Field           Description
+------         ----      --------  --------------  ----------------------------------------
+0              4         uint32    id              OSM way ID
+4              2         uint16    nds_count       Number of member node IDs
+6              2         uint16    geometry_count  Number of cached Quad_Coord entries
+8              8×N       uint64[]  nds             Member node IDs (N = nds_count)
+8+8N           8×M       Quad_Coord[]  geometry    Per-node (ll_upper, ll_lower) pairs
+                                                   (M = geometry_count; 0 if not cached)
+```
+
+Each `Quad_Coord` in the geometry array is 8 bytes: 4 bytes `ll_upper` + 4 bytes `ll_lower`.
+
+```cpp
+// src/overpass_api/core/type_way.h:117–125
+uint32 size_of() const {
+  return 8 + 8*nds.size() + 8*geometry.size();
+}
+static uint32 size_of(void* data) {
+  return (8 + 8 * *((uint16*)data + 2) + 8 * *((uint16*)data + 3));
+}
+```
+
+Deserialization (`type_way.h:100–109`):
+```cpp
+Way_Skeleton(void* data) : id(*(Id_Type*)data)
 {
-  typedef Node::Id_Type Id_Type;   // = Uint64
+  nds.reserve(*((uint16*)data + 2));
+  for (int i = 0; i < *((uint16*)data + 2); ++i)
+    nds.push_back(*(uint64*)((uint16*)data + 4 + 4*i));
+  uint16* start_ptr = (uint16*)data + 4 + 4*nds.size();
+  geometry.reserve(*((uint16*)data + 3));
+  for (int i = 0; i < *((uint16*)data + 3); ++i)
+    geometry.push_back(Quad_Coord(*(uint32*)(start_ptr + 4*i),
+                                  *(uint32*)(start_ptr + 4*i + 2)));
+}
+```
 
-  Node::Id_Type id;   // 8 bytes: OSM node ID
-  uint32 ll_lower;    // 4 bytes: lower Morton code bits
+---
 
-  uint32 size_of() const { return 12; }
-  static uint32 size_of(void* data) { return 12; }
+### Relation_Skeleton — variable length
 
-  void to_data(void* data) const
-  {
-    *(Id_Type*)data = id.val();
-    *(uint32*)((uint8*)data+8) = ll_lower;
+**Source:** `src/overpass_api/core/type_relation.h:104–189`
+
+Relation ID type is `Uint32_Index` (4 bytes). The record embeds all member entries (each carrying a ref ID, member type, and role ID) plus index arrays listing which quadtiles contain member nodes and ways.
+
+Size formula: `16 + 12 × members_count + 4 × node_idxs_count + 4 × way_idxs_count` bytes
+
+```
+Offset           Size    Type           Field            Description
+------           ----    ----           -----            -----------
+0                4       uint32         id               OSM relation ID
+4                4       uint32         members_count    Number of member entries
+8                4       uint32         node_idxs_count  Number of node-tile index entries
+12               4       uint32         way_idxs_count   Number of way-tile index entries
+16               12×M    Relation_Entry[]  members       Member array (M = members_count)
+16+12M           4×N     uint32[]       node_idxs        Uint31_Index values for node tiles
+16+12M+4N        4×P     uint32[]       way_idxs         Uint31_Index values for way tiles
+```
+
+Each `Relation_Entry` is 12 bytes:
+
+```
+Offset (within entry)  Size  Type    Field  Description
+---------------------  ----  ------  -----  ------------------------------------
+0                      8     uint64  ref    Referenced element ID
+8                      3     uint24  role   Role string ID (lower 24 bits of uint32)
+11                     1     uint8   type   1=NODE, 2=WAY, 3=RELATION
+```
+
+```cpp
+// src/overpass_api/core/type_relation.h:160–178
+void to_data(void* data) const {
+  *(Id_Type*)data = id.val();
+  *((uint32*)data + 1) = members.size();
+  *((uint32*)data + 2) = node_idxs.size();
+  *((uint32*)data + 3) = way_idxs.size();
+  for (uint i = 0; i < members.size(); ++i) {
+    *(uint64*)((uint32*)data + 4 + 3*i) = members[i].ref.val();
+    *((uint32*)data + 6 + 3*i) = members[i].role & 0xffffff;
+    *((uint8*)data + 27 + 12*i) = members[i].type;
   }
-
-  Node_Skeleton(void* data)
-    : id(*(Id_Type*)data), ll_lower(*(uint32*)((uint8*)data+8)) {}
-};
-```
-
-### Record layout (12 bytes, little-endian)
-
-```
-Offset  Size  Type    Field        Description
-------  ----  ------  -----------  -----------------------------------------
-0       8     uint64  id           OSM node ID (little-endian)
-8       4     uint32  ll_lower     Lower 32 bits of Morton-code coordinate
-```
-
-All values are stored in **native (little-endian on x86) byte order** via direct pointer casts.
-
-### ID type: `Uint64`
-
-`src/overpass_api/core/basic_types.h:166–224`:
-
-```cpp
-struct Uint64 {
-  uint32 size_of() const { return 8; }
-  void to_data(void* data) const { *(uint64*)data = value; }
-  Uint64(void* data) : value(*(uint64*)data) {}
-};
-```
-
----
-
-## Index Key: `Uint32_Index`
-
-Each block in `nodes.bin` is indexed by a `Uint32_Index`, which holds `ll_upper` — the upper 32-bit Morton code hash for that group of nodes.
-
-**Source:** `src/overpass_api/core/basic_types.h:38–99`
-
-```cpp
-struct Uint32_Index {
-  uint32 value;
-
-  uint32 size_of() const { return 4; }
-  static constexpr uint32 const_size() { return 4; }
-  void to_data(void* data) const { *(uint32*)data = value; }
-  Uint32_Index(void* data) : value(*(uint32*)data) {}
-};
-```
-
-Nodes with the same `ll_upper` (i.e., in the same Morton-code tile) are grouped together into the same block or set of adjacent blocks.
-
----
-
-## nodes.bin.idx — Index File Format
-
-The companion index file `nodes.bin.idx` maps spatial index values to block positions within `nodes.bin`. It consists of an 8-byte header followed by a sequence of fixed-size index entries.
-
-### Header (8 bytes)
-
-**Source:** `src/template_db/file_blocks_index.h:454–488` (parsing) and `src/template_db/file_blocks_index.h:641–644` (writing)
-
-```
-Offset  Size  Type    Field                   Description
-------  ----  ------  ----------------------  ----------------------------------
-0       4     int32   file_format_version     Must be in [7512, 7600]
-4       1     uint8   block_size_log2         block_size = 1 << this value
-5       1     uint8   compression_factor_log2 compression_factor = 1 << this value
-6       2     uint16  compression_method      0=none, 1=ZLIB, 2=LZ4
-```
-
-The current file format version is `7600` (`FILE_FORMAT_VERSION`, `src/template_db/file_blocks_index.h:133`).
-
-Compression method constants (`src/template_db/types.h:87–89`):
-
-```cpp
-static const int NO_COMPRESSION   = 0;
-static const int ZLIB_COMPRESSION = 1;
-static const int LZ4_COMPRESSION  = 2;
-```
-
-### Index Entry (16 bytes each)
-
-Each entry describes one block (or contiguous multi-block segment) in `nodes.bin`.
-
-**Source:** `src/template_db/file_blocks_index.h:37–51` (`File_Block_Index_Entry`) and `src/template_db/file_blocks_index.h:182–183` (field accessors)
-
-```
-Offset  Size  Type      Field    Description
-------  ----  --------  -------  -------------------------------------------
-0       4     uint32    pos      Block position (index into file, in blocks)
-4       4     uint32    size     Number of consecutive blocks this entry spans
-8       4     uint32    (pad)    Reserved / zero (written as 0)
-12      4     uint32    index    Uint32_Index value (ll_upper / Morton key)
-```
-
-Written by `src/template_db/file_blocks_index.h:646–657`:
-```cpp
-*(uint32*)(buf.ptr+pos) = it->pos;   pos += 4;
-*(uint32*)(buf.ptr+pos) = it->size;  pos += 4;
-*(uint32*)(buf.ptr+pos) = 0;         pos += 4;   // padding
-it->index.to_data(buf.ptr+pos);      pos += it->index.size_of();
-```
-
-The iterator advances by `12 + Index::size_of()` bytes per entry (`src/template_db/file_blocks_index.h:77–81` and `161–162`).
-
-**Byte offset of a block in `nodes.bin`:** `entry.pos × block_size`
-
----
-
-## nodes.bin — Data Block Format
-
-`nodes.bin` is a flat sequence of fixed-size blocks. The block size is 128 KiB (per the index header). Each block (or multi-block segment for large payloads) holds one or more **index groups**, where each group contains all `Node_Skeleton` records sharing the same `ll_upper` index value.
-
-### Compressed vs. Uncompressed blocks
-
-When the compression method is ZLIB or LZ4, each physical block in the file is the compressed form. The decompressed size is `block_size × compression_factor` (up to 1 MiB for nodes). The decompressed buffer is what the layout below describes.
-
-Reading logic: `src/template_db/file_blocks.h:821–865`
-
-### Block payload layout
-
-After decompression, the block buffer contains:
-
-```
-Offset  Size  Type    Field               Description
-------  ----  ------  ------------------  -----------------------------------------
-0       4     uint32  total_payload_size  Byte count of used payload in this buffer
-```
-
-Followed by a sequence of **index groups** packed end-to-end:
-
-```
-[idx_group_1][idx_group_2]...[idx_group_N]
-```
-
-### Index group layout
-
-Each index group begins at an offset tracked by `idx_block_offset` in the iterator:
-
-```
-Offset (within group)  Size  Type      Field             Description
----------------------  ----  --------  ----------------  ----------------------------
-0                      4     uint32    next_idx_offset   Byte offset of the NEXT index
-                                                         group from start of buffer
-                                                         (or == total_payload_size for
-                                                         the last group)
-4                      4     uint32    ll_upper          Uint32_Index value (Morton key)
-8                      N×12  records   Node_Skeleton[]   All nodes for this ll_upper,
-                                                         each 12 bytes
-```
-
-The `next_idx_offset` field is both a forward-link and a size: the `Node_Skeleton` records run from `idx_block_offset + 4 + 4` to `next_idx_offset - 1` (exclusive).
-
-**Source:** `src/template_db/block_backend.h:127–138`
-```cpp
-uint32 next_idx_block_offset() const {
-  return *(uint32*)(((uint8*)buffer.ptr) + idx_block_offset);
-}
-uint8* idx_ptr() const {
-  return ((uint8*)buffer.ptr) + idx_block_offset + 4;
-}
-uint32 total_payload_size() const {
-  return *(uint32*)buffer.ptr;
+  // node_idxs and way_idxs follow as uint32 arrays
 }
 ```
 
-Object iteration starts at `src/template_db/block_backend.h:157`:
 ```cpp
-obj_offset = idx_block_offset + 4 + Index::size_of(idx_ptr());
-//         = idx_block_offset + 4 + 4   (for Uint32_Index)
-//         = idx_block_offset + 8
-```
-
-### Visual block layout
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  [0..3]   total_payload_size  (uint32)                      │
-│                                                             │
-│  ── Index Group 1 ──────────────────────────────────────    │
-│  [4..7]   next_idx_offset_1   (uint32, offset of group 2)   │
-│  [8..11]  ll_upper_1          (uint32, Uint32_Index)         │
-│  [12..23] Node_Skeleton #1    (12 bytes)                    │
-│  [24..35] Node_Skeleton #2    (12 bytes)                    │
-│  ...                                                        │
-│                                                             │
-│  ── Index Group 2 (at offset next_idx_offset_1) ────────    │
-│  [N+0..3] next_idx_offset_2   (uint32, offset of group 3)   │
-│  [N+4..7] ll_upper_2          (uint32, Uint32_Index)         │
-│  [N+8..]  Node_Skeleton #M    (12 bytes each)               │
-│  ...                                                        │
-│                                                             │
-│  [total_payload_size .. block_size-1]  (zero padding)       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Multi-block segments
-
-If a single index group's payload exceeds `block_size` (i.e., many nodes share the same `ll_upper`), it is written across multiple consecutive blocks. The index entry for such a segment has `size > 1`. The `next_idx_offset` in the first physical block is set to `block_size` (to signal continuation), and subsequent blocks are read sequentially. The buffer is enlarged dynamically to accommodate. See `src/template_db/block_backend.h:250–262`.
-
-When writing an oversized object: `src/template_db/block_backend_write.h:44–65`:
-```cpp
-if (idx_size + obj_size + 8 > block_size)
-{
-  uint buf_scale = (idx_size + obj_size + 7)/block_size + 1;
-  // ... writes buf_scale blocks, all indexed with the same idx
+// src/overpass_api/core/type_relation.h:150–153
+static uint32 size_of(void* data) {
+  return 16 + 12 * *((uint32*)data + 1)
+            +  4 * *((uint32*)data + 2)
+            +  4 * *((uint32*)data + 3);
 }
 ```
 
+`Relation_Entry` type constants (`type_relation.h:41–43`):
+```cpp
+const static uint32 NODE     = 1;
+const static uint32 WAY      = 2;
+const static uint32 RELATION = 3;
+```
+
 ---
 
-## nodes.bin.map — Random-Access Node ID Map
+## Attic (Historical) Record Formats
 
-A companion `.map` file (`nodes.bin.map`) provides O(1) lookup from OSM node ID to `ll_upper` index. This is a separate random-access format not described in detail here; it uses `map_block_size = 256 KiB` (`settings.cc:125`).
+Historical versions of deleted/modified elements are stored in `*_attic.bin` files. For nodes the `Attic<>` wrapper simply appends a timestamp; for ways and relations a full **delta encoding** is used instead.
 
----
-
-## Attic (Historical) Node Data
-
-Historical (deleted/modified) node skeletons are stored in `nodes.bin` under the `attic_settings()` path, using the `Attic<Node_Skeleton>` wrapper.
+### Attic<Node_Skeleton> — 17 bytes fixed
 
 **Source:** `src/overpass_api/core/basic_types.h:242–284`
-
-```cpp
-template< typename Element_Skeleton >
-struct Attic : public Element_Skeleton {
-  uint64 timestamp;
-
-  uint32 size_of() const { return Element_Skeleton::size_of() + 5; }  // 12 + 5 = 17 bytes
-
-  void to_data(void* data) const {
-    Element_Skeleton::to_data(data);
-    void* pos = (uint8*)data + Element_Skeleton::size_of();
-    *(uint32*)(pos)     = (timestamp & 0xffffffffull);       // bytes 12–15
-    *(uint8*)((uint8*)pos+4) = ((timestamp>>32) & 0xff);     // byte 16
-  }
-};
-```
-
-`Attic<Node_Skeleton>` records are **17 bytes** each:
 
 ```
 Offset  Size  Type    Field      Description
@@ -378,18 +311,238 @@ Offset  Size  Type    Field      Description
 16      1     uint8   timestamp  Unix timestamp, bits 32–39 (5-byte total)
 ```
 
-The timestamp is stored as a 40-bit (5-byte) little-endian value, covering dates up to year ~36812.
+The timestamp is a 40-bit little-endian value covering dates to year ~36812.
+
+```cpp
+uint32 size_of() const { return Element_Skeleton::size_of() + 5; }  // 12 + 5 = 17
+
+void to_data(void* data) const {
+  Element_Skeleton::to_data(data);
+  void* pos = (uint8*)data + Element_Skeleton::size_of();
+  *(uint32*)(pos)          = (timestamp & 0xffffffffull);   // bytes 12–15
+  *(uint8*)((uint8*)pos+4) = ((timestamp>>32) & 0xff);      // byte 16
+}
+```
+
+### Way_Delta — variable length (attic ways)
+
+**Source:** `src/overpass_api/core/type_way.h:159–409`
+
+The attic way file stores `Way_Delta` records rather than full `Way_Skeleton` copies. A delta encodes changes relative to the previous version. There are two forms, distinguished by `word[1]`:
+
+**Full form** (`word[1] == 0xffffffff`) — stores the complete snapshot:
+
+```
+Offset     Size    Field                Description
+------     ----    -----                -----------
+0          4       id                   OSM way ID
+4          4       0xffffffff           Full-record marker
+8          4       nds_count            Number of node IDs
+12         4       geometry_count       Number of geometry entries
+16         8×N     nds[]                Node IDs (uint64 each)
+16+8N      8×M     geometry[]           Quad_Coord pairs (M = geometry_count)
+```
+
+Total size: `16 + 8×nds_count + 8×geometry_count`
+
+**Incremental form** (`word[1] != 0xffffffff`) — stores only the diff:
+
+```
+Offset              Size      Field                   Description
+------              ----      -----                   -----------
+0                   4         id                      OSM way ID
+4                   4         nds_removed_count
+8                   4         nds_added_count
+12                  4         geometry_removed_count
+16                  4         geometry_added_count
+20                  4×R1      nds_removed[]           Removed node indices (uint32 each)
+20+4R1              12×A1     nds_added[]             (index:uint32, node_id:uint64) each
+20+4R1+12A1         4×R2      geometry_removed[]      Removed geometry indices (uint32)
+20+4R1+12A1+4R2     12×A2     geometry_added[]        (index:uint32, Quad_Coord) each
+```
+
+Total size: `20 + 4×R1 + 12×A1 + 4×R2 + 12×A2`
+
+```cpp
+// src/overpass_api/core/type_way.h:322–338
+static uint32 size_of(void* data) {
+  if (*((uint32*)data + 1) == 0xffffffff)
+    return 16 + 8 * *((uint32*)data + 2) + 8 * *((uint32*)data + 3);
+  else
+    return 20 + 4 * *((uint32*)data + 1) + 12 * *((uint32*)data + 2)
+              +  4 * *((uint32*)data + 3) + 12 * *((uint32*)data + 4);
+}
+```
+
+The code switches to a full record when the incremental form would be larger than half the full record size (`type_way.h:246–253`).
+
+### Relation_Delta — variable length (attic relations)
+
+**Source:** `src/overpass_api/core/type_relation.h:192–474`
+
+Same two-form pattern as `Way_Delta` but for relation members and member index arrays.
+
+**Full form** (`word[1] == 0xffffffff`):
+
+```
+Offset          Size    Field                   Description
+------          ----    -----                   -----------
+0               4       id                      OSM relation ID
+4               4       0xffffffff              Full-record marker
+8               4       members_count
+12              4       node_idxs_count
+16              4       way_idxs_count
+20              12×M    members_added[]         Full member list (Relation_Entry each)
+20+12M          4×N     node_idxs_added[]       Node tile indices (uint32 each)
+20+12M+4N       4×P     way_idxs_added[]        Way tile indices (uint32 each)
+```
+
+Total size: `20 + 12×M + 4×N + 4×P`
+
+**Incremental form** (`word[1] != 0xffffffff`):
+
+```
+Offset                   Size    Field
+------                   ----    -----
+0                        4       id
+4                        4       members_removed_count     (R1)
+8                        4       members_added_count       (A1)
+12                       4       node_idxs_removed_count   (R2)
+16                       4       node_idxs_added_count     (A2)
+20                       4       way_idxs_removed_count    (R3)
+24                       4       way_idxs_added_count      (A3)
+28                       4×R1    members_removed[]         Removed member indices
+28+4R1                   16×A1   members_added[]           (index:4, ref:8, role:3, type:1)
+28+4R1+16A1              4×R2    node_idxs_removed[]
+28+4R1+16A1+4R2          8×A2    node_idxs_added[]         (index:4, idx:4)
+28+4R1+16A1+4R2+8A2      4×R3    way_idxs_removed[]
+28+4R1+16A1+4R2+8A2+4R3  8×A3    way_idxs_added[]          (index:4, idx:4)
+```
+
+Total size: `28 + 4×R1 + 16×A1 + 4×R2 + 8×A2 + 4×R3 + 8×A3`
+
+```cpp
+// src/overpass_api/core/type_relation.h:369–377
+static uint32 size_of(void* data) {
+  if (*((uint32*)data + 1) == 0xffffffff)
+    return 20 + 12 * *((uint32*)data + 2) + 4 * *((uint32*)data + 3) + 4 * *((uint32*)data + 4);
+  else
+    return 28 + 4 * *((uint32*)data + 1) + 16 * *((uint32*)data + 2)
+              +  4 * *((uint32*)data + 3) +  8 * *((uint32*)data + 4)
+              +  4 * *((uint32*)data + 5) +  8 * *((uint32*)data + 6);
+}
+```
+
+---
+
+## Shared Container Format
+
+The `.bin` and `.bin.idx` file structures are identical across all three element types. Only the index key type and block size differ. Everything below applies equally to `nodes.bin`, `ways.bin`, and `relations.bin`.
+
+### .bin.idx — Index File Format
+
+Maps spatial index values to block positions. Consists of an 8-byte header followed by fixed-size entries.
+
+**Source:** `src/template_db/file_blocks_index.h`
+
+#### Header (8 bytes)
+
+```
+Offset  Size  Type    Field                    Description
+------  ----  ------  -----------------------  ----------------------------------
+0       4     int32   file_format_version      Must be in [7512, 7600]
+4       1     uint8   block_size_log2          block_size = 1 << this value
+5       1     uint8   compression_factor_log2  compression_factor = 1 << this value
+6       2     uint16  compression_method       0=none, 1=ZLIB, 2=LZ4
+```
+
+Current format version: `7600` (`FILE_FORMAT_VERSION`, `file_blocks_index.h:133`).
+
+#### Index Entry (16 bytes each)
+
+```
+Offset  Size  Type    Field   Description
+------  ----  ------  ------  -------------------------------------------
+0       4     uint32  pos     Block position (index into file, in blocks)
+4       4     uint32  size    Number of consecutive blocks this entry spans
+8       4     uint32  (pad)   Reserved / zero
+12      4     uint32  index   Index key value (Uint32_Index or Uint31_Index)
+```
+
+**Source:** `src/template_db/file_blocks_index.h:37–51`, `646–657`
+
+Byte offset of a block in the data file: `entry.pos × block_size`
+
+### .bin — Data Block Format
+
+A flat sequence of fixed-size blocks. Each block (after decompression if applicable) contains one or more **index groups** — all records sharing the same index key.
+
+**Source:** `src/template_db/block_backend.h:100–166`
+
+#### Compressed vs. uncompressed
+
+When the compression method is ZLIB or LZ4, each stored block is compressed. The decompressed size is `block_size × compression_factor`. Reading logic: `src/template_db/file_blocks.h:821–865`.
+
+#### Block payload layout
+
+```
+Offset  Size  Type    Field               Description
+------  ----  ------  ----------------    -----------------------------------------
+0       4     uint32  total_payload_size  Bytes of used payload in this buffer
+4       ...           index groups        Packed end-to-end (see below)
+```
+
+#### Index group layout
+
+```
+Offset within group  Size   Type      Field            Description
+-------------------  ----   --------  ---------------  ----------------------------
+0                    4      uint32    next_idx_offset  Byte offset of NEXT group from
+                                                       start of buffer (or ==
+                                                       total_payload_size if last)
+4                    4      uint32    index_key        Uint32_Index or Uint31_Index
+8                    var    records   records[]        All records for this index key,
+                                                       packed end-to-end
+```
+
+Records run from `idx_block_offset + 8` to `next_idx_offset - 1` (exclusive). For variable-length records (ways, relations) each record carries its own `size_of()` to advance the read pointer.
+
+#### Visual block layout
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  [0..3]    total_payload_size  (uint32)                         │
+│                                                                 │
+│  ── Index Group 1 ────────────────────────────────────────────  │
+│  [4..7]    next_idx_offset_1   (uint32, offset of group 2)      │
+│  [8..11]   index_key_1         (uint32, spatial index)          │
+│  [12..]    record #1           (12 B for nodes, variable for     │
+│            record #2            ways/relations)                  │
+│            ...                                                  │
+│                                                                 │
+│  ── Index Group 2 (starts at next_idx_offset_1) ─────────────  │
+│  [N+0..3]  next_idx_offset_2   (uint32)                         │
+│  [N+4..7]  index_key_2         (uint32)                         │
+│  [N+8..]   records...                                           │
+│                                                                 │
+│  [total_payload_size .. block_size-1]  (zero padding)           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Multi-block segments
+
+If a single index group exceeds `block_size`, it spans multiple consecutive blocks (`size > 1` in the index entry). The buffer is enlarged dynamically. See `src/template_db/block_backend.h:250–262` and `src/template_db/block_backend_write.h:44–65`.
 
 ---
 
 ## Write Path Summary
 
-When the database is updated, `Block_Backend::update()` (`src/template_db/block_backend.h`) calls `flush_if_necessary_and_write_obj()` in `src/template_db/block_backend_write.h:28–73`:
+`Block_Backend::update()` (`src/template_db/block_backend.h`) calls `flush_if_necessary_and_write_obj()` (`src/template_db/block_backend_write.h:28–73`):
 
-1. Records are accumulated in a write buffer, sorted by `Uint32_Index`.
-2. When the buffer is full (`insert_ptr - start_ptr + obj_size > block_size`), the current buffer is flushed as one block via `file_blocks.insert_block()`.
-3. The first 4 bytes of a flushed block are set to `bytes_written` (the payload size).
-4. Each new `Uint32_Index` group is preceded by its `next_idx_offset` (4 bytes) and the index value (4 bytes), then the `Node_Skeleton` records follow immediately.
+1. Records are accumulated in a write buffer, sorted by index key.
+2. Each new index key group is prefixed with `next_idx_offset` (4 bytes) and the key value (4 bytes).
+3. When the buffer is full, it is flushed as one block via `file_blocks.insert_block()`.
+4. The first 4 bytes of each flushed block are set to `bytes_written` (the payload size).
 
 ---
 
@@ -398,15 +551,23 @@ When the database is updated, `Block_Backend::update()` (`src/template_db/block_
 | Component | File | Key Lines |
 |-----------|------|-----------|
 | `Node_Skeleton` struct & serialization | `src/overpass_api/core/type_node.h` | 87–139 |
-| `Node` struct (with float coords) | `src/overpass_api/core/type_node.h` | 29–58 |
+| `Node` struct | `src/overpass_api/core/type_node.h` | 29–58 |
+| `Way_Skeleton` struct & serialization | `src/overpass_api/core/type_way.h` | 87–156 |
+| `Way_Delta` struct & serialization | `src/overpass_api/core/type_way.h` | 159–409 |
+| `Way` struct | `src/overpass_api/core/type_way.h` | 35–65 |
+| `Relation_Skeleton` struct & serialization | `src/overpass_api/core/type_relation.h` | 104–189 |
+| `Relation_Delta` struct & serialization | `src/overpass_api/core/type_relation.h` | 192–474 |
+| `Relation_Entry` struct | `src/overpass_api/core/type_relation.h` | 32–51 |
+| `Relation` struct | `src/overpass_api/core/type_relation.h` | 54–82 |
 | `Uint32_Index` | `src/overpass_api/core/basic_types.h` | 38–99 |
+| `Uint31_Index` | `src/overpass_api/core/basic_types.h` | 120–163 |
 | `Uint64` (node ID type) | `src/overpass_api/core/basic_types.h` | 166–224 |
 | `Quad_Coord` | `src/overpass_api/core/basic_types.h` | 227–239 |
-| `Attic<Node_Skeleton>` | `src/overpass_api/core/basic_types.h` | 242–284 |
+| `Attic<>` wrapper | `src/overpass_api/core/basic_types.h` | 242–284 |
 | `ll_upper()` Morton encoding | `src/overpass_api/core/index_computations.h` | 59–87 |
 | `ilat()` / `ilon()` Morton decoding | `src/overpass_api/core/index_computations.h` | 89–115 |
-| File properties (block size, compression) | `src/overpass_api/core/settings.cc` | 37–89, 125 |
-| `OSM_File_Properties` template | `src/overpass_api/core/settings.cc` | 37–89 |
+| `calc_index()` multi-tile index | `src/overpass_api/core/index_computations.h` | 117–182 |
+| File properties (block size, compression) | `src/overpass_api/core/settings.cc` | 37–89, 125, 137, 149 |
 | `.idx` header write | `src/template_db/file_blocks_index.h` | 626–658 |
 | `.idx` header read | `src/template_db/file_blocks_index.h` | 453–488 |
 | `.idx` entry layout / iterator | `src/template_db/file_blocks_index.h` | 37–51, 138–189 |
