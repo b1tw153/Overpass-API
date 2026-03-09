@@ -229,10 +229,13 @@ Local-tag files store only the object's numeric ID as the value — the full tag
 | node local tags | `Uint64` (node ID) | 8 bytes |
 | way local tags | `Uint32_Index` (way ID) | 4 bytes |
 | relation local tags | `Uint32_Index` (relation ID) | 4 bytes |
+| **area local tags** | `Uint32_Index` (area ID) | **4 bytes** |
 
 These are the same `Id_Type` typedefs used by the corresponding skeleton structures (`Node_Skeleton::Id_Type`, `Way_Skeleton::Id_Type`, `Relation_Skeleton::Id_Type`). Serialisation is the same fixed-size little-endian integer write used by those types.
 
 For attic local tags, the value is `Attic<Id_Type>`, which appends a 5-byte timestamp (see `nodes-bin-format.md § Attic<Node_Skeleton>`), yielding 13 bytes for nodes and 9 bytes for ways/relations.
+
+Area tag files have no attic variant (areas are a computed, non-historical dataset).
 
 ---
 
@@ -255,6 +258,7 @@ Offset  Size  Type    Field    Description
 | Node | `Uint64` | 8 | 11 bytes |
 | Way | `Uint32_Index` | 4 | 7 bytes |
 | Relation | `Uint32_Index` | 4 | 7 bytes |
+| **Area** | `Uint32_Index` | 4 | **7 bytes** |
 
 The same 3-byte-integer trick used by `Tag_Index_Local` is applied here: `to_data` writes `(idx.val() >> 8) & 0x7FFFFF` as a `uint32` at offset 0 (byte 3 = 0 on write), then `id.to_data` overwrites byte 3 with the first byte of the ID. `from_data` reads `(*((uint32*)data) << 8) & 0xFFFFFF00` and the `<< 8` shift discards the contaminated byte 3.
 
@@ -567,4 +571,6 @@ function reorganize_tag_split_level(tags_file, target_level, key, value):
 | `Tag_Store` (read-side caching layer) | `src/overpass_api/data/tag_store.h` | — |
 | File property accessors | `src/overpass_api/data/filenames.h` | 78–285 |
 | `OSM_File_Properties` declarations | `src/overpass_api/core/settings.cc` | 126–161, 202–205 |
+| `update_area_tags_local()` | `src/overpass_api/osm-backend/area_updater.cc` | 214–261 |
+| `update_area_tags_global()` | `src/overpass_api/osm-backend/area_updater.cc` | 263–305 |
 | Block backend (container layer) | `src/template_db/block_backend.h` | — |

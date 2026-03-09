@@ -716,23 +716,7 @@ return 6 + 5 * coors.size();
 
 ### `area_tags_local.bin` and `area_tags_global.bin` — area tag indexes
 
-These two files use exactly the same `Tag_Index_Local` and `Tag_Index_Global` index key types as `node_tags_local.bin` / `node_tags_global.bin` (documented in `doc/tag-data-format.md`). The only difference is the **value type**: `Uint32_Index` (4 bytes, little-endian area ID) instead of a node/way/relation ID.
-
-```cpp
-// area_tags_local.bin
-Block_Backend< Tag_Index_Local, Uint32_Index >
-//   index key: Tag_Index_Local  — (spatial_tile_coarse: 3 B, key: variable, value: variable)
-//   value:     Uint32_Index     — area ID (4 bytes, little-endian)
-
-// area_tags_global.bin
-Block_Backend< Tag_Index_Global, Uint32_Index >
-//   index key: Tag_Index_Global — (key: variable, value: variable)
-//   value:     Uint32_Index     — area ID (4 bytes, little-endian)
-```
-
-The local file is written / read with a coarsened tile index (`index.index = tile.val() & 0xffffff00`) to allow range queries across nearby tiles. The global file omits the spatial component entirely, enabling tag-only lookups across all areas.
-
-**Write source:** `src/overpass_api/osm-backend/area_updater.cc:214–305`
+These two files use the same `Tag_Index_Local` and `Tag_Index_Global` key types as the comparable node/way/relation tag files, with `Uint32_Index` (area ID, 4 bytes) as the value type. Full format documentation is in `doc/tag-data-format.md`.
 
 ---
 
@@ -881,8 +865,6 @@ function point_in_area(point, blocks):
 | `Area_Updater::update()` (write entry point) | `src/overpass_api/osm-backend/area_updater.cc` | 57–81 |
 | `update_area_ids()` (read + stage deletes) | `src/overpass_api/osm-backend/area_updater.cc` | 83–115 |
 | `update_members()` (write areas.bin + area_blocks.bin) | `src/overpass_api/osm-backend/area_updater.cc` | 117–142 |
-| `update_area_tags_local()` | `src/overpass_api/osm-backend/area_updater.cc` | 214–261 |
-| `update_area_tags_global()` | `src/overpass_api/osm-backend/area_updater.cc` | 263–305 |
 | `fill_ranges()` (read areas.bin, collect tile requests) | `src/overpass_api/statements/area_query.cc` | 484–500 |
 | `collect_nodes()` (read area_blocks.bin for PIP test) | `src/overpass_api/statements/area_query.cc` | 563–600+ |
 | `Tag_Index_Local` format | `src/overpass_api/core/type_tags.h` | 126–239 |
@@ -958,5 +940,5 @@ Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by
 
 - [x] `areas.bin` / `areas.bin.idx` — Area_Skeleton records: area ID → set of block tile indices (this document)
 - [x] `area_blocks.bin` / `area_blocks.bin.idx` — Area_Block records: boundary segment endpoints per tile (this document)
-- [x] `area_tags_local.bin` / `area_tags_local.bin.idx` — area tags indexed by spatial tile (this document)
-- [x] `area_tags_global.bin` / `area_tags_global.bin.idx` — area tags indexed by (key, value) (this document)
+- [x] `area_tags_local.bin` / `area_tags_local.bin.idx` — area tags indexed by spatial tile (`doc/tag-data-format.md`)
+- [x] `area_tags_global.bin` / `area_tags_global.bin.idx` — area tags indexed by (key, value) (`doc/tag-data-format.md`)
