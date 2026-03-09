@@ -33,9 +33,10 @@ Configured in `src/overpass_api/core/settings.cc`:
 |----------|-----------|----------|---------------|
 | Settings line | line 125 | line 137 | line 149 |
 | `OSM_File_Properties<>` | `Uint32_Index` | `Uint31_Index` | `Uint31_Index` |
-| Block size | 128 KiB | 128 KiB | **512 KiB** |
-| Map block size | 256 KiB | 256 KiB | 256 KiB |
+| Physical block size (on disk) | **16 KiB** | **16 KiB** | **64 KiB** |
+| Decompressed block size | 128 KiB | 128 KiB | **512 KiB** |
 | Compression factor | 8× | 8× | 8× |
+| Map block size | 256 KiB | 256 KiB | 256 KiB |
 | Compression method | LZ4 / ZLIB | LZ4 / ZLIB | LZ4 / ZLIB |
 
 ```cpp
@@ -47,11 +48,13 @@ WAYS(new OSM_File_Properties< Uint31_Index >("ways", 128*1024, 256*1024))
 RELATIONS(new OSM_File_Properties< Uint31_Index >("relations", 512*1024, 256*1024))
 ```
 
-Relations use 512 KiB blocks (4× larger than nodes/ways) because relation skeletons are large — they embed full member lists and member index arrays.
+The constructor parameter (`128*1024` for nodes/ways, `512*1024` for relations) is an internal unit equal to `physical_block_bytes × 8`. `get_block_size()` divides by 8 (`settings.cc:51`), yielding the physical block size in bytes: `128*1024/8 = 16,384` bytes for nodes/ways, `512*1024/8 = 65,536` bytes for relations.
 
-> **Note on block size units:** `OSM_File_Properties::get_block_size()` returns `block_size/8`
-> (`settings.cc:51`). The block size stored in the index header is a log₂ exponent, so
-> 16,384 uint64 words × 8 bytes = 131,072 bytes = 128 KiB per block.
+**Two distinct block sizes matter for implementation:**
+- **Physical block size**: the unit used for file seeking and the `pos`/`size` fields in `.idx` entries. Equals `1 << block_size_log2` bytes from the `.idx` header.
+- **Decompressed block size**: the size of the buffer after decompression, where the index-group payload layout lives. Equals `physical_block_size × compression_factor` = `physical_block_size × (1 << compression_factor_log2)`.
+
+For LZ4/ZLIB, a single compressed physical block (16 KiB) decompresses to one logical block (128 KiB). For `NO_COMPRESSION`, each physical block is both the stored and the logical size (16 KiB), but `entry.size > 1` is used for large payloads (all `entry.size × 16 KiB` are read in one call).
 
 ---
 
@@ -96,7 +99,12 @@ static bool indicates_geometry(Uint31_Index index) {
 }
 ```
 
-This means way/relation records with a multi-tile index are stored in a "geometry" group separate from records with a normal tile index. The index wire size is still 4 bytes.
+**Key implication for readers:** each way/relation is stored under **exactly one** computed index key — either a normal tile index (MSB clear) or a geometry index (MSB set, bit 0 clear). There is no duplication. A reader must query both normal-tile and geometry-tile index groups to find all ways/relations in an area.
+
+- When `indicates_geometry` is **false**: the way/relation fits in a single quadtile. The record's `geometry` / `node_idxs` / `way_idxs` arrays are **empty** (cleared at write time, `way_updater.cc:98–99`, `relation_updater.cc:559–562`).
+- When `indicates_geometry` is **true**: the way/relation spans multiple tiles. The geometry/index arrays are **populated** (see Way_Skeleton and Relation_Skeleton record sections).
+
+The index wire size is still 4 bytes.
 
 ---
 
@@ -159,12 +167,12 @@ To recover lat/lon: use `ilat(ll_upper, ll_lower)` and `ilon(ll_upper, ll_lower)
 
 **Source:** `src/overpass_api/core/type_node.h:87–139`
 
-Node ID type is `Uint64` (8 bytes) because OSM node IDs exceed 2³².
+Node ID type is `Uint64` (8 bytes) because OSM node IDs exceed 2³². All values little-endian.
 
 ```
 Offset  Size  Type    Field      Description
 ------  ----  ------  ---------  ----------------------------------------
-0       8     uint64  id         OSM node ID (little-endian)
+0       8     uint64  id         OSM node ID
 8       4     uint32  ll_lower   Lower 32 bits of Morton-code coordinate
 ```
 
@@ -186,19 +194,21 @@ Node_Skeleton(void* data)
 
 **Source:** `src/overpass_api/core/type_way.h:87–156`
 
-Way ID type is `Uint32_Index` (4 bytes) — way IDs fit in 32 bits. The record embeds the full ordered list of member node IDs and, optionally, cached geometry for each node.
+Way ID type is `Uint32_Index` (4 bytes) — way IDs fit in 32 bits. The record embeds the full ordered list of member node IDs and, for multi-tile ways only, a `Quad_Coord` geometry entry for every node.
 
-Size formula: `8 + 8 × nds_count + 8 × geometry_count` bytes
+**`geometry_count` is nonzero if and only if `indicates_geometry(index)` is true** — i.e., the way's nodes span more than one quadtile. When the way fits in a single tile, `geometry_count = 0` and the `geometry[]` array is absent. (`way_updater.cc:96–99`)
+
+Size formula: `8 + 8 × nds_count + 8 × geometry_count` bytes. All values little-endian.
 
 ```
-Offset         Size      Type      Field           Description
-------         ----      --------  --------------  ----------------------------------------
-0              4         uint32    id              OSM way ID
-4              2         uint16    nds_count       Number of member node IDs
-6              2         uint16    geometry_count  Number of cached Quad_Coord entries
-8              8×N       uint64[]  nds             Member node IDs (N = nds_count)
-8+8N           8×M       Quad_Coord[]  geometry    Per-node (ll_upper, ll_lower) pairs
-                                                   (M = geometry_count; 0 if not cached)
+Offset         Size      Type          Field           Description
+------         ----      --------      --------------  ----------------------------------------
+0              4         uint32        id              OSM way ID
+4              2         uint16        nds_count       Number of member node IDs (N)
+6              2         uint16        geometry_count  Number of Quad_Coord entries (M)
+8              8×N       uint64[]      nds             Member node IDs in way order
+8+8N           8×M       Quad_Coord[]  geometry        Per-node coords; present iff M > 0
+                                                       (M == N when present)
 ```
 
 Each `Quad_Coord` in the geometry array is 8 bytes: 4 bytes `ll_upper` + 4 bytes `ll_lower`.
@@ -236,7 +246,9 @@ Way_Skeleton(void* data) : id(*(Id_Type*)data)
 
 Relation ID type is `Uint32_Index` (4 bytes). The record embeds all member entries (each carrying a ref ID, member type, and role ID) plus index arrays listing which quadtiles contain member nodes and ways.
 
-Size formula: `16 + 12 × members_count + 4 × node_idxs_count + 4 × way_idxs_count` bytes
+**`node_idxs_count` and `way_idxs_count` are nonzero if and only if `indicates_geometry(index)` is true** — i.e., the relation's members span multiple tiles. When the relation fits in a single tile, both arrays are empty. (`relation_updater.cc:553–562`)
+
+Size formula: `16 + 12 × members_count + 4 × node_idxs_count + 4 × way_idxs_count` bytes. All values little-endian.
 
 ```
 Offset           Size    Type           Field            Description
@@ -449,39 +461,49 @@ Maps spatial index values to block positions. Consists of an 8-byte header follo
 
 ```
 Offset  Size  Type    Field                    Description
-------  ----  ------  -----------------------  ----------------------------------
+------  ----  ------  -----------------------  --------------------------------------------------
 0       4     int32   file_format_version      Must be in [7512, 7600]
-4       1     uint8   block_size_log2          block_size = 1 << this value
-5       1     uint8   compression_factor_log2  compression_factor = 1 << this value
+4       1     uint8   block_size_log2          physical_block_bytes = 1 << this value
+5       1     uint8   compression_factor_log2  compression_factor   = 1 << this value
 6       2     uint16  compression_method       0=none, 1=ZLIB, 2=LZ4
 ```
 
 Current format version: `7600` (`FILE_FORMAT_VERSION`, `file_blocks_index.h:133`).
 
+Written by `shift_log(get_block_size())` where `shift_log(x) = floor(log2(x))` (`types.h:324`). Read back as `block_size_ = 1ull << header[4]` (`file_blocks_index.h:475`). For nodes/ways: `block_size_log2 = 14` → `physical_block_bytes = 16,384`. `compression_factor_log2 = 3` → `compression_factor = 8` → `decompressed_block_bytes = 131,072`.
+
+The total number of index entries is `(idx_file_size - 8) / 16`. The index file has no entry count field; readers must use the file size.
+
 #### Index Entry (16 bytes each)
+
+**Source:** `src/template_db/file_blocks_index.h:37–51`, `646–657`
 
 ```
 Offset  Size  Type    Field   Description
-------  ----  ------  ------  -------------------------------------------
-0       4     uint32  pos     Block position (index into file, in blocks)
-4       4     uint32  size    Number of consecutive blocks this entry spans
+------  ----  ------  ------  ---------------------------------------------------
+0       4     uint32  pos     Start physical block number (0-based)
+4       4     uint32  size    Number of consecutive physical blocks in this entry
 8       4     uint32  (pad)   Reserved / zero
 12      4     uint32  index   Index key value (Uint32_Index or Uint31_Index)
 ```
 
-**Source:** `src/template_db/file_blocks_index.h:37–51`, `646–657`
-
-Byte offset of a block in the data file: `entry.pos × block_size`
+- **Byte offset** in `.bin` file: `entry.pos × physical_block_bytes`
+- **Byte length** to read: `entry.size × physical_block_bytes`
 
 ### .bin — Data Block Format
 
-A flat sequence of fixed-size blocks. Each block (after decompression if applicable) contains one or more **index groups** — all records sharing the same index key.
-
-**Source:** `src/template_db/block_backend.h:100–166`
+A flat sequence of physical blocks. **Source:** `src/template_db/block_backend.h:100–166`
 
 #### Compressed vs. uncompressed
 
-When the compression method is ZLIB or LZ4, each stored block is compressed. The decompressed size is `block_size × compression_factor`. Reading logic: `src/template_db/file_blocks.h:821–865`.
+**Source:** `src/template_db/file_blocks.h:821–865, 988–1013`
+
+For each index entry, read `entry.size × physical_block_bytes` bytes from `.bin` at byte offset `entry.pos × physical_block_bytes`. Then:
+
+- **`NO_COMPRESSION`**: the bytes are the decompressed payload directly. The logical block size for parsing is `physical_block_bytes × compression_factor` bytes, but only `entry.size × physical_block_bytes` are populated; bytes beyond `total_payload_size` (see below) are zero.
+- **`ZLIB_COMPRESSION`** or **`LZ4_COMPRESSION`**: pass the entire `entry.size × physical_block_bytes` span as the compressed input to the decompressor. Output buffer must be `physical_block_bytes × compression_factor` bytes. The compressed data is written zero-padded to an exact `entry.size × physical_block_bytes` boundary on disk (`file_blocks.h:1036–1037`).
+
+For LZ4, the output buffer allocated is `2 × physical_block_bytes × compression_factor` to handle pathological incompressible input expanding beyond the nominal decompressed size (`file_blocks.h:699, 1006`).
 
 #### Block payload layout
 
