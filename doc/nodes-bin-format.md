@@ -630,11 +630,11 @@ Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by
 
 ### Meta files (`FILES_META`, `--meta=yes`)
 
-- [ ] `nodes_meta.bin` — changeset/uid/timestamp metadata for current nodes
-- [ ] `ways_meta.bin` — changeset/uid/timestamp metadata for current ways
-- [ ] `relations_meta.bin` — changeset/uid/timestamp metadata for current relations
-- [ ] `user_data.bin` — user ID → display name mapping
-- [ ] `user_indices.bin` — index of edits per user
+- [x] `nodes_meta.bin` — changeset/uid/timestamp metadata for current nodes (`doc/meta-format.md`)
+- [x] `ways_meta.bin` — changeset/uid/timestamp metadata for current ways (`doc/meta-format.md`)
+- [x] `relations_meta.bin` — changeset/uid/timestamp metadata for current relations (`doc/meta-format.md`)
+- [x] `user_data.bin` — user ID → display name mapping (`doc/meta-format.md`)
+- [x] `user_indices.bin` — index of edits per user (`doc/meta-format.md`)
 
 ### Attic files (`FILES_ATTIC`, `--meta=attic`)
 
@@ -642,7 +642,7 @@ Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by
 - [ ] `nodes_attic.map` — random-access node ID → attic index map
 - [ ] `node_attic_indexes.bin` — per-node list of historical index values
 - [ ] `nodes_attic_undeleted.bin` — node IDs present in attic but not deleted
-- [ ] `nodes_meta_attic.bin` — metadata for historical node versions
+- [x] `nodes_meta_attic.bin` — metadata for historical node versions (`doc/meta-format.md`)
 - [ ] `node_changelog.bin` — per-tile log of node changes
 - [x] `node_tags_local_attic.bin` — historical node tags by spatial tile (`doc/tag-data-format.md`)
 - [x] `node_tags_global_attic.bin` — historical node tags by (key, value) (`doc/tag-data-format.md`)
@@ -651,7 +651,7 @@ Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by
 - [ ] `ways_attic.map` — random-access way ID → attic index map
 - [ ] `way_attic_indexes.bin` — per-way list of historical index values
 - [ ] `ways_attic_undeleted.bin` — way IDs present in attic but not deleted
-- [ ] `ways_meta_attic.bin` — metadata for historical way versions
+- [x] `ways_meta_attic.bin` — metadata for historical way versions (`doc/meta-format.md`)
 - [ ] `way_changelog.bin` — per-tile log of way changes
 - [x] `way_tags_local_attic.bin` — historical way tags by spatial tile (`doc/tag-data-format.md`)
 - [x] `way_tags_global_attic.bin` — historical way tags by (key, value) (`doc/tag-data-format.md`)
@@ -660,7 +660,7 @@ Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by
 - [ ] `relations_attic.map` — random-access relation ID → attic index map
 - [ ] `relation_attic_indexes.bin` — per-relation list of historical index values
 - [ ] `relations_attic_undeleted.bin` — relation IDs present in attic but not deleted
-- [ ] `relations_meta_attic.bin` — metadata for historical relation versions
+- [x] `relations_meta_attic.bin` — metadata for historical relation versions (`doc/meta-format.md`)
 - [ ] `relation_changelog.bin` — per-tile log of relation changes
 - [x] `relation_tags_local_attic.bin` — historical relation tags by spatial tile (`doc/tag-data-format.md`)
 - [x] `relation_tags_global_attic.bin` — historical relation tags by (key, value) (`doc/tag-data-format.md`)
