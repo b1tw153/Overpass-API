@@ -610,22 +610,22 @@ Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by
 
 - [x] `nodes.bin` / `nodes.bin.idx` — Node_Skeleton records (this document)
 - [ ] `nodes.map` — random-access node ID → ll_upper index map
-- [ ] `node_tags_local.bin` — per-node tags indexed by spatial tile
-- [ ] `node_tags_global.bin` — per-node tags indexed by (key, value) pair
-- [ ] `node_frequent_tags.bin` — frequent-tag optimised index for nodes
+- [x] `node_tags_local.bin` — per-node tags indexed by spatial tile (`doc/tag-data-format.md`)
+- [x] `node_tags_global.bin` — per-node tags indexed by (key, value) pair (`doc/tag-data-format.md`)
+- [x] `node_frequent_tags.bin` — frequent-tag optimised index for nodes (`doc/tag-data-format.md`)
 - [ ] `node_keys.bin` — key string table for node tags
 - [x] `ways.bin` / `ways.bin.idx` — Way_Skeleton records (this document)
-- [ ] `ways.map` — random-access way ID → index map
-- [ ] `way_tags_local.bin` — per-way tags indexed by spatial tile
-- [ ] `way_tags_global.bin` — per-way tags indexed by (key, value) pair
-- [ ] `way_frequent_tags.bin` — frequent-tag optimised index for ways
+- [x] `ways.map` — random-access way ID → index map (`doc/map-format.md`)
+- [x] `way_tags_local.bin` — per-way tags indexed by spatial tile (`doc/tag-data-format.md`)
+- [x] `way_tags_global.bin` — per-way tags indexed by (key, value) pair (`doc/tag-data-format.md`)
+- [x] `way_frequent_tags.bin` — frequent-tag optimised index for ways (`doc/tag-data-format.md`)
 - [ ] `way_keys.bin` — key string table for way tags
 - [x] `relations.bin` / `relations.bin.idx` — Relation_Skeleton records (this document)
-- [ ] `relations.map` — random-access relation ID → index map
+- [x] `relations.map` — random-access relation ID → index map (`doc/map-format.md`)
 - [ ] `relation_roles.bin` — role string table for relation members
-- [ ] `relation_tags_local.bin` — per-relation tags indexed by spatial tile
-- [ ] `relation_tags_global.bin` — per-relation tags indexed by (key, value) pair
-- [ ] `relation_frequent_tags.bin` — frequent-tag optimised index for relations
+- [x] `relation_tags_local.bin` — per-relation tags indexed by spatial tile (`doc/tag-data-format.md`)
+- [x] `relation_tags_global.bin` — per-relation tags indexed by (key, value) pair (`doc/tag-data-format.md`)
+- [x] `relation_frequent_tags.bin` — frequent-tag optimised index for relations (`doc/tag-data-format.md`)
 - [ ] `relation_keys.bin` — key string table for relation tags
 
 ### Meta files (`FILES_META`, `--meta=yes`)
@@ -644,24 +644,24 @@ Files drawn from `src/bin/download_clone.sh`. Each `.bin` file is accompanied by
 - [ ] `nodes_attic_undeleted.bin` — node IDs present in attic but not deleted
 - [ ] `nodes_meta_attic.bin` — metadata for historical node versions
 - [ ] `node_changelog.bin` — per-tile log of node changes
-- [ ] `node_tags_local_attic.bin` — historical node tags by spatial tile
-- [ ] `node_tags_global_attic.bin` — historical node tags by (key, value)
-- [ ] `node_frequent_tags_attic.bin` — historical frequent-tag index for nodes
+- [x] `node_tags_local_attic.bin` — historical node tags by spatial tile (`doc/tag-data-format.md`)
+- [x] `node_tags_global_attic.bin` — historical node tags by (key, value) (`doc/tag-data-format.md`)
+- [x] `node_frequent_tags_attic.bin` — historical frequent-tag index for nodes (`doc/tag-data-format.md`)
 - [x] `ways_attic.bin` / `ways_attic.bin.idx` — Way_Delta historical records (this document)
 - [ ] `ways_attic.map` — random-access way ID → attic index map
 - [ ] `way_attic_indexes.bin` — per-way list of historical index values
 - [ ] `ways_attic_undeleted.bin` — way IDs present in attic but not deleted
 - [ ] `ways_meta_attic.bin` — metadata for historical way versions
 - [ ] `way_changelog.bin` — per-tile log of way changes
-- [ ] `way_tags_local_attic.bin` — historical way tags by spatial tile
-- [ ] `way_tags_global_attic.bin` — historical way tags by (key, value)
-- [ ] `way_frequent_tags_attic.bin` — historical frequent-tag index for ways
+- [x] `way_tags_local_attic.bin` — historical way tags by spatial tile (`doc/tag-data-format.md`)
+- [x] `way_tags_global_attic.bin` — historical way tags by (key, value) (`doc/tag-data-format.md`)
+- [x] `way_frequent_tags_attic.bin` — historical frequent-tag index for ways (`doc/tag-data-format.md`)
 - [x] `relations_attic.bin` / `relations_attic.bin.idx` — Relation_Delta historical records (this document)
 - [ ] `relations_attic.map` — random-access relation ID → attic index map
 - [ ] `relation_attic_indexes.bin` — per-relation list of historical index values
 - [ ] `relations_attic_undeleted.bin` — relation IDs present in attic but not deleted
 - [ ] `relations_meta_attic.bin` — metadata for historical relation versions
 - [ ] `relation_changelog.bin` — per-tile log of relation changes
-- [ ] `relation_tags_local_attic.bin` — historical relation tags by spatial tile
-- [ ] `relation_tags_global_attic.bin` — historical relation tags by (key, value)
-- [ ] `relation_frequent_tags_attic.bin` — historical frequent-tag index for relations
+- [x] `relation_tags_local_attic.bin` — historical relation tags by spatial tile (`doc/tag-data-format.md`)
+- [x] `relation_tags_global_attic.bin` — historical relation tags by (key, value) (`doc/tag-data-format.md`)
+- [x] `relation_frequent_tags_attic.bin` — historical frequent-tag index for relations (`doc/tag-data-format.md`)
