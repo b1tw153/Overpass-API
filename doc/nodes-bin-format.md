@@ -568,6 +568,125 @@ If a single index group exceeds `block_size`, it spans multiple consecutive bloc
 
 ---
 
+## Read / Write Pseudocode
+
+The three skeleton file pairs (nodes, ways, relations) share the same access patterns. Examples below use nodes; substitute `Way_Skeleton` / `Uint31_Index` or `Relation_Skeleton` / `Uint31_Index` for the other types.
+
+### Spatial range query — "which elements are in this bounding box?"
+
+**Source:** `collect_items_range()` in `src/overpass_api/data/collect_items.h:483–510`
+
+```
+function query_by_bbox(bbox):
+    # Convert bbox corners to a set of Uint32_Index tile ranges
+    ranges = bbox_to_index_ranges(bbox)   # → Ranges<Uint32_Index>
+
+    result = {}   # map tile_index → [Node_Skeleton, ...]
+    for (tile, node) in block_backend.range_iterate(nodes_bin, ranges):
+        if predicate.match(node):
+            result[tile].append(node)
+    return result
+
+    # For an attic (historical) query at timestamp T, run the same range
+    # iterate over both nodes.bin and nodes_attic.bin concurrently and
+    # call reconstruct_items() to merge the two streams, keeping only the
+    # version of each element that was current at time T.
+```
+
+### ID lookup — "fetch these specific node IDs"
+
+**Sources:** `get_existing_map_positions()` (`basic_updater.h:126–140`), `get_existing_skeletons()` (`basic_updater.h:154–176`), `collect_items_discrete()` (`collect_items.h:427–439`)
+
+```
+function lookup_by_ids(id_list):
+    # Step 1: translate each ID to its current tile via the .map file
+    #   (Random_File<Id_Type, Index> provides O(1) lookup by slot position)
+    id_to_tile = {}
+    for id in id_list:
+        tile = random_file.get(id)   # reads nodes.map
+        if tile != 0:
+            id_to_tile[id] = tile
+
+    # Step 2: collect the distinct tiles and fetch skeleton records
+    tiles = deduplicate(id_to_tile.values())
+    result = {}
+    for (tile, node) in block_backend.discrete_iterate(nodes_bin, tiles):
+        if node.id in id_to_tile:
+            result[tile].append(node)
+    return result
+```
+
+### Writing / updating skeleton records
+
+**Sources:** `Node_Updater::update()` (`node_updater.cc:466–640`), `update_map_positions()` (`basic_updater.h:466–475`), `update_elements()` (`basic_updater.h:479–486`)
+
+```
+function update_nodes(new_node_data):
+    ids_to_update = extract_ids(new_node_data)
+
+    # Step 1: read current tile positions from the .map file
+    existing_map = {}   # id → tile
+    for id in ids_to_update:
+        tile = random_file.get(id)   # reads nodes.map
+        if tile != 0:
+            existing_map[id] = tile
+
+    # Step 2: read existing skeleton records for those tiles
+    tiles = deduplicate(existing_map.values())
+    existing_skeletons = {}   # tile → set[Node_Skeleton]
+    for (tile, node) in block_backend.discrete_iterate(nodes_bin, tiles):
+        if node.id in ids_to_update:
+            existing_skeletons[tile].add(node)
+
+    # Step 3: compute the diff (which records to remove and insert)
+    to_delete, to_insert = diff(existing_skeletons, new_node_data)
+    new_map_positions = compute_new_tiles(new_node_data)
+    # new tile = ll_upper(lat, lon) for each node
+
+    # Step 4: write the updated tile positions to the .map file
+    for (id, tile) in new_map_positions:
+        random_file.put(id, tile)   # writes nodes.map
+
+    # Step 5: write the updated skeleton records to the .bin file
+    block_backend.update(nodes_bin, to_delete, to_insert)
+    # block_backend.update() sorts inserts by tile index key, packs them
+    # into decompressed logical blocks, compresses, and writes physical blocks;
+    # the .bin.idx index is updated atomically via a shadow file.
+```
+
+### Reading a historical version at timestamp T
+
+**Source:** `reconstruct_items()` / `collect_items_by_timestamp()` in `collect_items.h:39–421`
+
+```
+function get_node_at_time(tile_ranges, timestamp_T):
+    current_it  = block_backend.range_iterate(nodes_bin,        tile_ranges)
+    attic_it    = block_backend.range_iterate(nodes_attic_bin,  tile_ranges)
+
+    # Merge the two iterators, both advancing together over the same tiles.
+    # For each tile group, collect all current skeletons and all attic deltas,
+    # then reconstruct the state at timestamp_T:
+    result = {}
+    for tile in tile_ranges:
+        current_skels = [s for (t, s) in current_it  if t == tile]
+        attic_deltas  = [d for (t, d) in attic_it    if t == tile]
+        # attic_deltas are Attic<Node_Skeleton> records, each with a .timestamp
+
+        for node_id in union(ids(current_skels), ids(attic_deltas)):
+            # Find the most-recent version whose timestamp ≤ T
+            versions = sorted_versions(current_skels, attic_deltas, node_id)
+            chosen = latest_not_after(versions, timestamp_T)
+            if chosen is not None:
+                result[tile].append(chosen)
+    return result
+
+    # Way/relation attic uses Attic<Way_Delta> / Attic<Relation_Delta>.
+    # Each delta must be applied on top of the base Way_Skeleton to
+    # reconstruct the full node-ref list or member list at time T.
+```
+
+---
+
 ## Source File Reference
 
 | Component | File | Key Lines |
