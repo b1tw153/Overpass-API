@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Copyright 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018 Roland Olbricht et al.
-# With improvements in 2025 by Kai Johnson
+# With improvements in 2025, 2026 by Kai Johnson
 #
 # This file is part of Overpass_API.
 #
@@ -23,20 +23,6 @@
 # Purpose: Applies downloaded OSM change files to the Overpass database
 #          in continuous batches with robust error handling
 # ============================================================================
-
-# Ensure the script is its own process group leader
-# (only needed if the script might be run from an interactive shell)
-PGID=$(ps -o pgid= $$ 2>/dev/null | tr -d ' ')
-if [[ -z "$PGID" ]]; then
-  echo "ERROR: Unable to determine process group ID"
-  exit 1
-fi
-if [[ $$ -ne $PGID ]]; then
-  exec setsid "$0" "$@"
-  # If exec fails, we get here
-  echo "ERROR: Unable to create new process group with setsid"
-  exit 1
-fi
 
 if [[ -z $3 ]]; then
 {
@@ -74,11 +60,14 @@ MAX_BATCH_MB=${APPLY_OSC_MAX_BATCH_MB:-512}       # Maximum uncompressed size pe
 MAX_BATCH_TIME=${APPLY_OSC_MAX_BATCH_TIME:-86400} # Maximum time span per batch (1 day = 86400 seconds)
 
 # Update configuration
-UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60} # Frequency of updates in seconds
 UPDATE_TRIM=${APPLY_OSC_UPDATE_TRIM:--3}          # Seconds to adjust expected update time
 
 # Timestamp tracking
-LAST_UPDATE_WALL_CLOCK=                                 # Wall clock time when last update was collected
+LAST_UPDATE_TIME=                                 # Wall clock time when last update was collected
+
+# Child process tracking
+CHILD_PID=                                        # PID of running migrate_database or update_from_dir processes
 
 # Get execution directory
 EXEC_DIR="$(dirname "$0")/"
@@ -459,36 +448,38 @@ apply_batch()
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $MAX_RETRIES ]]; do
     ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" $META --flush-size=0 &
-    wait "$!"
-    local EXITCODE=$?
+    CHILD_PID="$!"
+    wait "$CHILD_PID"
+    local EXIT_CODE=$?
+    CHILD_PID=
 
-    if [[ $EXITCODE -eq 0 ]]; then
+    if [[ $EXIT_CODE -eq 0 ]]; then
       SUCCESS=1
-    elif [[ $EXITCODE -eq 3 ]]; then
-      log_error "update_from_dir failed due to context error (exit code: $EXITCODE)"
+    elif [[ $EXIT_CODE -eq 3 ]]; then
+      log_error "update_from_dir failed due to context error (exit code: $EXIT_CODE)"
       log_message "Resolve the problem with the dispatcher before retrying"
       cd - >/dev/null || true
       log_error "Dispatcher failure, cannot proceed"
       exit 1
-    elif [[ $EXITCODE -eq 15 ]]; then
+    elif [[ $EXIT_CODE -eq 15 ]]; then
       log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
       cd - >/dev/null || true
       shutdown 143
-    elif [[ $EXITCODE -eq 126 || $EXITCODE -eq 127 ]]; then
+    elif [[ $EXIT_CODE -eq 126 || $EXIT_CODE -eq 127 ]]; then
       # Unrecoverable errors: command not executable (126) or not found (127)
-      log_error "Unable to run update_from_dir (exit code: $EXITCODE)"
+      log_error "Unable to run update_from_dir (exit code: $EXIT_CODE)"
       cd - >/dev/null || true
       log_error "update_from_dir is not available or not executable"
       exit 1
-    elif [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
+    elif [[ $EXIT_CODE -ge 128 && $EXIT_CODE -le 165 ]]; then
       # Signal-based exits: process was killed/crashed (128+N where N is signal number)
-      log_error "update_from_dir terminated by signal (exit code: $EXITCODE), cleaning up..."
+      log_error "update_from_dir terminated by signal (exit code: $EXIT_CODE), cleaning up..."
       cd - >/dev/null || true
-      shutdown $EXITCODE
+      shutdown $EXIT_CODE
     else
       RETRY_COUNT=$((RETRY_COUNT + 1))
       if [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; then
-        log_error "update_from_dir failed (exit code: $EXITCODE), attempt $((RETRY_COUNT + 1))/$MAX_RETRIES, retrying..."
+        log_error "update_from_dir failed (exit code: $EXIT_CODE), attempt $((RETRY_COUNT + 1))/$MAX_RETRIES, retrying..."
         sleep_with_interrupts "$UPDATE_FREQUENCY"
       else
         log_error "update_from_dir error is not recoverable after $MAX_RETRIES attempts"
@@ -515,14 +506,14 @@ apply_batch()
 
 calculate_sleep_time()
 {
-  if [[ -z "$LAST_UPDATE_WALL_CLOCK" ]]; then
+  if [[ -z "$LAST_UPDATE_TIME" ]]; then
     echo 5
     return
   fi
 
   local NOW
   NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + UPDATE_FREQUENCY + UPDATE_TRIM))
+  local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
 
   if [[ $SLEEP_TIME -lt 1 ]]; then
@@ -554,11 +545,10 @@ shutdown()
   # Temporarily ignore signals to prevent recursion
   trap '' SIGTERM SIGINT SIGHUP
 
-  # Kill all processes in the process group except ourselves
-  kill -TERM -- -$$ 2>/dev/null || true
-
-  # Wait for children to finish
-  wait 2>/dev/null || true
+  # Wait for migrate_database or update_from_dir to complete
+  if [[ -n "$CHILD_PID" ]]; then
+    wait "$CHILD_PID"
+  fi
 
   rm -rf "$WORK_DIR"
 
@@ -613,7 +603,11 @@ if ! cd "$EXEC_DIR"; then
   exit 1
 fi
 ./migrate_database --migrate &
-if ! wait "$!"; then
+CHILD_PID=$!
+wait "$CHILD_PID"
+EXIT_CODE=$?
+CHILD_PID=
+if [[ $EXIT_CODE -ne 0 ]]; then
   log_error "Database migration failed"
   exit 1
 fi
@@ -649,7 +643,7 @@ while true; do
   fi
 
   START_TIME=
-  LAST_UPDATE_WALL_CLOCK=$(date +%s)
+  LAST_UPDATE_TIME=$(date +%s)
 
   # Prepare processing directory
   PROCESS_DIR="$WORK_DIR/process_$BATCH_END"
