@@ -722,6 +722,7 @@ shutdown()
   log_message "Shutdown signal received, cleaning up..."
   if [[ -n "$LOCAL_DIR" && -d "$LOCAL_DIR" ]]; then
     find "$LOCAL_DIR" -name "*.tmp" -type f -delete
+    find "$LOCAL_DIR" -name "curl_error_*.log" -type f -delete
   fi
   log_message "Shutdown complete"
   exit "$EXIT_CODE"
