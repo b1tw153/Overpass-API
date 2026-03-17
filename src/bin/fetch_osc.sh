@@ -155,14 +155,25 @@ FETCH_STATE_FILE="$LOCAL_DIR/replicate_id"
 # LOGGING
 # ============================================================================
 
+IN_TERMINAL="false"
+[ -t 1 ] && IN_TERMINAL="true"
+
 log_message()
 {
-  echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
+  if [[ "$IN_TERMINAL" == "true" ]]; then
+    echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
+  else
+    echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
+  fi
 }
 
 log_error()
 {
-  echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  if [[ "$IN_TERMINAL" == "true" ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  else
+    echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
+  fi
 }
 
 # ============================================================================
