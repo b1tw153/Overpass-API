@@ -3,13 +3,40 @@
 # Robust backup script for Overpass API v0.7.61.4
 # Performs safe backup with process verification and error handling
 
-if [[ -z $1 ]]; then
+usage()
 {
-  echo "Usage: $0 backup_dir"
-  echo ""
-  echo "  backup_dir: Target directory for backup files"
+  cat << EOF
+Usage: $0 [--time HH:MM] [--day DAY] backup_dir
+
+  backup_dir        Target directory for backup files
+  --time HH:MM      Time of day to run backup (00:00-23:59); if omitted, runs once immediately
+  --day DAY         Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
+                    implies --time 00:00 if --time is not specified
+
+Environment variables (overridden by arguments):
+  OVERPASS_BACKUP_TIME      Same as --time
+  OVERPASS_BACKUP_DAY       Same as --day
+  OVERPASS_BACKUP_TIMEOUT   Rsync timeout in seconds (default: 7200)
+EOF
+}
+
+ARGS=$(getopt -o '' --long 'time:,day:' -n "$0" -- "$@") || { usage; exit 1; }
+eval set -- "$ARGS"
+
+ARG_TIME=""
+ARG_DAY=""
+while true; do
+  case "$1" in
+    --time) ARG_TIME="$2"; shift 2 ;;
+    --day)  ARG_DAY="$2";  shift 2 ;;
+    --) shift; break ;;
+  esac
+done
+
+if [[ -z "${1:-}" ]]; then
+  usage
   exit 1
-}; fi
+fi
 
 print_corruption_warning()
 {
@@ -31,8 +58,7 @@ if ! [[ -d $DB_DIR && -w $DB_DIR ]]; then
   exit 1
 fi
 
-BACKUP_DIR="$1"
-BACKUP_DIR="$(realpath "$BACKUP_DIR")"
+BACKUP_DIR="$(realpath "$1")"
 
 if ! [[ -d $BACKUP_DIR && -w $BACKUP_DIR ]]; then
   echo "ERROR: Backup directory '$BACKUP_DIR' is not a writeable directory"
@@ -62,14 +88,14 @@ LOG_FILE="$DB_DIR/backup.log"
 
 # Backup timeout (seconds)
 BACKUP_TIMEOUT=${OVERPASS_BACKUP_TIMEOUT:-7200}      # 2 hours
-BACKUP_TIME=${OVERPASS_BACKUP_TIME:-}
-BACKUP_DAY=${OVERPASS_BACKUP_DAY:-}
+BACKUP_TIME=${ARG_TIME:-${OVERPASS_BACKUP_TIME:-}}
+BACKUP_DAY=${ARG_DAY:-${OVERPASS_BACKUP_DAY:-}}
 BACKUP_DAY="${BACKUP_DAY^^}"
 
 if [[ -n "$BACKUP_DAY" ]]; then
   if [[ ! "$BACKUP_DAY" =~ ^(MON|TUE|WED|THU|FRI|SAT|SUN)$ ]] && \
      [[ ! "$BACKUP_DAY" =~ ^([1-9]|[12][0-9]|3[01])$ ]]; then
-    echo "ERROR: OVERPASS_BACKUP_DAY must be a day of week (MON-SUN) or day of month (1-31), got: '$OVERPASS_BACKUP_DAY'"
+    echo "ERROR: --day / OVERPASS_BACKUP_DAY must be a day of week (MON-SUN) or day of month (1-31), got: '$BACKUP_DAY'"
     exit 1
   fi
   if [[ -z "$BACKUP_TIME" ]]; then
@@ -77,9 +103,13 @@ if [[ -n "$BACKUP_DAY" ]]; then
   fi
 fi
 
+if (( BACKUP_DAY > 28 )); then
+  echo "WARNING: --day / OVERPASS_BACKUP_DAY set to $BACKUP_DAY will result in erratic backup frequency"
+fi
+
 if [[ -n "$BACKUP_TIME" ]] && \
    [[ ! "$BACKUP_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
-  echo "ERROR: OVERPASS_BACKUP_TIME must be in HH:MM format (00:00-23:59), got: '$OVERPASS_BACKUP_TIME'"
+  echo "ERROR: --time / OVERPASS_BACKUP_TIME must be in HH:MM format (00:00-23:59), got: '$BACKUP_TIME'"
   exit 1
 fi
 
