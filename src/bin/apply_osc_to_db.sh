@@ -96,8 +96,25 @@ STATE_FILE="$DB_DIR/replicate_id"
 # Log file
 LOG_FILE="$DB_DIR/apply_osc_to_db.log"
 
+# PID file
+PID_FILE="$DB_DIR/apply_osc_to_db.pid"
+echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE"; exit 1; }
+
 # Working directory for decompressed files (created in main execution section)
 WORK_DIR=
+
+# ============================================================================
+# CLEANUP
+# ============================================================================
+
+die()
+{
+  if [[ -n "$WORK_DIR" ]]; then
+    rm -rf "$WORK_DIR" 2>/dev/null || true
+  fi
+  rm -f "$PID_FILE" 2>/dev/null || true
+  exit "$1"
+}
 
 # ============================================================================
 # LOGGING
@@ -195,11 +212,11 @@ update_state()
   local NEW_ID=$1
   if ! {  echo "$NEW_ID" > "$STATE_FILE.tmp"; }; then
     log_error "Failed to write new state to temporary file"
-    exit 1
+    die 1
   fi
   if ! mv "$STATE_FILE.tmp" "$STATE_FILE"; then
     log_error "Failed to update state file"
-    exit 1
+    die 1
   fi
 }
 
@@ -450,7 +467,7 @@ apply_batch()
 
   if ! cd "$EXEC_DIR"; then
     log_error "Unable to cd to execution directory"
-    exit 1
+    die 1
   fi
 
   local SUCCESS=0
@@ -471,7 +488,7 @@ apply_batch()
       log_message "Resolve the problem with the dispatcher before retrying"
       cd - >/dev/null || true
       log_error "Dispatcher failure, cannot proceed"
-      exit 1
+      die 1
     elif [[ $EXIT_CODE -eq 15 ]]; then
       log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
       cd - >/dev/null || true
@@ -481,7 +498,7 @@ apply_batch()
       log_error "Unable to run update_from_dir (exit code: $EXIT_CODE)"
       cd - >/dev/null || true
       log_error "update_from_dir is not available or not executable"
-      exit 1
+      die 1
     elif [[ $EXIT_CODE -eq 134 ]]; then
       log_error "Received SIGABRT (exit code: $EXIT_CODE) from update_from_dir, shutting down"
       log_error "Database may be corrupt; verify or restore from backup before resuming updates"
@@ -505,7 +522,7 @@ apply_batch()
 
   if ! cd - >/dev/null; then
     log_error "Unable to cd back to previous directory"
-    exit 1
+    die 1
   fi
 
   if [[ $SUCCESS -eq 0 ]]; then
@@ -566,7 +583,10 @@ shutdown()
     wait "$CHILD_PID"
   fi
 
-  rm -rf "$WORK_DIR"
+  if [[ -n "$WORK_DIR" ]]; then
+    rm -rf "$WORK_DIR" 2>/dev/null || true
+  fi
+  rm -f "$PID_FILE" 2>/dev/null || true
 
   log_message "Shutdown complete"
   exit "$EXIT_CODE"
@@ -588,18 +608,18 @@ if [[ "$START_ID" == "auto" ]]; then
     log_error "$STATE_FILE does not exist and start set to auto"
     log_error "Auto mode requires an existing replicate_id to resume from"
     log_error "Use an explicit replicate ID to specify the starting point"
-    exit 1
+    die 1
   fi
   if [[ $CURRENT_ID -lt 0 ]]; then
     log_error "Current replicate ID in database is invalid: $CURRENT_ID"
-    exit 1
+    die 1
   fi
   log_message "Auto mode: resuming from $CURRENT_ID"
 else
   CURRENT_ID=$START_ID
   if [[ $CURRENT_ID -lt 0 ]]; then
     log_error "Specified start replicate ID is invalid: $CURRENT_ID"
-    exit 1
+    die 1
   fi
   log_message "Starting from $CURRENT_ID"
 fi
@@ -607,7 +627,7 @@ fi
 # Pre-flight check: verify state file is writeable before doing any work
 if ! touch "$STATE_FILE"; then
   log_error "State file $STATE_FILE is not writeable"
-  exit 1
+  die 1
 fi
 
 validate_meta_mode
@@ -616,7 +636,7 @@ validate_meta_mode
 log_message "Running database migration"
 if ! cd "$EXEC_DIR"; then
   log_error "Unable to cd to execution directory"
-  exit 1
+  die 1
 fi
 ./migrate_database --migrate &
 CHILD_PID=$!
@@ -625,11 +645,11 @@ EXIT_CODE=$?
 CHILD_PID=
 if [[ $EXIT_CODE -ne 0 ]]; then
   log_error "Database migration failed"
-  exit 1
+  die 1
 fi
 if ! cd - >/dev/null; then
   log_error "Unable to cd back to previous directory"
-  exit 1
+  die 1
 fi
 
 # Delete old temp files
@@ -640,7 +660,7 @@ rm -rf "${TMPDIR:-/tmp}"/osm-3s_update_*
 WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/osm-3s_update_XXXXXX")
 if [[ ! -d "$WORK_DIR" ]]; then
   log_error "Unable to create working directory"
-  exit 1
+  die 1
 fi
 
 START_TIME=$(date +%s)
@@ -650,7 +670,7 @@ while true; do
   if ! collect_batch "$CURRENT_ID"; then
     if [[ -n "$START_TIME" && $(date +%s) -gt $((START_TIME + UPDATE_FREQUENCY * 2)) ]]; then
       log_error "No new files to process after two update cycles. Is fetch_osc.sh running?"
-      exit 1
+      die 1
     fi
     SLEEP_TIME=$(calculate_sleep_time)
     log_message "No new files available, waiting $SLEEP_TIME s"
@@ -666,7 +686,7 @@ while true; do
   rm -rf "$PROCESS_DIR"
   if ! mkdir -p "$PROCESS_DIR"; then
     log_error "Unable to create processing directory $PROCESS_DIR"
-    exit 1
+    die 1
   fi
 
   # Decompress batch
