@@ -657,6 +657,7 @@ while true; do
     "$EXEC_DIR/clean_osc.sh" "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" \
       >> "$OVERPASS_DIFF_DIR/clean_osc.out" 2>&1
     if [[ "$LOGROTATE_AVAILABLE" == "true" ]]; then
+      echo "Running periodic log rotation"
       logrotate --state "$OVERPASS_DB_DIR/logrotate.status" \
         -f "$OVERPASS_DB_DIR/logrotate.conf" \
         >> "$OVERPASS_DB_DIR/logrotate.out" 2>&1
@@ -664,7 +665,6 @@ while true; do
     LAST_CLEANUP=$NOW
   fi
   
-  WAKE_TIME=$(( $(date +%s) - NOW ))
-  SLEEP_TIME=$(( OVERPASS_UPDATE_FREQUENCY - WAKE_TIME ))
-  (( SLEEP_TIME < 0 )) && SLEEP_TIME=0
+  SLEEP_TIME=$(( OVERPASS_UPDATE_FREQUENCY - $(date +%s) + NOW ))
+  (( SLEEP_TIME < 0 )) && SLEEP_TIME=$(( (SLEEP_TIME % OVERPASS_UPDATE_FREQUENCY) + OVERPASS_UPDATE_FREQUENCY ))
 done
