@@ -482,6 +482,11 @@ apply_batch()
       cd - >/dev/null || true
       log_error "update_from_dir is not available or not executable"
       exit 1
+    elif [[ $EXIT_CODE -eq 134 ]]; then
+      log_error "Received SIGABRT (exit code: $EXIT_CODE) from update_from_dir, shutting down"
+      log_error "Database may be corrupt; verify or restore from backup before resuming updates"
+      cd - >/dev/null || true
+      shutdown $EXIT_CODE
     elif [[ $EXIT_CODE -ge 128 && $EXIT_CODE -le 165 ]]; then
       # Signal-based exits: process was killed/crashed (128+N where N is signal number)
       log_error "update_from_dir terminated by signal (exit code: $EXIT_CODE), cleaning up..."
