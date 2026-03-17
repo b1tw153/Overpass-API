@@ -53,6 +53,14 @@ fi
 POLL_INTERVAL=$(( OVERPASS_UPDATE_FREQUENCY / 60 ))
 (( POLL_INTERVAL < 1 )) && POLL_INTERVAL=1
 
+OVERPASS_AREA_UPDATE_TIME="${OVERPASS_AREA_UPDATE_TIME:-}"
+
+if [[ -n "$OVERPASS_AREA_UPDATE_TIME" ]] && \
+   [[ ! "$OVERPASS_AREA_UPDATE_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+  echo "ERROR: OVERPASS_AREA_UPDATE_TIME must be in HH:MM format (00:00-23:59), got: '$OVERPASS_AREA_UPDATE_TIME'"
+  exit 1
+fi
+
 LOG_FILE="$DB_DIR/rules_loop.log"
 
 log_message() {
@@ -62,12 +70,35 @@ log_message() {
 calculate_sleep_time() {
   local NOW
   NOW=$(date +%s)
-  local SLEEP_TIME=$(( LAST_UPDATE_TIME + OVERPASS_UPDATE_FREQUENCY - NOW ))
+  local SLEEP_TIME=$(( LAST_DB_UPDATE_TIME + OVERPASS_UPDATE_FREQUENCY - NOW ))
+  if [[ -n "$OVERPASS_AREA_UPDATE_TIME" ]]; then
+    local AREA_SLEEP=$(( NEXT_AREA_UPDATE_TIME - NOW ))
+    if (( AREA_SLEEP > 0 && AREA_SLEEP < SLEEP_TIME )); then
+      SLEEP_TIME=$AREA_SLEEP
+    fi
+  fi
   if [[ $SLEEP_TIME -lt 1 ]]; then
     echo "$POLL_INTERVAL"
   else
     echo "$SLEEP_TIME"
   fi
+}
+
+compute_next_area_update_time() {
+  if [[ -z "$OVERPASS_AREA_UPDATE_TIME" ]]; then
+    NEXT_AREA_UPDATE_TIME=0
+    return
+  fi
+
+  NEXT_AREA_UPDATE_TIME=$(date -d "today $OVERPASS_AREA_UPDATE_TIME" +%s)
+  (( NEXT_AREA_UPDATE_TIME < $(date +%s) )) && NEXT_AREA_UPDATE_TIME=$(date -d "tomorrow $OVERPASS_AREA_UPDATE_TIME" +%s)
+}
+
+should_update_areas() {
+  [[ -z "$OVERPASS_AREA_UPDATE_TIME" ]] && return 0
+  local NOW
+  NOW=$(date +%s)
+  (( NOW >= NEXT_AREA_UPDATE_TIME ))
 }
 
 sleep_with_interrupts() {
@@ -88,13 +119,18 @@ trap 'shutdown 130' SIGINT
 trap 'shutdown 129' SIGHUP
 
 LAST_REPLICATE_ID="none"
-LAST_UPDATE_TIME=""
+LAST_DB_UPDATE_TIME=""
+NEXT_AREA_UPDATE_TIME=0
+
+if [[ -n "$OVERPASS_AREA_UPDATE_TIME" ]]; then
+  compute_next_area_update_time
+fi
 
 while true; do
   CURRENT_REPLICATE_ID=$(cat "$DB_DIR/replicate_id" 2>/dev/null)
 
-  if [[ "$CURRENT_REPLICATE_ID" != "$LAST_REPLICATE_ID" ]]; then
-    LAST_UPDATE_TIME=$(stat -c %Y "$DB_DIR/replicate_id" 2>/dev/null)
+  if [[ "$CURRENT_REPLICATE_ID" != "$LAST_REPLICATE_ID" ]] && should_update_areas; then
+    LAST_DB_UPDATE_TIME=$(stat -c %Y "$DB_DIR/replicate_id" 2>/dev/null)
     log_message "Area update started"
     "$EXEC_DIR/osm3s_query" --progress --rules < "$DB_DIR/rules/areas.osm3s" &
     QUERY_PID=$!
@@ -107,6 +143,7 @@ while true; do
       log_message "Area update finished"
     fi
     LAST_REPLICATE_ID="$CURRENT_REPLICATE_ID"
+    compute_next_area_update_time
   fi
 
   SLEEP_TIME=$(calculate_sleep_time)
