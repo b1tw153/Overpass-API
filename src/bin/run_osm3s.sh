@@ -29,7 +29,7 @@ Usage: $0
     --areas=no|yes
 
 --run=REPLICATE_ID
-    The replicate ID to start fetching diffs from.
+    The replicate ID to start fetching diffs from or "auto"
 
 --db-dir=DB_DIR
     The directory where the database is stored.
@@ -46,6 +46,31 @@ Usage: $0
 
 --areas=yes|no
     Create or skip derived area data.
+
+Environment variables (overridden by arguments):
+  OVERPASS_REPLICATE_ID         Same as --run
+  OVERPASS_DB_DIR               Same as --db-dir
+  OVERPASS_DIFF_DIR             Same as --replicate-dir
+  FETCH_OSC_SOURCE              Same as --source-url
+  OVERPASS_META_MODE            Same as --meta
+  OVERPASS_AREAS                Same as --areas
+
+Environment variables (no argument equivalent):
+  OVERPASS_UPDATE_FREQUENCY     Update interval in seconds (default: 60)
+  OVERPASS_SOCKET_DIR           Directory for dispatcher socket files (default: DB_DIR)
+  OVERPASS_STALL_MULTIPLIER     Stall detection threshold as a multiple of update
+                                frequency (default: 5)
+  OVERPASS_CLEANUP_MULTIPLIER   Diff cleanup frequency as a multiple of update
+                                frequency (default: 1440)
+  DISPATCHER_BASE_SPACE         Base dispatcher shared memory in bytes (default: 12884901888)
+  DISPATCHER_AREAS_SPACE        Areas dispatcher shared memory in bytes (default: 4294967296)
+  DISPATCHER_TIME               Dispatcher time limit (default: 262144)
+  DISPATCHER_RATE_LIMIT         Dispatcher rate limit; 0 means unlimited (default: 0)
+  DISPATCHER_ALLOW_DUPLICATE_QUERIES
+                                Allow duplicate queries: yes|no (default: yes)
+  
+See usage for fetch_osc.sh, apply_osc_to_db.sh, rules_loop.sh, and backup.sh for
+additional environment variable parameters.
 EOF
 }
 
@@ -61,6 +86,11 @@ sleep_with_interrupts()
 {
   sleep "$1" &
   wait $!
+}
+
+message()
+{
+  echo "$(date -u '+%F %T'): $1"
 }
 
 # ============================================================================
@@ -96,70 +126,68 @@ while true; do
 done
 
 if [[ -z $START_ID ]]; then
-  echo "Error: --run is required"
+  message "ERROR: --run is required"
+  usage
   exit 1
 fi
 
 if [[ "$START_ID" != "auto" && ! "$START_ID" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: Invalid --run value '$START_ID': must be a positive integer or 'auto'"
+  message "ERROR: Invalid --run value '$START_ID': must be a positive integer or 'auto'"
+  usage
   exit 1
 fi
 
 if [[ -z $OVERPASS_DB_DIR ]]; then
-  echo "Error: --db-dir is required"
+  message "ERROR: --db-dir is required"
+  usage
   exit 1
 fi
 
 if ! [[ -d $OVERPASS_DB_DIR && -w $OVERPASS_DB_DIR ]]; then
-  echo "ERROR: --db-dir '$OVERPASS_DB_DIR' is not a writeable directory"
+  message "ERROR: --db-dir '$OVERPASS_DB_DIR' is not a writeable directory"
+  usage
   exit 1
 fi
     
 if [[ -z $OVERPASS_DIFF_DIR ]]; then
-  echo "Error: --replicate-dir is required"
+  message "ERROR: --replicate-dir is required"
+  usage
   exit 1
 fi
 
 if ! [[ -d "$OVERPASS_DIFF_DIR" && -w "$OVERPASS_DIFF_DIR" ]]; then
-  echo "ERROR: --replicate-dir '$OVERPASS_DIFF_DIR' is not a writeable directory"
+  message "ERROR: --replicate-dir '$OVERPASS_DIFF_DIR' is not a writeable directory"
+  usage
   exit 1
 fi
 
 if [[ -z $FETCH_OSC_SOURCE ]]; then
-  echo "Error: --source-url is required"
+  message "ERROR: --source-url is required"
+  usage
   exit 1
 fi
 
 if [[ ! "$FETCH_OSC_SOURCE" =~ ^https?:// ]]; then
-  echo "ERROR: Invalid FETCH_OSC_SOURCE '$FETCH_OSC_SOURCE': must start with http:// or https://"
+  message "ERROR: Invalid FETCH_OSC_SOURCE '$FETCH_OSC_SOURCE': must start with http:// or https://"
+  usage
   exit 1
 fi
 
 if [[ $OVERPASS_META_MODE != "attic" && $OVERPASS_META_MODE != "yes" && $OVERPASS_META_MODE != "no" ]]; then
-  echo "Error: --meta must be 'attic', 'yes', or 'no'"
+  message "ERROR: --meta must be 'attic', 'yes', or 'no'"
+  usage
   exit 1
 fi
 
 if [[ $AREAS != "yes" && $AREAS != "no" ]]; then
-  echo "Error: --areas must be 'yes' or 'no'"
+  message "ERROR: --areas must be 'yes' or 'no'"
+  usage
   exit 1
 fi
 
-# Get execution directory
-EXEC_DIR="$(dirname "$0")/"
-if [[ ! ${EXEC_DIR:0:1} == "/" ]]; then
-  EXEC_DIR="$(pwd)/$EXEC_DIR"
-fi
-
-# Convert replicate-dir to absolute path
-if [[ ! ${OVERPASS_DIFF_DIR:0:1} == "/" ]]; then
-  OVERPASS_DIFF_DIR="$(pwd)/$OVERPASS_DIFF_DIR"
-fi
-
-# Convert db-dir to absolute path
-if [[ ! ${OVERPASS_DB_DIR:0:1} == "/" ]]; then
-  OVERPASS_DB_DIR="$(pwd)/$OVERPASS_DB_DIR"
-fi
+EXEC_DIR="$(realpath "$(dirname "$0")")"
+OVERPASS_DIFF_DIR="$(realpath "$OVERPASS_DIFF_DIR")"
+OVERPASS_DB_DIR="$(realpath "$OVERPASS_DB_DIR")"
 
 # ============================================================================
 # ENVIRONMENT VARIABLE PARAMETERS
@@ -176,51 +204,60 @@ DISPATCHER_RATE_LIMIT=${DISPATCHER_RATE_LIMIT:-0}
 DISPATCHER_ALLOW_DUPLICATE_QUERIES=${DISPATCHER_ALLOW_DUPLICATE_QUERIES:-yes}
 
 if ! [[ -d "$OVERPASS_SOCKET_DIR" && -w "$OVERPASS_SOCKET_DIR" ]]; then
-  echo "ERROR: OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
+  message "ERROR: OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
+  usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_BASE_SPACE" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: DISPATCHER_BASE_SPACE must be a positive integer, got: '$DISPATCHER_BASE_SPACE'"
+  message "ERROR: DISPATCHER_BASE_SPACE must be a positive integer, got: '$DISPATCHER_BASE_SPACE'"
+  usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_AREAS_SPACE" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: DISPATCHER_AREAS_SPACE must be a positive integer, got: '$DISPATCHER_AREAS_SPACE'"
+  message "ERROR: DISPATCHER_AREAS_SPACE must be a positive integer, got: '$DISPATCHER_AREAS_SPACE'"
+  usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_TIME" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: DISPATCHER_TIME must be a positive integer, got: '$DISPATCHER_TIME'"
+  message "ERROR: DISPATCHER_TIME must be a positive integer, got: '$DISPATCHER_TIME'"
+  usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_RATE_LIMIT" =~ ^[0-9]+$ ]]; then
-  echo "ERROR: DISPATCHER_RATE_LIMIT must be a non-negative integer, got: '$DISPATCHER_RATE_LIMIT'"
+  message "ERROR: DISPATCHER_RATE_LIMIT must be a non-negative integer, got: '$DISPATCHER_RATE_LIMIT'"
+  usage
   exit 1
 fi
 
 if [[ "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "yes" && "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "no" ]]; then
-  echo "ERROR: DISPATCHER_ALLOW_DUPLICATE_QUERIES must be 'yes' or 'no', got: '$DISPATCHER_ALLOW_DUPLICATE_QUERIES'"
+  message "ERROR: DISPATCHER_ALLOW_DUPLICATE_QUERIES must be 'yes' or 'no', got: '$DISPATCHER_ALLOW_DUPLICATE_QUERIES'"
+  usage
   exit 1
 fi
 
 if [[ ! "$OVERPASS_UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$OVERPASS_UPDATE_FREQUENCY'"
+  message "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$OVERPASS_UPDATE_FREQUENCY'"
+  usage
   exit 1
 fi
 
 if [[ "$OVERPASS_UPDATE_FREQUENCY" -ne 60 && "$OVERPASS_UPDATE_FREQUENCY" -ne 3600 && "$OVERPASS_UPDATE_FREQUENCY" -ne 86400 ]]; then
-  echo "WARNING: Unexpected OVERPASS_UPDATE_FREQUENCY: $OVERPASS_UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
+  message "WARNING: Unexpected OVERPASS_UPDATE_FREQUENCY: $OVERPASS_UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
 fi
 
 if [[ ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
+  message "ERROR: OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
+  usage
   exit 1
 fi
 
 if [[ ! "$OVERPASS_CLEANUP_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: OVERPASS_CLEANUP_MULTIPLIER must be a positive integer, got: '$OVERPASS_CLEANUP_MULTIPLIER'"
+  message "ERROR: OVERPASS_CLEANUP_MULTIPLIER must be a positive integer, got: '$OVERPASS_CLEANUP_MULTIPLIER'"
+  usage
   exit 1
 fi
 
@@ -228,7 +265,7 @@ LOGROTATE_AVAILABLE=false
 if command -v logrotate > /dev/null 2>&1; then
   LOGROTATE_AVAILABLE=true
 else
-  echo "WARNING: logrotate not found, log files will not be rotated"
+  message "WARNING: logrotate not found, log files will not be rotated"
 fi
 
 # ============================================================================
@@ -268,15 +305,15 @@ validate_meta_mode()
   local DB_STATE
   DB_STATE=$(detect_database_meta_state)
   if [[ $? -ne 0 ]]; then
-    echo "ERROR: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
-    echo "The database may not be properly initialized"
-    echo "Run ... TBD ... to initialize the database"
+    message "ERROR: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
+    message "The database may not be properly initialized"
+    message "Run ... TBD ... to initialize the database"
     exit 1
   fi
 
   # Compare user mode with database state
   if [[ "$OVERPASS_META_MODE" != "$DB_STATE" ]]; then
-    echo "ERROR: Meta mode mismatch. Argument: --meta=$OVERPASS_META_MODE; Database: --meta=$DB_STATE"
+    message "ERROR: Meta mode mismatch. Argument: --meta=$OVERPASS_META_MODE; Database: --meta=$DB_STATE"
     exit 1
   fi
 }
@@ -287,6 +324,7 @@ validate_meta_mode()
 
 start_base_dispatcher()
 {
+  message "Starting base dispatcher"
   local META_FLAG=()
   if [[ $OVERPASS_META_MODE == "yes" ]]; then
     META_FLAG=(--meta)
@@ -306,11 +344,13 @@ start_base_dispatcher()
     &
   DISPATCHER_BASE_PID=$!
   sleep_with_interrupts 1
+  message "Started base dispatcher (PID $DISPATCHER_BASE_PID)"
 }
 
 start_areas_dispatcher()
 {
   if [[ $AREAS == "yes" ]]; then
+    message "Starting areas dispatcher"
     "$EXEC_DIR/dispatcher" --areas \
       --db-dir="$OVERPASS_DB_DIR" \
       --socket-dir="$OVERPASS_SOCKET_DIR" \
@@ -322,13 +362,16 @@ start_areas_dispatcher()
       &
     DISPATCHER_AREAS_PID=$!
     sleep_with_interrupts 1
+    message "Started areas dispatcher  (PID $DISPATCHER_AREAS_PID)"
   else
+    message "Skipping area dispatcher startup (--areas=$AREAS)"
     DISPATCHER_AREAS_PID=
   fi
 }
 
 start_apply_osc()
 {
+  message "Starting apply_osc_to_db.sh"
   "$EXEC_DIR/apply_osc_to_db.sh" \
     "$OVERPASS_DIFF_DIR" \
     "$START_ID" \
@@ -337,10 +380,12 @@ start_apply_osc()
     &
   APPLY_OSC_PID=$!
   sleep_with_interrupts 1
+  message "Started apply_osc_to_db.sh (PID $APPLY_OSC_PID)"
 }
 
 start_fetch_osc()
 {
+  message "Starting fetch_osc.sh"
   local FETCH_START_ID
   if [[ "$START_ID" == "auto" ]]; then
     FETCH_START_ID="auto"
@@ -356,18 +401,22 @@ start_fetch_osc()
     &
   FETCH_OSC_PID=$!
   sleep_with_interrupts 1
+  message "Started fetch_osc.sh (PID $FETCH_OSC_PID)"
 }
 
 start_rules_loop()
 {
   if [[ "$AREAS" == "yes" ]]; then
+    message "Starting rules_loop.sh"
     "$EXEC_DIR/rules_loop.sh" \
       "$OVERPASS_DB_DIR" \
       >> "$OVERPASS_DB_DIR/rules_loop.out" 2>&1 \
       &
     RULES_LOOP_PID=$!
     sleep_with_interrupts 1
+    message "Started rules_loop.sh (PID $RULES_LOOP_PID)"
   else
+    message "Skipping rules_loop.sh startup (--areas=$AREAS)"
     RULES_LOOP_PID=
   fi
 }
@@ -388,7 +437,7 @@ kill_child()
     ((++WAIT_COUNT))
   done
   if kill -0 "$CHILD_PID" 2>/dev/null; then
-    echo "ERROR: Unable to forcefully terminate $CHILD_NAME, killing"
+    message "ERROR: Unable to forcefully terminate $CHILD_NAME, killing"
     kill -9 "$CHILD_PID" 2>/dev/null
   fi
   wait "$CHILD_PID" 2>/dev/null
@@ -397,13 +446,15 @@ kill_child()
 stop_base_dispatcher()
 {
   if [[ -n "$DISPATCHER_BASE_PID" ]] && kill -0 "$DISPATCHER_BASE_PID" 2>/dev/null; then
+    message "Stopping base dispatcher"
     if "$EXEC_DIR/dispatcher" --osm-base --terminate; then
       wait "$DISPATCHER_BASE_PID"
     else
-      echo "ERROR: Unable to safely terminate base dispatcher"
-      echo "Attempting to forcefully terminate base dispatcher"
+      message "ERROR: Unable to safely terminate base dispatcher"
+      message "Attempting to forcefully terminate base dispatcher"
       kill_child "base dispatcher" "$DISPATCHER_BASE_PID"
     fi
+    message "Stopped base dispatcher"
   fi
   DISPATCHER_BASE_PID=
 }
@@ -411,13 +462,15 @@ stop_base_dispatcher()
 stop_areas_dispatcher()
 {
   if [[ -n "$DISPATCHER_AREAS_PID" ]] && kill -0 "$DISPATCHER_AREAS_PID" 2>/dev/null; then
+    message "Stopping areas dispatcher"
     if "$EXEC_DIR/dispatcher" --areas --terminate; then
       wait "$DISPATCHER_AREAS_PID"
     else
-      echo "ERROR: Unable to safely terminate areas dispatcher"
-      echo "Attempting to forcefully terminate areas dispatcher"
+      message "ERROR: Unable to safely terminate areas dispatcher"
+      message "Attempting to forcefully terminate areas dispatcher"
       kill_child "areas dispatcher" "$DISPATCHER_AREAS_PID"
     fi
+    message "Stopped areas dispatcher"
   fi
   DISPATCHER_AREAS_PID=
 }
@@ -425,10 +478,11 @@ stop_areas_dispatcher()
 stop_apply_osc()
 {
   if [[ -n "$APPLY_OSC_PID" ]] && kill -0 "$APPLY_OSC_PID" 2>/dev/null; then
-    echo "Attempting to safely terminate apply_osc_to_db.sh"
-    echo "This may take some time while we wait for updates to finish"
+    message "Stopping apply_osc_to_db.sh (attempting safe termination)"
+    message "This may take some time while we wait for updates to finish"
     kill "$APPLY_OSC_PID" 2>/dev/null
     wait "$APPLY_OSC_PID"
+    message "Stopped apply_osc_to_db.sh"
   fi
   APPLY_OSC_PID=
 }
@@ -436,8 +490,10 @@ stop_apply_osc()
 stop_fetch_osc()
 {
   if [[ -n "$FETCH_OSC_PID" ]] && kill -0 "$FETCH_OSC_PID" 2>/dev/null; then
+    message "Stopping fetch_osc.sh"
     kill "$FETCH_OSC_PID" 2>/dev/null
     wait "$FETCH_OSC_PID"
+    message "Stopped fetch_osc.sh"
   fi
   FETCH_OSC_PID=
 }
@@ -445,8 +501,10 @@ stop_fetch_osc()
 stop_rules_loop()
 {
   if [[ -n "$RULES_LOOP_PID" ]] && kill -0 "$RULES_LOOP_PID" 2>/dev/null; then
+    message "Stopping rules_loop.sh"
     kill "$RULES_LOOP_PID" 2>/dev/null
     wait "$RULES_LOOP_PID"
+    message "Stopped rules_loop.sh"
   fi
   RULES_LOOP_PID=
 }
@@ -554,11 +612,11 @@ EOF
 shutdown()
 {
   local EXIT_CODE=$1
-  echo "Shutdown signal received, cleaning up..."
+  message "Shutdown signal received, cleaning up..."
 
   stop_overpass
 
-  echo "Shutdown complete"
+  message "Shutdown complete"
   exit "$EXIT_CODE"
 }
 
@@ -570,6 +628,26 @@ trap 'shutdown 129' SIGHUP
 # MAIN EXECUTION
 # ============================================================================
 
+message "-----------------------------------"
+message "Starting Overpass ($0)"
+message "-----------------------------------"
+message "OVERPASS_REPLICATE_ID              $START_ID"
+message "OVERPASS_DB_DIR                    $OVERPASS_DB_DIR"
+message "OVERPASS_DIFF_DIR                  $OVERPASS_DIFF_DIR"
+message "FETCH_OSC_SOURCE                   $FETCH_OSC_SOURCE"
+message "OVERPASS_META_MODE                 $OVERPASS_META_MODE"
+message "OVERPASS_AREAS                     $AREAS"
+message "OVERPASS_UPDATE_FREQUENCY          $OVERPASS_UPDATE_FREQUENCY seconds"
+message "OVERPASS_SOCKET_DIR                $OVERPASS_SOCKET_DIR"
+message "OVERPASS_STALL_MULTIPLIER          $OVERPASS_STALL_MULTIPLIER"
+message "OVERPASS_CLEANUP_MULTIPLIER        $OVERPASS_CLEANUP_MULTIPLIER"
+message "DISPATCHER_BASE_SPACE              ~$((DISPATCHER_BASE_SPACE / 1048576)) MiB"
+message "DISPATCHER_AREAS_SPACE             ~$((DISPATCHER_AREAS_SPACE / 1048576)) MiB"
+message "DISPATCHER_TIME                    $DISPATCHER_TIME seconds"
+message "DISPATCHER_RATE_LIMIT              $DISPATCHER_RATE_LIMIT"
+message "DISPATCHER_ALLOW_DUPLICATE_QUERIES $DISPATCHER_ALLOW_DUPLICATE_QUERIES"
+message "-----------------------------------"
+
 validate_meta_mode
 
 generate_logrotate_config
@@ -577,7 +655,7 @@ generate_logrotate_config
 start_base_dispatcher
 
 if ! check_base_dispatcher; then
-  echo "ERROR: Unable to start base dispatcher"
+  message "ERROR: Unable to start base dispatcher"
   stop_overpass
   exit 1
 fi
@@ -585,7 +663,7 @@ fi
 start_areas_dispatcher
 
 if ! check_areas_dispatcher; then
-  echo "ERROR: Unable to start areas dispatcher"
+  message "ERROR: Unable to start areas dispatcher"
   stop_overpass
   exit 1
 fi
@@ -593,7 +671,7 @@ fi
 start_apply_osc
 
 if ! check_apply_osc; then
-  echo "ERROR: Unable to start apply_osc_to_db.sh"
+  message "ERROR: Unable to start apply_osc_to_db.sh"
   stop_overpass
   exit 1
 fi
@@ -601,7 +679,7 @@ fi
 start_fetch_osc
 
 if ! check_fetch_osc; then
-  echo "ERROR: Unable to start fetch_osc.sh"
+  message "ERROR: Unable to start fetch_osc.sh"
   stop_overpass
   exit 1
 fi
@@ -609,16 +687,16 @@ fi
 start_rules_loop
 
 if ! check_rules_loop; then
-  echo "ERROR: Unable to start rules_loop.sh"
+  message "ERROR: Unable to start rules_loop.sh"
   stop_overpass
   exit 1
 fi
 
-echo "Checking startup ..."
+message "Checking startup ..."
 if check_overpass; then
-  echo "Startup complete"
+  message "Startup complete"
 else
-  echo "ERROR: Startup failed, shutting down"
+  message "ERROR: Startup failed, shutting down"
   stop_overpass
   exit 1
 fi
@@ -627,7 +705,9 @@ fi
 # MAIN LOOP
 # ============================================================================
 
-LAST_CLEANUP=$(date +%s)
+NOW=$(date +%s)
+LAST_HEALTH_MESSAGE="$NOW"
+LAST_CLEANUP="$NOW"
 STALL_THRESHOLD=$(( OVERPASS_UPDATE_FREQUENCY * OVERPASS_STALL_MULTIPLIER ))
 CLEANUP_THRESHOLD=$(( OVERPASS_UPDATE_FREQUENCY * OVERPASS_CLEANUP_MULTIPLIER ))
 SLEEP_TIME="$OVERPASS_UPDATE_FREQUENCY"
@@ -638,7 +718,7 @@ while true; do
   NOW=$(date +%s)
 
   if ! check_overpass; then
-    echo "ERROR: Health check failed, shutting down"
+    message "ERROR: Health check failed, shutting down"
     stop_overpass
     exit 1
   fi
@@ -646,18 +726,23 @@ while true; do
   REPLICATE_ID_TIMESTAMP=$(stat -c %Y "$OVERPASS_DB_DIR/replicate_id" 2>/dev/null)
   if [[ -n "$REPLICATE_ID_TIMESTAMP" ]]; then
     if (( NOW - REPLICATE_ID_TIMESTAMP > STALL_THRESHOLD )); then
-      echo "ERROR: Database has not advanced in $(( NOW - REPLICATE_ID_TIMESTAMP ))s (threshold: ${STALL_THRESHOLD}s), shutting down"
+      message "ERROR: Database has not advanced in $(( NOW - REPLICATE_ID_TIMESTAMP ))s (threshold: ${STALL_THRESHOLD}s), shutting down"
       stop_overpass
       exit 1
     fi
   fi
 
+  if (( NOW - LAST_HEALTH_MESSAGE > 3600)); then
+    message "Overpass processes are running and database has been recently updated"
+    LAST_HEALTH_MESSAGE="$NOW"
+  fi
+
   if (( NOW - LAST_CLEANUP > CLEANUP_THRESHOLD )); then
-    echo "Running periodic diff cleanup"
+    message "Running periodic diff cleanup"
     "$EXEC_DIR/clean_osc.sh" "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" \
       >> "$OVERPASS_DIFF_DIR/clean_osc.out" 2>&1
     if [[ "$LOGROTATE_AVAILABLE" == "true" ]]; then
-      echo "Running periodic log rotation"
+      message "Running periodic log rotation"
       logrotate --state "$OVERPASS_DB_DIR/logrotate.status" \
         -f "$OVERPASS_DB_DIR/logrotate.conf" \
         >> "$OVERPASS_DB_DIR/logrotate.out" 2>&1
