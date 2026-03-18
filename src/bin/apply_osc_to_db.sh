@@ -97,7 +97,7 @@ STATE_FILE="$DB_DIR/replicate_id"
 LOG_FILE="$DB_DIR/apply_osc_to_db.log"
 
 # PID file
-PID_FILE="$DB_DIR/apply_osc_to_db.pid"
+PID_FILE="$DB_DIR/apply_osc.pid"
 echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE"; exit 1; }
 
 # Working directory for decompressed files (created in main execution section)

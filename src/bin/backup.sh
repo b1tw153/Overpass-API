@@ -65,9 +65,9 @@ if ! [[ -d $BACKUP_DIR && -w $BACKUP_DIR ]]; then
   exit 1
 fi
 
-APPLY_OSC_PID=$(cat "$DB_DIR/apply_osc_to_db.pid") 2>/dev/null
+APPLY_OSC_PID=$(cat "$DB_DIR/apply_osc.pid") 2>/dev/null
 if [[ -z "$APPLY_OSC_PID" ]]; then
-  echo "ERROR: apply_osc_to_db.pid is missing or empty"
+  echo "ERROR: apply_osc.pid is missing or empty"
   print_corruption_warning
   exit 1
 fi
