@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Copyright 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018 Roland Olbricht et al.
-# With improvements in 2025 by Kai Johnson
+# With improvements in 2025, 2026 by Kai Johnson
 #
 # This file is part of Overpass_API.
 #
@@ -22,18 +22,6 @@
 # Script: fetch_osc_and_apply.sh
 # Purpose: Downloads and applies OSM change files in a single process
 # ============================================================================
-
-# Ensure the script is its own process group leader
-PGID=$(ps -o pgid= $$ 2>/dev/null | tr -d ' ')
-if [[ -z "$PGID" ]]; then
-  echo "ERROR: Unable to determine process group ID"
-  exit 1
-fi
-if [[ $$ -ne "$PGID" ]]; then
-  exec setsid "$0" "$@"
-  echo "ERROR: Unable to create new process group with setsid"
-  exit 1
-fi
 
 if [[ -z "$1" ]]; then
 {
@@ -60,7 +48,7 @@ UPDATE_TRIM=${FETCH_OSC_UPDATE_TRIM:--6}
 
 # Batch configuration
 MAX_BATCH_COUNT=${FETCH_OSC_MAX_BATCH_SIZE:-1440}
-MAX_BATCH_MB=${APPLY_OSC_TO_DB_MAX_BATCH_MB:-64}
+MAX_BATCH_MB=${APPLY_OSC_MAX_BATCH_MB:-64}
 
 # Download configuration
 CURL_CONNECT_TIMEOUT=${FETCH_OSC_CONNECT_TIMEOUT:-30}
@@ -71,13 +59,16 @@ CURL_SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}
 CURL_SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}
 
 # Apply configuration
-APPLY_MAX_RETRIES=${APPLY_OSC_TO_DB_APPLY_MAX_RETRIES:-5}
+APPLY_MAX_RETRIES=${APPLY_OSC_APPLY_MAX_RETRIES:-5}
 
 # Network state tracking
 SOURCE_VERIFIED=false
 
 # Timestamp tracking
 LAST_UPDATE_WALL_CLOCK=
+
+# Child process tracking
+CHILD_PID=
 
 # Get execution directory
 EXEC_DIR="$(dirname "$0")/"
@@ -93,8 +84,13 @@ if [[ ! -d "$DB_DIR" ]]; then
   exit 1
 fi
 
-if [[ ! -s "$DB_DIR/replicate_id" ]]; then
-  echo "ERROR: $DB_DIR/replicate_id does not exist"
+if [[ ! -f "$DB_DIR/replicate_id" || ! -s "$DB_DIR/replicate_id" ]]; then
+  echo "ERROR: $DB_DIR/replicate_id is not a regular file or is empty"
+  exit 1
+fi
+
+if ! touch "$DB_DIR/replicate_id"; then
+  echo "ERROR: $DB_DIR/replicate_id is not writeable"
   exit 1
 fi
 
@@ -104,22 +100,62 @@ STATE_FILE="$DB_DIR/replicate_id"
 # Log file
 LOG_FILE="$DB_DIR/fetch_osc_and_apply.log"
 
+# PID file
+PID_FILE="$DB_DIR/apply_osc.pid"
+echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE"; exit 1; }
+
 # Temp directories for this session
 TEMP_SOURCE_DIR=
 TEMP_TARGET_DIR=
 
 # ============================================================================
+# CLEANUP
+# ============================================================================
+
+cleanup_temp_dirs()
+{
+  if [[ -n "$TEMP_TARGET_DIR" && -d "$TEMP_TARGET_DIR" ]]; then
+    rm -f "$TEMP_TARGET_DIR"/*
+    rmdir "$TEMP_TARGET_DIR" 2>/dev/null || true
+  fi
+  if [[ -n "$TEMP_SOURCE_DIR" && -d "$TEMP_SOURCE_DIR" ]]; then
+    rm -f "$TEMP_SOURCE_DIR"/*
+    rmdir "$TEMP_SOURCE_DIR" 2>/dev/null || true
+  fi
+  TEMP_SOURCE_DIR=
+  TEMP_TARGET_DIR=
+}
+
+die()
+{
+  cleanup_temp_dirs
+  rm -f "$PID_FILE" 2>/dev/null || true
+  exit "$1"
+}
+
+# ============================================================================
 # LOGGING
 # ============================================================================
 
+IN_TERMINAL="false"
+[ -t 1 ] && IN_TERMINAL="true"
+
 log_message()
 {
-  echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
+  if [[ "$IN_TERMINAL" == "true" ]]; then
+    echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
+  else
+    echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
+  fi
 }
 
 log_error()
 {
-  echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
+  if [[ "$IN_TERMINAL" == "true" ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  else
+    echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
+  fi
 }
 
 # ============================================================================
@@ -130,57 +166,57 @@ verify_globals()
 {
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid OVERPASS_UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
     log_error "Invalid FETCH_OSC_UPDATE_TRIM: $UPDATE_TRIM"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$MAX_BATCH_COUNT" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid FETCH_OSC_MAX_BATCH_SIZE: $MAX_BATCH_COUNT"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$MAX_BATCH_MB" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid APPLY_OSC_TO_DB_MAX_BATCH_MB: $MAX_BATCH_MB"
-    exit 1
+    log_error "Invalid APPLY_OSC_MAX_BATCH_MB: $MAX_BATCH_MB"
+    die 1
   fi
 
   if [[ ! "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid FETCH_OSC_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$CURL_KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid FETCH_OSC_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$CURL_MAX_RETRIES" =~ ^[0-9]+$ ]]; then
     log_error "Invalid FETCH_OSC_MAX_RETRIES: $CURL_MAX_RETRIES"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$CURL_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid FETCH_OSC_RETRY_DELAY: $CURL_RETRY_DELAY"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$CURL_SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
     log_error "Invalid FETCH_OSC_SPEED_LIMIT: $CURL_SPEED_LIMIT"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$CURL_SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid FETCH_OSC_SPEED_TIME: $CURL_SPEED_TIME"
-    exit 1
+    die 1
   fi
 
   if [[ ! "$APPLY_MAX_RETRIES" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid APPLY_OSC_TO_DB_APPLY_MAX_RETRIES: $APPLY_MAX_RETRIES"
-    exit 1
+    log_error "Invalid APPLY_OSC_APPLY_MAX_RETRIES: $APPLY_MAX_RETRIES"
+    die 1
   fi
 }
 
@@ -428,8 +464,10 @@ apply_minute_diffs()
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $APPLY_MAX_RETRIES ]]; do
     ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" --flush-size=0 &
-    wait $!
+    CHILD_PID=$!
+    wait "$CHILD_PID"
     local EXITCODE=$?
+    CHILD_PID=
 
     case $EXITCODE in
       0)
@@ -445,7 +483,12 @@ apply_minute_diffs()
         ;;
       126|127)
         log_error "update_from_dir not found or not executable (exit code: $EXITCODE)"
-        exit 1
+        die 1
+        ;;
+      134)
+        log_error "Received SIGABRT (exit code: $EXITCODE) from update_from_dir, shutting down"
+        log_error "Database may be corrupt; verify or restore from backup before resuming updates"
+        shutdown $EXITCODE
         ;;
       *)
         if [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
@@ -486,26 +529,14 @@ read_current_state()
 update_state()
 {
   local NEW_ID=$1
-  echo "$NEW_ID" > "$STATE_FILE.tmp"
-  mv "$STATE_FILE.tmp" "$STATE_FILE"
-}
-
-# ============================================================================
-# CLEANUP
-# ============================================================================
-
-cleanup_temp_dirs()
-{
-  if [[ -n "$TEMP_TARGET_DIR" && -d "$TEMP_TARGET_DIR" ]]; then
-    rm -f "$TEMP_TARGET_DIR"/*
-    rmdir "$TEMP_TARGET_DIR" 2>/dev/null || true
+  if ! { echo "$NEW_ID" > "$STATE_FILE.tmp"; }; then
+    log_error "Failed to write new state to temporary file"
+    die 1
   fi
-  if [[ -n "$TEMP_SOURCE_DIR" && -d "$TEMP_SOURCE_DIR" ]]; then
-    rm -f "$TEMP_SOURCE_DIR"/*
-    rmdir "$TEMP_SOURCE_DIR" 2>/dev/null || true
+  if ! { mv "$STATE_FILE.tmp" "$STATE_FILE"; }; then
+    log_error "Failed to update state file"
+    die 1
   fi
-  TEMP_SOURCE_DIR=
-  TEMP_TARGET_DIR=
 }
 
 # ============================================================================
@@ -521,13 +552,13 @@ shutdown()
   # Temporarily ignore signals to prevent recursion
   trap '' SIGTERM SIGINT SIGHUP
 
-  # Kill all processes in the process group except ourselves
-  kill -TERM -- -$$ 2>/dev/null || true
-
-  # Wait for children to finish
-  wait 2>/dev/null || true
+  # Wait for migrate_database or update_from_dir to complete
+  if [[ -n "$CHILD_PID" ]]; then
+    wait "$CHILD_PID"
+  fi
 
   cleanup_temp_dirs
+  rm -f "$PID_FILE" 2>/dev/null || true
 
   log_message "Shutdown complete"
   exit "$EXIT_CODE"
@@ -546,37 +577,50 @@ verify_globals
 echo >> "$LOG_FILE"
 log_message "Starting fetch and apply from $SOURCE_URL"
 
+# This may be legacy code for an unused directory
 mkdir -p "$DB_DIR/augmented_diffs/"
 
 CURRENT_ID=$(($(read_current_state) + 0))
 
 if [[ $CURRENT_ID -le 0 ]]; then
   log_error "Invalid replicate_id: $CURRENT_ID"
-  exit 1
+  die 1
 fi
 
-pushd "$EXEC_DIR" > /dev/null || exit 1
+pushd "$EXEC_DIR" > /dev/null || die 1
 
 # Run database migration
 log_message "Running database migration"
 ./migrate_database --migrate &
-if ! wait $!; then
+CHILD_PID=$!
+wait "$CHILD_PID"
+EXIT_CODE=$?
+CHILD_PID=
+if [[ $EXIT_CODE -ne 0 ]]; then
   log_error "Database migration failed"
-  exit 1
+  die 1
 fi
 
 while true; do
   log_message "Updating from $CURRENT_ID"
 
   TEMP_SOURCE_DIR=$(mktemp -d /tmp/osm-3s_update_XXXXXX)
+  if [[ ! -d "$TEMP_SOURCE_DIR" ]]; then
+    log_error "Unable to create temporary source directory"
+    die 1
+  fi
+
   TEMP_TARGET_DIR=$(mktemp -d /tmp/osm-3s_update_XXXXXX)
+  if [[ ! -d "$TEMP_TARGET_DIR" ]]; then
+    log_error "Unable to create temporary target directory"
+    die 1
+  fi
 
   MAX_AVAILABLE=$(get_latest_available_id)
 
   if [[ -z "$MAX_AVAILABLE" ]]; then
     log_error "Fatal: Cannot reach replication source"
-    cleanup_temp_dirs
-    exit 1
+    die 1
   fi
 
   if [[ "$SOURCE_VERIFIED" != "true" ]]; then
