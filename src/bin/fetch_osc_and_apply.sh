@@ -23,16 +23,42 @@
 # Purpose: Downloads and applies OSM change files in a single process
 # ============================================================================
 
-if [[ -z "$1" ]]; then
+usage()
 {
-  echo "Usage: $0 diff_url"
-  echo "Error: Set the URL to get diffs from (like https://planet.osm.org/replication/minute)"
-  exit 0
-}; fi
+  cat << EOF
+Usage: $0 source_url
+
+  source_url   Replication source URL
+               (e.g., https://planet.openstreetmap.org/replication/minute)
+
+This script combines fetching and applying OSM change files in a single process.
+It downloads files directly into memory without a local cache directory.
+
+Environment variables:
+  OVERPASS_UPDATE_FREQUENCY     Update interval in seconds (default: 60)
+  FETCH_OSC_UPDATE_TRIM         Offset added to the update interval when scheduling the
+                                next check; use a negative value to compensate for
+                                processing overhead (default: -6)
+  FETCH_OSC_MAX_BATCH_SIZE      Maximum number of OSC files per batch (default: 1440)
+  APPLY_OSC_MAX_BATCH_MB        Maximum uncompressed batch size in MB (default: 64)
+  FETCH_OSC_CONNECT_TIMEOUT     Connection timeout in seconds (default: 30)
+  FETCH_OSC_KEEPALIVE_TIME      Seconds to keep idle connections alive (default: 20)
+  FETCH_OSC_MAX_RETRIES         Maximum download attempts per file before giving up (default: 10)
+  FETCH_OSC_RETRY_DELAY         Seconds between retry attempts (default: 15)
+  FETCH_OSC_SPEED_LIMIT         Minimum download speed in bytes/sec; 0 to disable (default: 1024)
+  FETCH_OSC_SPEED_TIME          Time in seconds over which to check minimum speed (default: 30)
+  APPLY_OSC_APPLY_MAX_RETRIES   Maximum apply attempts per batch before giving up (default: 5)
+EOF
+}
+
+if [[ -z "$1" ]]; then
+  usage
+  exit 1
+fi
 
 if [[ -n "$2" ]]; then
-  echo "Error: Too many arguments" >&2
-  echo "Usage: $0 diff_url" >&2
+  echo "ERROR: Too many arguments"
+  usage
   exit 1
 fi
 

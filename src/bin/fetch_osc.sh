@@ -25,15 +25,39 @@
 # ============================================================================
 
 if [[ -z $3 ]]; then
-{
-  echo "Usage: $0 replicate_id source_url local_dir [sleep]"
-  echo ""
-  echo "  replicate_id: Starting replicate ID or 'auto' to resume from last fetch"
-  echo "  source_url:   Remote replication source (e.g., https://planet.openstreetmap.org/replication/minute)"
-  echo "  local_dir:    Local directory for downloaded files"
-  echo "  sleep:        (Optional, ignored - kept for compatibility)"
+  cat << EOF
+Usage: $0 replicate_id source_url local_dir [sleep]
+
+  replicate_id   Starting replicate ID or 'auto' to resume from last fetch
+  source_url     Remote replication source (e.g., https://planet.openstreetmap.org/replication/minute)
+  local_dir      Local directory for downloaded files
+  sleep          (Optional, ignored - kept for compatibility)
+
+Environment variables:
+  OVERPASS_UPDATE_FREQUENCY     Update interval in seconds (default: 60)
+  FETCH_OSC_UPDATE_TRIM         Offset added to the update interval when scheduling the
+                                next check; use a negative value to compensate for
+                                processing overhead (default: -6)
+  FETCH_OSC_QUICK_RETRY_DELAY   Seconds between quick retries after the expected update
+                                time has passed (default: 1)
+  FETCH_OSC_QUICK_RETRY_COUNT   Number of quick retries before falling back to the full
+                                update interval (default: 10)
+  FETCH_OSC_MAX_BATCH_SIZE      Maximum number of OSC files per batch download (default: 360)
+  FETCH_OSC_MAX_BATCH_TIME      Maximum time span of a batch in seconds (default: 86400)
+  FETCH_OSC_MAX_RETRIES         Maximum download attempts per file before giving up (default: 20)
+  FETCH_OSC_RETRY_DELAY         Seconds between retry attempts (default: 15)
+  FETCH_OSC_CONNECT_TIMEOUT     Connection timeout in seconds (default: 30)
+  FETCH_OSC_KEEPALIVE_TIME      Seconds to keep idle connections alive (default: 20)
+  FETCH_OSC_PARALLEL_MAX        Maximum parallel connections for batch downloads (default: 4)
+  FETCH_OSC_PARALLEL_MODE       Batch download mode: "immediate" or "multiplexed"
+                                (default: multiplexed)
+  FETCH_OSC_SPEED_LIMIT         Minimum download speed in bytes/sec; 0 to disable (default: 1024)
+  FETCH_OSC_SPEED_TIME          Time in seconds over which to check minimum speed (default: 30)
+
+Comments in the script have suggested environment variable values for hourly and daily replication.
+EOF
   exit 1
-}; fi
+fi
 
 # ============================================================================
 # CONFIGURATION

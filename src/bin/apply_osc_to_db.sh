@@ -25,14 +25,23 @@
 # ============================================================================
 
 if [[ -z $3 ]]; then
-{
-  echo "Usage: $0 replicate_dir start_id --meta=(attic|yes|no)"
-  echo ""
-  echo "  replicate_dir: Directory containing downloaded replicate files"
-  echo "  start_id:      Starting replicate ID or 'auto' to resume from database state"
-  echo "  --meta:        Metadata handling mode (attic=full history, yes=metadata, no=current only)"
+  cat << EOF
+Usage: $0 replicate_dir start_id --meta=(attic|yes|no)
+
+  replicate_dir   Directory containing downloaded replicate files
+  start_id        Starting replicate ID or 'auto' to resume from database state
+  --meta          Metadata handling mode (attic=full history, yes=metadata, no=current only)
+
+Environment variables:
+  APPLY_OSC_MAX_BATCH_MB      Maximum uncompressed size per batch in MB (default: 512)
+  APPLY_OSC_MAX_BATCH_TIME    Maximum time span per batch in seconds (default: 86400)
+  OVERPASS_UPDATE_FREQUENCY   Update interval in seconds (default: 60)
+  APPLY_OSC_UPDATE_TRIM       Offset added to the update interval when scheduling the next
+                              check; use a negative value to compensate for processing
+                              overhead (default: -3)
+EOF
   exit 1
-}; fi
+fi
 
 # ============================================================================
 # CONFIGURATION
