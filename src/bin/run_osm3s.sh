@@ -585,6 +585,44 @@ check_overpass()
   return 1
 }
 
+check_lock_files()
+{
+  local LOCK_FILES=("$OVERPASS_DB_DIR/osm_base_shadow.lock")
+  if [[ "$AREAS" == "yes" ]]; then
+    LOCK_FILES+=("$OVERPASS_DB_DIR/areas_shadow.lock")
+  fi
+
+  local LOCK_FILE PID MTIME
+  for LOCK_FILE in "${LOCK_FILES[@]}"; do
+    [[ -f "$LOCK_FILE" ]] || continue
+
+    PID=$(< "$LOCK_FILE")
+    if [[ "$PID" =~ ^[1-9][0-9]*$ ]] && kill -0 "$PID" 2>/dev/null; then
+      if [[ "$(readlink "/proc/$PID/exe" 2>/dev/null)" == "$EXEC_DIR/"* ]]; then
+        continue
+      fi
+    fi
+
+    # PID is absent, dead, or not an Overpass process - wait and recheck
+    MTIME=$(stat -c %Y "$LOCK_FILE" 2>/dev/null) || continue
+    sleep_with_interrupts 5
+    [[ -f "$LOCK_FILE" ]] || continue
+    [[ "$(stat -c %Y "$LOCK_FILE" 2>/dev/null)" == "$MTIME" ]] || continue
+
+    PID=$(< "$LOCK_FILE")
+    if [[ "$PID" =~ ^[1-9][0-9]*$ ]] && kill -0 "$PID" 2>/dev/null; then
+      if [[ "$(readlink "/proc/$PID/exe" 2>/dev/null)" == "$EXEC_DIR/"* ]]; then
+        continue
+      fi
+    fi
+
+    message "ERROR: Orphaned lock file detected: $LOCK_FILE (PID: $PID)"
+    return 1
+  done
+
+  return 0
+}
+
 # ============================================================================
 # LOG ROTATION
 # ============================================================================
@@ -720,6 +758,10 @@ while true; do
     message "ERROR: Health check failed, shutting down"
     stop_overpass
     exit 1
+  fi
+
+  if ! check_lock_files; then
+    message "WARNING: A database write may have failed; database may be corrupted"
   fi
 
   REPLICATE_ID_TIMESTAMP=$(stat -c %Y "$OVERPASS_DB_DIR/replicate_id" 2>/dev/null)
