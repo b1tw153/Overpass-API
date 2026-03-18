@@ -279,6 +279,8 @@ get_latest_available_id()
   local REMOTE_STATE="$TEMP_SOURCE_DIR/state.txt"
   local REMOTE_STATE_TMP="$REMOTE_STATE.tmp"
 
+  local CURL_ERROR_LOG="$TEMP_SOURCE_DIR/state.curl_err"
+
   while true; do
     rm -f "$REMOTE_STATE_TMP"
 
@@ -288,7 +290,7 @@ get_latest_available_id()
       --retry 3 \
       --retry-delay 5 \
       --retry-all-errors \
-      -o "$REMOTE_STATE_TMP" "$SOURCE_URL/state.txt" 2>/dev/null
+      -o "$REMOTE_STATE_TMP" "$SOURCE_URL/state.txt" 2>"$CURL_ERROR_LOG"
 
     local CURL_EXIT=$?
 
@@ -304,6 +306,12 @@ get_latest_available_id()
         rm -f "$REMOTE_STATE_TMP"
       fi
     else
+      if [[ -s "$CURL_ERROR_LOG" ]]; then
+        log_error "Curl error output:"
+        while IFS= read -r LINE; do
+          log_error "  $LINE"
+        done < "$CURL_ERROR_LOG"
+      fi
       rm -f "$REMOTE_STATE_TMP"
     fi
 
@@ -326,6 +334,7 @@ download_file()
   local URL="$1"
   local OUTPUT="$2"
   local TMP_FILE="$OUTPUT.tmp"
+  local CURL_ERROR_LOG="$OUTPUT.curl_err"
 
   curl -fsSL \
     --keepalive-time "$CURL_KEEPALIVE_TIME" \
@@ -335,14 +344,23 @@ download_file()
     --retry-all-errors \
     --speed-limit "$CURL_SPEED_LIMIT" \
     --speed-time "$CURL_SPEED_TIME" \
-    -o "$TMP_FILE" "$URL" 2>/dev/null
+    -o "$TMP_FILE" "$URL" 2>"$CURL_ERROR_LOG"
 
   local CURL_EXIT=$?
 
   if [[ $CURL_EXIT -ne 0 ]]; then
     rm -f "$TMP_FILE"
+    if [[ -s "$CURL_ERROR_LOG" ]]; then
+      log_error "Curl error output:"
+      while IFS= read -r LINE; do
+        log_error "  $LINE"
+      done < "$CURL_ERROR_LOG"
+    fi
+    rm -f "$CURL_ERROR_LOG"
     return $CURL_EXIT
   fi
+
+  rm -f "$CURL_ERROR_LOG"
 
   if [[ ! -s "$TMP_FILE" ]]; then
     rm -f "$TMP_FILE"
@@ -582,7 +600,7 @@ mkdir -p "$DB_DIR/augmented_diffs/"
 
 CURRENT_ID=$(($(read_current_state) + 0))
 
-if [[ $CURRENT_ID -le 0 ]]; then
+if [[ $CURRENT_ID -lt 0 ]]; then
   log_error "Invalid replicate_id: $CURRENT_ID"
   die 1
 fi
