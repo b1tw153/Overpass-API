@@ -66,17 +66,11 @@ if [[ -n "$4" ]]; then
   echo "WARNING: Sleep parameter is ignored (timing is now automatic)"
 fi
 
-# Download tool configuration
-if which "curl" > /dev/null 2>&1; then
-  PREFERRED_DOWNLOAD_TOOL="curl"
-elif which "wget" > /dev/null 2>&1; then
-  PREFERRED_DOWNLOAD_TOOL="wget"
-else
-  echo "ERROR: Neither curl nor wget is available"
+# Check for curl
+if ! command -v curl > /dev/null 2>&1; then
+  echo "ERROR: curl is not available"
   exit 1
 fi
-
-DOWNLOAD_TOOL=${FETCH_OSC_DOWNLOAD_TOOL:-$PREFERRED_DOWNLOAD_TOOL} # Either "wget" or "curl"
 
 # Update timing configuration
 UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds
@@ -301,11 +295,6 @@ verify_globals()
     exit 1
   fi
 
-  if [[ ! "$DOWNLOAD_TOOL" =~ ^(curl|wget)$ ]]; then
-    MESSAGE="Invalid DOWNLOAD_TOOL: $DOWNLOAD_TOOL (must be \"curl\" or \"wget\")"
-    log_error "$MESSAGE"
-    exit 1
-  fi
 }
 
 # ============================================================================
@@ -383,29 +372,15 @@ get_latest_available_id()
   while true; do
     rm -f "$REMOTE_STATE_TMP"
 
-    if [[ $DOWNLOAD_TOOL = "curl" ]] ; then
-      curl -fsSL \
-        --keepalive-time "$KEEPALIVE_TIME" \
-        --connect-timeout "$CONNECT_TIMEOUT" \
-        --retry 3 \
-        --retry-delay 5 \
-        --retry-all-errors \
-        -o "$REMOTE_STATE_TMP" \
-        "$SOURCE_URL/state.txt" \
-        2>/dev/null
-    elif [[ $DOWNLOAD_TOOL = "wget" ]]; then
-      wget \
-        --quiet \
-        --timeout="$CONNECT_TIMEOUT" \
-        --tries=3 \
-        --waitretry=5 \
-        --retry-connrefused \
-        --output-document="$REMOTE_STATE_TMP" \
-        "$SOURCE_URL/state.txt" \
-        2>/dev/null
-    else
-      log_error "Invalid DOWNLOAD_TOOL: $DOWNLOAD_TOOL"
-    fi
+    curl -fsSL \
+      --keepalive-time "$KEEPALIVE_TIME" \
+      --connect-timeout "$CONNECT_TIMEOUT" \
+      --retry 3 \
+      --retry-delay 5 \
+      --retry-all-errors \
+      -o "$REMOTE_STATE_TMP" \
+      "$SOURCE_URL/state.txt" \
+      2>/dev/null
 
     local TOOL_EXIT=$?
 
@@ -530,61 +505,6 @@ download_batch_with_curl()
   rm -f "$CURL_ERROR_LOG"
 }
 
-download_batch_with_wget()
-{
-  local WGET_ERROR_LOG
-  local INDEX
-  local URL
-  local WGET_EXIT
-  local LINE
-
-  WGET_ERROR_LOG="$LOCAL_DIR/wget_error_$$.log"
-  rm -f "$WGET_ERROR_LOG"
-
-  INDEX=0
-
-  for URL in "${URL_ARRAY[@]}"; do
-    wget \
-      --quiet \
-      --tries="$MAX_RETRIES" \
-      --waitretry="$RETRY_DELAY" \
-      --timeout="$CONNECT_TIMEOUT" \
-      --output-document="${FILE_ARRAY[$INDEX]}.tmp" \
-      "$URL" \
-      2>"$WGET_ERROR_LOG"
-
-    WGET_EXIT=$?
-
-    if [[ $WGET_EXIT -ne 0 ]]; then
-      log_error "Batch download failed (wget exit code: $WGET_EXIT)"
-      
-      if [[ -s "$WGET_ERROR_LOG" ]]; then
-        log_error "Wget error output:"
-        while IFS= read -r LINE; do
-          log_error "  $LINE"
-        done < "$WGET_ERROR_LOG"
-      fi
-      
-      case $WGET_EXIT in
-        1) log_error "Exit 1: Generic wget failure" ;;
-        2) log_error "Exit 2: Parse error (likely script bug)" ;;
-        3) log_error "Exit 3: File I/O error" ;;
-        4) log_error "Exit 4: Network failure" ;;
-        5) log_error "Exit 5: TLS verification failure" ;;
-        6) log_error "Exit 6: Username/password authentication failure" ;;
-        7) log_error "Exit 7: Protocol error" ;;
-        8) log_error "Exit 8: Server error response" ;;
-      esac
-
-      break
-    fi
-
-    ((++INDEX))
-  done
-
-  rm -f "$WGET_ERROR_LOG"
-}
-
 # ============================================================================
 # BATCH DOWNLOAD
 # ============================================================================
@@ -645,11 +565,7 @@ download_batch()
     return 0
   fi
 
-  if [[ $DOWNLOAD_TOOL = "curl" ]]; then
-    download_batch_with_curl
-  elif [[ $DOWNLOAD_TOOL = "wget" ]]; then
-    download_batch_with_wget
-  fi
+  download_batch_with_curl
 
   SUCCESS=1
 
