@@ -409,7 +409,6 @@ start_rules_loop()
   if [[ "$AREAS" == "yes" ]]; then
     message "Starting rules_loop.sh"
     "$EXEC_DIR/rules_loop.sh" \
-      "$OVERPASS_DB_DIR" \
       >> "$OVERPASS_DB_DIR/rules_loop.out" 2>&1 \
       &
     RULES_LOOP_PID=$!

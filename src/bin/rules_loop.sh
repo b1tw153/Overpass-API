@@ -17,20 +17,13 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
+if [[ -n "$1" ]]; then
+  echo "INFO: The DB_DIR argument is deprecated and is no longer used"
+fi
+
 EXEC_DIR="$(realpath "$(dirname "$0")")"
 
-if [[ -n "$1" ]]; then
-  DB_DIR="$1"
-else
-  DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir) || { echo "ERROR: dispatcher --show-dir failed"; exit 1; }
-fi
-
-if [[ -z "$DB_DIR" ]]; then
-  echo "ERROR: could not determine database directory"
-  echo "Usage: $0 db-dir"
-  exit 1
-fi
-
+DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir) || { echo "ERROR: dispatcher --show-dir failed"; exit 1; }
 if ! [[ -d $DB_DIR && -w $DB_DIR ]]; then
   echo "ERROR: Database directory '$DB_DIR' is not a writeable directory"
   exit 1
