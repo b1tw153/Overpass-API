@@ -14,9 +14,11 @@ Usage: $0 [--time HH:MM] [--day DAY] backup_dir
                     implies --time 00:00 if --time is not specified
 
 Environment variables (overridden by arguments):
-  OVERPASS_BACKUP_TIME      Same as --time
-  OVERPASS_BACKUP_DAY       Same as --day
-  OVERPASS_BACKUP_TIMEOUT   Rsync timeout in seconds (default: 7200)
+  OVERPASS_BACKUP_TIME        Same as --time
+  OVERPASS_BACKUP_DAY         Same as --day
+  OVERPASS_BACKUP_TIMEOUT     Rsync timeout in seconds (default: 7200)
+  OVERPASS_UPDATE_FREQUENCY   Update interval in seconds; used to tickle replicate_id
+                              while the lock is held (default: 60)
 EOF
 }
 
@@ -88,6 +90,7 @@ LOG_FILE="$DB_DIR/backup.log"
 
 # Backup timeout (seconds)
 BACKUP_TIMEOUT=${OVERPASS_BACKUP_TIMEOUT:-7200}      # 2 hours
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
 BACKUP_TIME=${ARG_TIME:-${OVERPASS_BACKUP_TIME:-}}
 BACKUP_DAY=${ARG_DAY:-${OVERPASS_BACKUP_DAY:-}}
 BACKUP_DAY="${BACKUP_DAY^^}"
@@ -110,6 +113,11 @@ fi
 if [[ -n "$BACKUP_TIME" ]] && \
    [[ ! "$BACKUP_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
   echo "ERROR: --time / OVERPASS_BACKUP_TIME must be in HH:MM format (00:00-23:59), got: '$BACKUP_TIME'"
+  exit 1
+fi
+
+if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'"
   exit 1
 fi
 
@@ -254,6 +262,7 @@ shutdown()
 {
   local EXIT_CODE=$1
   trap '' SIGTERM SIGINT SIGHUP
+  stop_tickle
   for lock_file in "$DB_DIR/osm_base_shadow.lock" "$DB_DIR/areas_shadow.lock"; do
     local pid_in_file
     pid_in_file=$(cat "$lock_file" 2>/dev/null)
@@ -296,6 +305,42 @@ detect_database_meta_state()
 
   echo "no"
   return 0
+}
+
+# ============================================================================
+# TICKLE REPLICATE_ID
+# ============================================================================
+
+# run_osm3s.sh monitors the mtime of replicate_id to detect a stalled update
+# process: if the file has not been updated within STALL_THRESHOLD seconds
+# (default 300s), it assumes that apply_osc_to_db.sh has hung and shuts down.
+#
+# While backup.sh holds the base lock, apply_osc_to_db.sh cannot complete an
+# update cycle, so replicate_id will not be updated. If the backup takes longer
+# than STALL_THRESHOLD, run_osm3s.sh will incorrectly trigger a shutdown.
+#
+# The fix: while we hold the base lock, periodically touch replicate_id (without
+# changing its contents) to update its mtime. This tells run_osm3s.sh that the
+# database is still being actively managed, even though no updates are being
+# applied.
+
+TICKLE_PID=
+
+tickle_replicate_id()
+{
+  while true; do
+    sleep_with_interrupts "$UPDATE_FREQUENCY"
+    touch "$DB_DIR/replicate_id" 2>/dev/null || true
+  done
+}
+
+stop_tickle()
+{
+  if [[ -n "$TICKLE_PID" ]]; then
+    kill "$TICKLE_PID" 2>/dev/null || true
+    wait "$TICKLE_PID" 2>/dev/null || true
+    TICKLE_PID=
+  fi
 }
 
 # ============================================================================
@@ -379,6 +424,8 @@ while true; do
   log_message "Backup started (meta=$META_STATE, areas=$AREAS)"
 
   acquire_lock base || shutdown 1
+  tickle_replicate_id &
+  TICKLE_PID=$!
 
   # shellcheck disable=SC2086
   copy_files $FILES_BASE || shutdown 1
@@ -393,6 +440,7 @@ while true; do
     copy_files $FILES_ATTIC || shutdown 1
   fi
 
+  stop_tickle
   release_lock base || shutdown 1
 
   if [[ "$AREAS" == "yes" ]]; then
