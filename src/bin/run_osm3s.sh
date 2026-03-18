@@ -731,7 +731,7 @@ while true; do
     fi
   fi
 
-  if (( NOW - LAST_HEALTH_MESSAGE > 3600)); then
+  if (( NOW - LAST_HEALTH_MESSAGE >= 3600)); then
     message "Overpass processes are running and database has been recently updated"
     LAST_HEALTH_MESSAGE="$NOW"
   fi
