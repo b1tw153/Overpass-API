@@ -53,6 +53,8 @@ bin_script_convenience = \
 cgi_bin_convenience =
 cgi_bin_script_convenience =
 
+bin_script_container = bin/entrypoint.sh
+
 bindir = ${prefix}/bin
 bin_PROGRAMS = \
   ${bin_mandatory} \
@@ -72,7 +74,8 @@ dist_bin_SCRIPTS = \
   ${bin_script_xapi_layer} \
   ${bin_script_openlayers} \
   ${bin_script_public_transport} \
-  ${bin_script_convenience}
+  ${bin_script_convenience} \
+  ${bin_script_container}
   
 
 cgibindir = ${prefix}/cgi-bin
