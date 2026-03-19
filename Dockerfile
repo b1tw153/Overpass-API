@@ -35,7 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     nginx \
     tini \
     zlib1g \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm /etc/nginx/sites-enabled/default
 
 COPY --from=builder /opt/overpass /opt/overpass
 
