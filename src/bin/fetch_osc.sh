@@ -147,13 +147,11 @@ LAST_UPDATE_TIME=      # Time when last update was downloaded
 LATEST_AVAILABLE_ID=   # Result of get_latest_available_id
 
 # Get execution directory
-EXEC_DIR="$(dirname "$0")/"
-if [[ ! "${EXEC_DIR:0:1}" == "/" ]]; then
-  EXEC_DIR="$(pwd)/$EXEC_DIR"
-fi
+EXEC_DIR="$(realpath "$(dirname "$0")")"
 
 # Get database directory from dispatcher
 DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
+DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -d "$DB_DIR" ]]; then
   echo "ERROR: Database directory '$DB_DIR' does not exist"

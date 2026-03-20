@@ -79,20 +79,14 @@ LAST_UPDATE_TIME=                                 # Wall clock time when last up
 CHILD_PID=                                        # PID of running migrate_database or update_from_dir processes
 
 # Get execution directory
-EXEC_DIR="$(dirname "$0")/"
-if [[ ! ${EXEC_DIR:0:1} == "/" ]]; then
-  EXEC_DIR="$(pwd)/$EXEC_DIR"
-fi
+EXEC_DIR="$(realpath "$(dirname "$0")")"
 
 # Convert replicate dir to absolute path
-if [[ ! ${REPLICATE_DIR:0:1} == "/" ]]; then
-  REPLICATE_DIR="$(pwd)/$REPLICATE_DIR"
-fi
+REPLICATE_DIR="$(realpath "$REPLICATE_DIR")"
 
 # Get database directory
 DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir)
-# Strip trailing slash if present
-DB_DIR="${DB_DIR%/}"
+DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -d "$DB_DIR" ]]; then
   echo "ERROR: Database directory '$DB_DIR' does not exist"
