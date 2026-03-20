@@ -45,6 +45,7 @@ bin_script_convenience = \
   bin/clean_osc.sh \
   bin/fetch_osc_and_apply.sh \
   bin/init_osm3s.sh \
+  bin/restore.sh \
   bin/run_osm3s.sh \
   bin/run_osm3s_minutely.sh
 cgi_bin_convenience =
