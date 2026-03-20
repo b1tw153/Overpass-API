@@ -3,6 +3,7 @@
 # Copyright 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018 Roland Olbricht et al.
 #
 # This file is part of Overpass_API.
+# With improvements in 2026 by Kai Johnson
 #
 # Overpass_API is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
