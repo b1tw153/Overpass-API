@@ -68,16 +68,21 @@ trap 'shutdown 129 "SIGHUP received"'  SIGHUP
 # ============================================================================
 
 # Start fcgiwrap for CGI script handling
+message "Starting fcgi"
 fcgiwrap -s unix:/var/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" &
 FCGI_PID=$!
 
 # Start nginx
+message "Starting nginx"
 nginx -g 'daemon off;' &
 NGINX_PID="$!"
 
 # Start overpass
+message "Starting Overpass"
 "$EXEC_DIR/run_osm3s.sh" &
 OSM3S_PID="$!"
+
+message "All processes started"
 
 while true; do
   wait -n -p EXITED_PID

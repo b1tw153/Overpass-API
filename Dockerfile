@@ -26,6 +26,10 @@ RUN mkdir -p /build/src/m4 "$OVERPASS_DIR/db" "$OVERPASS_DIR/diff" && \
 
 FROM debian:bookworm-slim
 
+COPY --from=builder /opt/overpass /opt/overpass
+
+COPY etc/overpass.conf /etc/nginx/conf.d/
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
@@ -36,10 +40,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
     zlib1g \
     && rm -rf /var/lib/apt/lists/* \
-    && rm /etc/nginx/sites-enabled/default
+    && rm /etc/nginx/sites-enabled/default \
+    && groupadd -g 10001 overpass \
+    && useradd -u 10001 -g 10001 -m -s /bin/bash overpass \
+    && chown -R overpass:overpass /opt/overpass
 
-COPY --from=builder /opt/overpass /opt/overpass
-
-COPY etc/overpass.conf /etc/nginx/conf.d/
+USER overpass
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/overpass/bin/entrypoint.sh"]
