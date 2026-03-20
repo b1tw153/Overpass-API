@@ -1,3 +1,5 @@
+ACLOCAL_AMFLAGS = -I m4
+
 
 bin_mandatory = bin/osm3s_query bin/dispatcher bin/migrate_database bin/update_database bin/update_from_dir
 bin_script_mandatory = \
@@ -217,9 +219,9 @@ bin_bbox_brim_query_LDADD = libexpatwrapper.la
 bin_translate_xapi_SOURCES = expat/translate_xapi.cc expat/escape_xml.cc
 bin_translate_xapi_LDADD = 
 
-distdir = osm-3s_v0.7.62.11
+#distdir = osm-3s_v0.7.62.11
 
-nobase_dist_HEADERS = \
+nobase_dist_pkginclude_HEADERS = \
   expat/escape_json.h\
   expat/escape_xml.h\
   expat/expat_justparse_interface.h\
