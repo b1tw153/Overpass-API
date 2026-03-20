@@ -19,353 +19,282 @@
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
 # ============================================================================
-# Robust restore script for Overpass API v0.7.61.4
-# Restores database from backup and cleans up leftover files from crashes
+# Restore script for Overpass API
+# Restores database from backup; requires all Overpass processes to be stopped
 # ============================================================================
 
-set -o pipefail
+usage()
+{
+  cat << EOF
+Usage: $0 backup_dir db_dir
 
-# Configuration
-EXEC_DIR="/opt/overpass/bin"
-DB_DIR="/opt/overpass/db"
-DIFF_DIR="/opt/overpass/diff"
-LOG_DIR="/opt/overpass/log"
-BACKUP_SOURCE="/media/all/usb-drive/db"
+  backup_dir    Source directory containing backup files
+  db_dir        Target database directory
 
-# Process definitions (for verification)
-declare -A PROCESSES=(
-    [base_dispatcher]="dispatcher --osm-base"
-    [area_dispatcher]="dispatcher --areas"
-    [apply_osc]="apply_osc_to_db.sh"
-    [fetch_osc]="fetch_osc.sh"
-)
+Environment variables:
+  OVERPASS_RESTORE_TIMEOUT    Rsync timeout in seconds (default: 7200)
+EOF
+}
 
-REQUIRED_PROCESSES=("base_dispatcher" "area_dispatcher" "apply_osc" "fetch_osc")
+if [[ -z "${2:-}" ]]; then
+  usage
+  exit 1
+fi
+
+EXEC_DIR="$(realpath "$(dirname "$0")")"
+
+DB_DIR="$(realpath "$2")"
+
+if ! [[ -d $DB_DIR && -w $DB_DIR ]]; then
+  echo "ERROR: Database directory '$DB_DIR' is not a writeable directory"
+  exit 1
+fi
+
+BACKUP_DIR="$(realpath "$1")"
+
+if ! [[ -d $BACKUP_DIR && -r $BACKUP_DIR ]]; then
+  echo "ERROR: Backup directory '$BACKUP_DIR' is not a readable directory"
+  exit 1
+fi
+
+if "$EXEC_DIR/dispatcher" --show-dir > /dev/null 2>&1; then
+  echo "ERROR: Dispatcher is running; stop all Overpass processes before restoring"
+  exit 1
+fi
+
+RESTORE_TIMEOUT=${OVERPASS_RESTORE_TIMEOUT:-7200}
 
 # Log file
-LOG_FILE="$LOG_DIR/restore.out"
-CLEAN_OSC_LOG="$LOG_DIR/clean_osc.out"
-
-# Operation timeouts (seconds)
-SHUTDOWN_TIMEOUT=3600   # 1 hour
-STARTUP_TIMEOUT=600     # 10 minutes
-RSYNC_TIMEOUT=7200      # 2 hours
-CLEANUP_TIMEOUT=1800    # 30 minutes
+LOG_FILE="$DB_DIR/backup.log"
 
 # ============================================================================
 # LOGGING
 # ============================================================================
 
-log() {
-    local level="$1"
-    shift
-    echo "[$(date -u '+%Y-%m-%d %H:%M:%S')] ${level}: $*" | tee -a "$LOG_FILE"
+IN_TERMINAL="false"
+[ -t 1 ] && IN_TERMINAL="true"
+
+log_message()
+{
+  if [[ "$IN_TERMINAL" == "true" ]]; then
+    echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
+  else
+    echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
+  fi
 }
 
-log_error() {
-    echo "[$(date -u '+%Y-%m-%d %H:%M:%S')] ERROR: $*" | tee -a "$LOG_FILE" >&2
-}
-
-# ============================================================================
-# PROCESS DETECTION
-# ============================================================================
-
-get_pid() {
-    local process_pattern="$1"
-    pgrep -f "${process_pattern}" | head -n 1
-}
-
-is_running() {
-    local process_name="$1"
-    local process_pattern="${PROCESSES[$process_name]}"
-    local pid
-    
-    pid=$(get_pid "${process_pattern}")
-    
-    if [[ -n "${pid}" ]]; then
-        return 0
-    else
-        return 1
-    fi
+log_error()
+{
+  if [[ "$IN_TERMINAL" == "true" ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  else
+    echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
+  fi
 }
 
 # ============================================================================
-# PROCESS CHECK
+# DATABASE FILES
 # ============================================================================
 
-check_any_processes_running() {
-    local any_running=false
-    
-    for process_name in "${REQUIRED_PROCESSES[@]}"; do
-        if is_running "${process_name}"; then
-            local pid
-            pid=$(get_pid "${PROCESSES[$process_name]}")
-            log "WARNING" "${process_name} is running (PID: ${pid})"
-            any_running=true
-        fi
-    done
-    
-    if [[ "${any_running}" == "true" ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
+FILES_BASE="\
+nodes.bin nodes.bin.idx nodes.map nodes.map.idx \
+node_tags_local.bin node_tags_local.bin.idx node_tags_global.bin node_tags_global.bin.idx \
+node_frequent_tags.bin node_frequent_tags.bin.idx node_keys.bin node_keys.bin.idx \
+ways.bin ways.bin.idx ways.map ways.map.idx \
+way_tags_local.bin way_tags_local.bin.idx way_tags_global.bin way_tags_global.bin.idx \
+way_frequent_tags.bin way_frequent_tags.bin.idx way_keys.bin way_keys.bin.idx \
+relations.bin relations.bin.idx relations.map relations.map.idx \
+relation_roles.bin relation_roles.bin.idx \
+relation_tags_local.bin relation_tags_local.bin.idx relation_tags_global.bin relation_tags_global.bin.idx \
+relation_frequent_tags.bin relation_frequent_tags.bin.idx relation_keys.bin relation_keys.bin.idx \
+base-url osm_base_version replicate_id"
 
-check_all_processes_running() {
-    local all_running=true
-    
-    for process_name in "${REQUIRED_PROCESSES[@]}"; do
-        if ! is_running "${process_name}"; then
-            log "ERROR" "${process_name} is not running"
-            all_running=false
-        else
-            local pid
-            pid=$(get_pid "${PROCESSES[$process_name]}")
-            log "INFO" "${process_name} is running (PID: ${pid})"
-        fi
-    done
-    
-    if [[ "${all_running}" == "true" ]]; then
-        return 0
-    else
-        return 1
-    fi
-}
+FILES_META="\
+nodes_meta.bin nodes_meta.bin.idx \
+ways_meta.bin ways_meta.bin.idx \
+relations_meta.bin relations_meta.bin.idx \
+user_data.bin user_data.bin.idx user_indices.bin user_indices.bin.idx"
 
-# ============================================================================
-# CONTROLLED SHUTDOWN
-# ============================================================================
+FILES_ATTIC="\
+nodes_attic.bin nodes_attic.bin.idx nodes_attic.map nodes_attic.map.idx \
+node_attic_indexes.bin node_attic_indexes.bin.idx \
+nodes_attic_undeleted.bin nodes_attic_undeleted.bin.idx \
+nodes_meta_attic.bin nodes_meta_attic.bin.idx \
+node_changelog.bin node_changelog.bin.idx \
+node_tags_local_attic.bin node_tags_local_attic.bin.idx \
+node_tags_global_attic.bin node_tags_global_attic.bin.idx \
+node_frequent_tags_attic.bin node_frequent_tags_attic.bin.idx \
+ways_attic.bin ways_attic.bin.idx ways_attic.map ways_attic.map.idx \
+way_attic_indexes.bin way_attic_indexes.bin.idx \
+ways_attic_undeleted.bin ways_attic_undeleted.bin.idx \
+ways_meta_attic.bin ways_meta_attic.bin.idx \
+way_changelog.bin way_changelog.bin.idx \
+way_tags_local_attic.bin way_tags_local_attic.bin.idx \
+way_tags_global_attic.bin way_tags_global_attic.bin.idx \
+way_frequent_tags_attic.bin way_frequent_tags_attic.bin.idx \
+relations_attic.bin relations_attic.bin.idx relations_attic.map relations_attic.map.idx \
+relation_attic_indexes.bin relation_attic_indexes.bin.idx \
+relations_attic_undeleted.bin relations_attic_undeleted.bin.idx \
+relations_meta_attic.bin relations_meta_attic.bin.idx \
+relation_changelog.bin relation_changelog.bin.idx \
+relation_tags_local_attic.bin relation_tags_local_attic.bin.idx \
+relation_tags_global_attic.bin relation_tags_global_attic.bin.idx \
+relation_frequent_tags_attic.bin relation_frequent_tags_attic.bin.idx"
 
-shutdown_overpass() {
-    log "INFO" "Shutting down Overpass for restore..."
-    
-    if [[ ! -x "${EXEC_DIR}/shutdown.sh" ]]; then
-        log_error "shutdown.sh not found or not executable"
-        return 1
-    fi
-    
-    # Run shutdown with timeout
-    timeout "${SHUTDOWN_TIMEOUT}" "${EXEC_DIR}/shutdown.sh" >> "$LOG_FILE" 2>&1
-    local exit_code=$?
-    
-    if [[ ${exit_code} -eq 0 ]]; then
-        log "INFO" "Overpass shutdown completed successfully"
-        return 0
-    elif [[ ${exit_code} -eq 124 ]]; then
-        log_error "Shutdown timed out after ${SHUTDOWN_TIMEOUT} seconds"
-        return 1
-    else
-        log_error "Shutdown failed with exit code ${exit_code}"
-        return 1
-    fi
-}
+FILES_AREAS="\
+area_blocks.bin area_blocks.bin.idx \
+areas.bin areas.bin.idx \
+area_tags_global.bin area_tags_global.bin.idx \
+area_tags_local.bin area_tags_local.bin.idx \
+area_version"
 
 # ============================================================================
-# CONTROLLED STARTUP
+# LOCK CHECK
 # ============================================================================
 
-startup_overpass() {
-    log "INFO" "Starting Overpass after restore..."
-    
-    if [[ ! -x "${EXEC_DIR}/startup.sh" ]]; then
-        log_error "startup.sh not found or not executable"
-        return 1
+check_lock_files()
+{
+  local LOCK_FILE PID
+  for LOCK_FILE in "$DB_DIR/osm_base_shadow.lock" "$DB_DIR/areas_shadow.lock"; do
+    [[ -f "$LOCK_FILE" ]] || continue
+
+    PID=$(< "$LOCK_FILE")
+    if [[ "$PID" =~ ^[1-9][0-9]*$ ]] && kill -0 "$PID" 2>/dev/null; then
+      log_error "Lock file '$LOCK_FILE' is held by live process (PID $PID)"
+      return 1
     fi
-    
-    # Run startup with timeout
-    timeout "${STARTUP_TIMEOUT}" "${EXEC_DIR}/startup.sh" >> "$LOG_FILE" 2>&1
-    local exit_code=$?
-    
-    if [[ ${exit_code} -eq 0 ]]; then
-        log "INFO" "Overpass startup completed successfully"
-        return 0
-    elif [[ ${exit_code} -eq 124 ]]; then
-        log_error "Startup timed out after ${STARTUP_TIMEOUT} seconds"
-        return 1
-    else
-        log_error "Startup failed with exit code ${exit_code}"
-        return 1
-    fi
+  done
+  return 0
 }
 
 # ============================================================================
-# RESTORE EXECUTION
+# DATABASE STATE DETECTION
 # ============================================================================
 
-perform_restore() {
-    log "INFO" "Starting rsync restore from ${BACKUP_SOURCE}..."
-    
-    # Verify source directory
-    if [[ ! -d "${BACKUP_SOURCE}" ]]; then
-        log_error "Backup source directory does not exist: ${BACKUP_SOURCE}"
-        return 1
-    fi
-    
-    # Verify source has content
-    if [[ -z "$(ls -A "${BACKUP_SOURCE}" 2>/dev/null)" ]]; then
-        log_error "Backup source directory is empty: ${BACKUP_SOURCE}"
-        return 1
-    fi
-    
-    # Verify destination directory
-    if [[ ! -d "${DB_DIR}" ]]; then
-        log_error "Database directory does not exist: ${DB_DIR}"
-        return 1
-    fi
-    
-    # Verify destination is writable
-    if [[ ! -w "${DB_DIR}" ]]; then
-        log_error "Database directory is not writable: ${DB_DIR}"
-        return 1
-    fi
-    
-    # Perform rsync with timeout
-    timeout "${RSYNC_TIMEOUT}" rsync -rav --del "${BACKUP_SOURCE}/" "${DB_DIR}/" >> "$LOG_FILE" 2>&1
-    local exit_code=$?
-    
-    if [[ ${exit_code} -eq 0 ]]; then
-        log "INFO" "Restore completed successfully"
-        return 0
-    elif [[ ${exit_code} -eq 124 ]]; then
-        log_error "Restore timed out after ${RSYNC_TIMEOUT} seconds"
-        return 1
-    else
-        log_error "Restore failed with exit code ${exit_code}"
-        return 1
-    fi
+# Detect the meta mode of a database directory by checking for characteristic files
+# $1: directory to inspect
+# Returns: "no", "yes", or "attic" via stdout
+# Returns 1 if base files are missing (not a valid backup)
+detect_database_meta_state()
+{
+  local DIR="$1"
+
+  # Check for attic files (most specific check first)
+  if [[ -f "$DIR/nodes_attic.bin" || -f "$DIR/node_changelog.bin" || -f "$DIR/ways_attic.bin" ]]; then
+    echo "attic"
+    return 0
+  fi
+
+  # Check for meta files
+  if [[ -f "$DIR/nodes_meta.bin" || -f "$DIR/ways_meta.bin" || -f "$DIR/user_data.bin" ]]; then
+    echo "yes"
+    return 0
+  fi
+
+  # No meta or attic files found - verify base files exist
+  if [[ ! -f "$DIR/nodes.bin" || ! -f "$DIR/ways.bin" || ! -f "$DIR/relations.bin" ]]; then
+    return 1
+  fi
+
+  echo "no"
+  return 0
+}
+
+detect_database_areas()
+{
+  local DIR="$1"
+
+  if [[ -f "$DIR/areas.bin" && -f "$DIR/area_blocks.bin" && -f "$DIR/area_tags_global.bin" && -f "$DIR/area_tags_local.bin" ]]; then
+    return 0
+  fi
+  return 1
 }
 
 # ============================================================================
-# CLEANUP OPERATIONS
+# RESTORE FILES
 # ============================================================================
 
-cleanup_diff_directory() {
-    log "INFO" "Cleaning up download directory to recover from crashes..."
-    
-    if [[ ! -x "${EXEC_DIR}/clean_osc.sh" ]]; then
-        log_error "clean_osc.sh not found or not executable"
-        return 1
-    fi
-    
-    if [[ ! -d "${DIFF_DIR}" ]]; then
-        log_error "Diff directory does not exist: ${DIFF_DIR}"
-        return 1
-    fi
-    
-    # Run cleanup with --all flag to remove all downloaded files
-    timeout "${CLEANUP_TIMEOUT}" "${EXEC_DIR}/clean_osc.sh" --all "${DIFF_DIR}" >> "$CLEAN_OSC_LOG" 2>&1
-    local exit_code=$?
-    
-    if [[ ${exit_code} -eq 0 ]]; then
-        log "INFO" "Cleanup completed successfully"
-        return 0
-    elif [[ ${exit_code} -eq 124 ]]; then
-        log_error "Cleanup timed out after ${CLEANUP_TIMEOUT} seconds"
-        return 1
-    else
-        log_error "Cleanup failed with exit code ${exit_code}"
-        return 1
-    fi
+restore_files()
+{
+  local exit_code
+  # shellcheck disable=SC2068
+  printf '%s\n' $@ \
+    | timeout "$RESTORE_TIMEOUT" rsync -a --files-from=- "$BACKUP_DIR/" "$DB_DIR/"
+  exit_code=$?
+  if [[ $exit_code -eq 124 ]]; then
+    log_error "rsync timed out after ${RESTORE_TIMEOUT}s"
+    return 1
+  elif [[ $exit_code -ne 0 ]]; then
+    log_error "rsync failed (exit $exit_code)"
+    return 1
+  fi
+}
+
+# ============================================================================
+# COMPATIBILITY CHECK
+# ============================================================================
+
+meta_level()
+{
+  case "$1" in
+    no)    echo 0 ;;
+    yes)   echo 1 ;;
+    attic) echo 2 ;;
+  esac
+}
+
+check_db_compatible()
+{
+  local BACKUP_META="$1"
+  local DB_META
+  DB_META=$(detect_database_meta_state "$DB_DIR") || return 0  # uninitialized is always ok
+
+  if (( $(meta_level "$DB_META") > $(meta_level "$BACKUP_META") )); then
+    log_error "Database has meta=$DB_META but backup has meta=$BACKUP_META; restoring would leave orphaned files"
+    return 1
+  fi
+
+  if detect_database_areas "$DB_DIR" && ! detect_database_areas "$BACKUP_DIR"; then
+    log_error "Database has areas files but backup does not; restoring would leave orphaned files"
+    return 1
+  fi
+
+  return 0
 }
 
 # ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
-main() {
-    log "INFO" "=========================================="
-    log "INFO" "Restore started at $(date '+%Y-%m-%d %H:%M:%S')"
-    log "INFO" "=========================================="
-    
-    # Verify required executables
-    for script in shutdown.sh startup.sh clean_osc.sh; do
-        if [[ ! -x "${EXEC_DIR}/${script}" ]]; then
-            log_error "Required script not found or not executable: ${EXEC_DIR}/${script}"
-            exit 1
-        fi
-    done
-    
-    # Check if any processes are running
-    if check_any_processes_running; then
-        log "INFO" "Some Overpass processes are running, shutting down..."
-        
-        if ! shutdown_overpass; then
-            log_error "Failed to shutdown Overpass, aborting restore"
-            exit 1
-        fi
-        
-        # Verify all processes stopped
-        sleep 2
-        if check_any_processes_running; then
-            log_error "Some processes still running after shutdown, aborting restore"
-            log_error "MANUAL INTERVENTION REQUIRED"
-            exit 1
-        fi
-        
-        log "INFO" "All processes stopped successfully"
-    else
-        log "INFO" "No Overpass processes are running, proceeding with restore"
-    fi
-    
-    # Perform the restore
-    if ! perform_restore; then
-        log_error "Database restore failed"
-        log_error "Overpass remains shut down for manual intervention"
-        log_error "DO NOT start Overpass until the database issue is resolved"
-        log "INFO" "=========================================="
-        log_error "Restore failed at $(date '+%Y-%m-%d %H:%M:%S')"
-        log "INFO" "=========================================="
-        exit 1
-    fi
-    
-    log "INFO" "Database restored successfully"
-    
-    # Clean up diff directory (critical for proper restart after restore)
-    if ! cleanup_diff_directory; then
-        log_error "Cleanup failed - this must be resolved before starting Overpass"
-        log_error "Overpass remains shut down for manual intervention"
-        log_error "Please manually clean up ${DIFF_DIR} or run: ${EXEC_DIR}/clean_osc.sh --all ${DIFF_DIR}"
-        log "INFO" "=========================================="
-        log_error "Restore incomplete at $(date '+%Y-%m-%d %H:%M:%S')"
-        log "INFO" "=========================================="
-        exit 1
-    fi
-    
-    log "INFO" "Cleanup completed, ready to start Overpass"
-    
-    # Start Overpass after successful restore and cleanup
-    log "INFO" "Starting Overpass..."
-    if ! startup_overpass; then
-        log_error "Failed to start Overpass after restore"
-        log_error "Database has been restored but Overpass is not running"
-        log_error "MANUAL INTERVENTION REQUIRED"
-        log_error "Try running: ${EXEC_DIR}/startup.sh"
-        log "INFO" "=========================================="
-        log_error "Restore completed but startup failed at $(date '+%Y-%m-%d %H:%M:%S')"
-        log "INFO" "=========================================="
-        exit 1
-    fi
-    
-    # Verify processes started
-    sleep 5
-    log "INFO" "Verifying Overpass started successfully..."
-    if ! check_all_processes_running; then
-        log_error "Overpass did not start properly after restore"
-        log_error "Some processes are not running"
-        log_error "MANUAL INTERVENTION REQUIRED"
-        log "INFO" "=========================================="
-        log_error "Restore completed but verification failed at $(date '+%Y-%m-%d %H:%M:%S')"
-        log "INFO" "=========================================="
-        exit 1
-    fi
-    
-    log "INFO" "=========================================="
-    log "INFO" "Restore completed successfully at $(date '+%Y-%m-%d %H:%M:%S')"
-    log "INFO" "All Overpass processes are running normally"
-    log "INFO" "=========================================="
-    exit 0
-}
+check_lock_files || exit 1
 
-# Run main function
-main "$@"
+META_STATE=$(detect_database_meta_state "$BACKUP_DIR") \
+  || { log_error "Backup is not valid (missing base files)"; exit 1; }
+
+check_db_compatible "$META_STATE" || exit 1
+
+log_message "Restore started (meta=$META_STATE)"
+
+log_message "Restoring base files"
+# shellcheck disable=SC2086
+restore_files $FILES_BASE || exit 1
+
+if [[ "$META_STATE" == "yes" || "$META_STATE" == "attic" ]]; then
+  log_message "Restoring meta files"
+  # shellcheck disable=SC2086
+  restore_files $FILES_META || exit 1
+fi
+
+if [[ "$META_STATE" == "attic" ]]; then
+  log_message "Restoring attic files"
+  # shellcheck disable=SC2086
+  restore_files $FILES_ATTIC || exit 1
+fi
+
+if detect_database_areas "$BACKUP_DIR"; then
+  log_message "Restoring area files"
+  # shellcheck disable=SC2086
+  restore_files $FILES_AREAS || exit 1
+fi
+
+log_message "Restore complete"

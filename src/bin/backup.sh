@@ -448,15 +448,18 @@ while true; do
   tickle_replicate_id &
   TICKLE_PID=$!
 
+  log_message "Backing up base files"
   # shellcheck disable=SC2086
   copy_files $FILES_BASE || shutdown 1
 
   if [[ "$META_STATE" == "yes" || "$META_STATE" == "attic" ]]; then
+    log_message "Backing up meta files"
     # shellcheck disable=SC2086
     copy_files $FILES_META || shutdown 1
   fi
 
   if [[ "$META_STATE" == "attic" ]]; then
+    log_message "Backing up attic files"
     # shellcheck disable=SC2086
     copy_files $FILES_ATTIC || shutdown 1
   fi
@@ -465,6 +468,7 @@ while true; do
   release_lock base || shutdown 1
 
   if [[ "$AREAS" == "yes" ]]; then
+    log_message "Backing up area files"
     acquire_lock areas || shutdown 1
     # shellcheck disable=SC2086
     copy_files $FILES_AREAS || shutdown 1
