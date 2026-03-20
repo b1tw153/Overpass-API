@@ -82,8 +82,9 @@ fi
 
 BACKUP_DIR="$(realpath "$1")"
 
-if ! [[ -d $BACKUP_DIR && -w $BACKUP_DIR ]]; then
-  echo "ERROR: Backup directory '$BACKUP_DIR' is not a writeable directory"
+mkdir -p "$BACKUP_DIR" || { echo "ERROR: Unable to acccess backup directory '$BACKUP_DIR'"; exit 1; }
+if [[ ! -w $BACKUP_DIR ]]; then
+  echo "ERROR: Backup directory '$BACKUP_DIR' is not writeable"
   exit 1
 fi
 
