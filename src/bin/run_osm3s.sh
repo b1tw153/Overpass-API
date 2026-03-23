@@ -62,6 +62,11 @@ Environment variables (no argument equivalent):
                                 frequency (default: 5)
   OVERPASS_CLEANUP_MULTIPLIER   Diff cleanup frequency as a multiple of update
                                 frequency (default: 1440)
+  OVERPASS_BACKUP_DIR           Directory for database backups
+  OVERPASS_BACKUP_TIME          Time of day to run backup (00:00-23:59)
+  OVERPASS_BACKUP_DAY           Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
+                                implies OVERPASS_BACKUP_TIME 00:00 if OVERPASS_BACKUP_TIME
+                                is not specified
   DISPATCHER_BASE_SPACE         Base dispatcher shared memory in bytes (default: 12884901888)
   DISPATCHER_AREAS_SPACE        Areas dispatcher shared memory in bytes (default: 4294967296)
   DISPATCHER_TIME               Dispatcher time limit (default: 262144)
@@ -197,16 +202,60 @@ OVERPASS_UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
 OVERPASS_SOCKET_DIR=${OVERPASS_SOCKET_DIR:-"$OVERPASS_DB_DIR"}
 OVERPASS_STALL_MULTIPLIER=${OVERPASS_STALL_MULTIPLIER:-5}
 OVERPASS_CLEANUP_MULTIPLIER=${OVERPASS_CLEANUP_MULTIPLIER:-1440}
+OVERPASS_BACKUP_DIR=${OVERPASS_BACKUP_DIR:-}
+OVERPASS_BACKUP_TIME=${OVERPASS_BACKUP_TIME:-}
+OVERPASS_BACKUP_DAY=${OVERPASS_BACKUP_DAY:-}
 DISPATCHER_BASE_SPACE=${DISPATCHER_BASE_SPACE:-12884901888}
 DISPATCHER_AREAS_SPACE=${DISPATCHER_AREAS_SPACE:-4294967296}
 DISPATCHER_TIME=${DISPATCHER_TIME:-262144}
 DISPATCHER_RATE_LIMIT=${DISPATCHER_RATE_LIMIT:-0}
 DISPATCHER_ALLOW_DUPLICATE_QUERIES=${DISPATCHER_ALLOW_DUPLICATE_QUERIES:-yes}
 
+if [[ ! "$OVERPASS_UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$OVERPASS_UPDATE_FREQUENCY'"
+  usage
+  exit 1
+fi
+
+if [[ "$OVERPASS_UPDATE_FREQUENCY" -ne 60 && "$OVERPASS_UPDATE_FREQUENCY" -ne 3600 && "$OVERPASS_UPDATE_FREQUENCY" -ne 86400 ]]; then
+  message "WARNING: Unexpected OVERPASS_UPDATE_FREQUENCY: $OVERPASS_UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
+fi
+
 if ! [[ -d "$OVERPASS_SOCKET_DIR" && -w "$OVERPASS_SOCKET_DIR" ]]; then
   message "ERROR: OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
   usage
   exit 1
+else
+  OVERPASS_SOCKET_DIR="$(realpath "$OVERPASS_SOCKET_DIR")"
+fi
+
+if [[ ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
+  usage
+  exit 1
+fi
+
+if [[ ! "$OVERPASS_CLEANUP_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: OVERPASS_CLEANUP_MULTIPLIER must be a positive integer, got: '$OVERPASS_CLEANUP_MULTIPLIER'"
+  usage
+  exit 1
+fi
+
+BACKUP="no"
+if [[ -n "$OVERPASS_BACKUP_DIR" ]]; then
+  if ! [[ -d "$OVERPASS_BACKUP_DIR" && -w "$OVERPASS_BACKUP_DIR" ]]; then
+    message "ERROR: OVERPASS_BACKUP_DIR '$OVERPASS_BACKUP_DIR' is not a writeable directory"
+    usage
+    exit 1
+  fi
+
+  OVERPASS_BACKUP_DIR="$(realpath "$OVERPASS_BACKUP_DIR")"
+  
+  if [[ -n "$OVERPASS_BACKUP_TIME" || -n "$OVERPASS_BACKUP_DAY" ]]; then
+    BACKUP="yes"
+  else
+    message "INFO: Specify OVERPASS_BACKUP_TIME or OVERPASS_BACKUP_DAY to enable backups"
+  fi
 fi
 
 if [[ ! "$DISPATCHER_BASE_SPACE" =~ ^[1-9][0-9]*$ ]]; then
@@ -235,28 +284,6 @@ fi
 
 if [[ "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "yes" && "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "no" ]]; then
   message "ERROR: DISPATCHER_ALLOW_DUPLICATE_QUERIES must be 'yes' or 'no', got: '$DISPATCHER_ALLOW_DUPLICATE_QUERIES'"
-  usage
-  exit 1
-fi
-
-if [[ ! "$OVERPASS_UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$OVERPASS_UPDATE_FREQUENCY'"
-  usage
-  exit 1
-fi
-
-if [[ "$OVERPASS_UPDATE_FREQUENCY" -ne 60 && "$OVERPASS_UPDATE_FREQUENCY" -ne 3600 && "$OVERPASS_UPDATE_FREQUENCY" -ne 86400 ]]; then
-  message "WARNING: Unexpected OVERPASS_UPDATE_FREQUENCY: $OVERPASS_UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
-fi
-
-if [[ ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
-  usage
-  exit 1
-fi
-
-if [[ ! "$OVERPASS_CLEANUP_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_CLEANUP_MULTIPLIER must be a positive integer, got: '$OVERPASS_CLEANUP_MULTIPLIER'"
   usage
   exit 1
 fi
@@ -420,6 +447,22 @@ start_rules_loop()
   fi
 }
 
+start_backup()
+{
+  if [[ "$BACKUP" == "yes" ]]; then
+    message "Starting backup.sh"
+    "$EXEC_DIR/backup.sh" \
+      "$OVERPASS_BACKUP_DIR" \
+      >> "$OVERPASS_DB_DIR/backup.out" 2>&1 \
+      &
+    BACKUP_PID=$!
+    sleep_with_interrupts 1
+    message "Started backup.sh (PID $BACKUP_PID)"
+  else
+    message "Skipping backup.sh startup (set OVERPASS_BACKUP_* environment variables to enable backup)"
+  fi
+}
+
 # ============================================================================
 # SHUTDOWN
 # ============================================================================
@@ -508,8 +551,20 @@ stop_rules_loop()
   RULES_LOOP_PID=
 }
 
+stop_backup()
+{
+  if [[ -n "$BACKUP_PID" ]] && kill -0 "$BACKUP_PID" 2>/dev/null; then
+    message "Stopping backup.sh"
+    kill "$BACKUP_PID" 2>/dev/null
+    wait "$BACKUP_PID"
+    message "Stopped backup.sh"
+  fi
+  BACKUP_PID=
+}
+
 stop_overpass()
 {
+  stop_backup
   stop_rules_loop
   stop_fetch_osc
   stop_apply_osc
@@ -576,10 +631,21 @@ check_rules_loop()
   fi
 }
 
+check_backup()
+{
+  [[ "$BACKUP" == "no" ]] && return 0
+  if [[ -n "$BACKUP_PID" ]] && kill -0 "$BACKUP_PID" 2>/dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
 check_overpass()
 {
-  if check_rules_loop && check_fetch_osc && check_apply_osc && \
-     check_areas_dispatcher && check_base_dispatcher; then
+  if check_backup && check_rules_loop && \
+    check_fetch_osc && check_apply_osc && \
+    check_areas_dispatcher && check_base_dispatcher; then
     return 0
   fi
   return 1
@@ -725,6 +791,14 @@ start_rules_loop
 
 if ! check_rules_loop; then
   message "ERROR: Unable to start rules_loop.sh"
+  stop_overpass
+  exit 1
+fi
+
+start_backup
+
+if ! check_backup; then
+  message "ERROR: Unable to start backup.sh"
   stop_overpass
   exit 1
 fi
