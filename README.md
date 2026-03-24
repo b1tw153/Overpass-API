@@ -38,7 +38,7 @@ This fork improves the project shell scripts to improve performance, resilience,
 There are several useful branches in this repo:
 
 * `master`: Tracks the latest release in the upstream drolbr/Overpass-API repo
-* `drolbr/v0.*`: Track the latest revision/hotfix from https://dev.overpass-api.de/releases/ (not available in the upstream repo)
+* `drolbr/v0.*`: Track the latest revision/hotfix from [dev.overpass-api.de](https://dev.overpass-api.de/releases/) (not available in the upstream repo)
 * `b1tw153/improve-shell-scripts`: Feature branch with improved scripts
 * `b1tw153/docker`: Feature branch with Docker assets (based on improve-shell-scripts)
 
@@ -88,9 +88,10 @@ If you're upgrading a previous Overpass instance to use the source code or conta
 Roland Olbricht maintains a daily clone of the full planet data for OpenStreetMap using minutely replication. If you built Overpass directly from source, download the clone using:
 
 ```bash
+OVERPASS_BIN_DIR=   # path to the bin directory in your Overpass installation
 OVERPASS_DB_DIR=    # path to your Overpass database directory
-OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or include attic data
-nohup download_clone.sh \
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
+nohup "$OVERPASS_BIN_DIR/download_clone.sh" \
   --source=http://dev.overpass-api.de/api_drolbr/ \
   --db-dir="$OVERPASS_DB_DIR" \
   --meta="$OVERPASS_META_MODE" &
@@ -100,7 +101,7 @@ Or using the container image:
 
 ```bash
 OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or include attic data
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
 docker run -d \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint /opt/overpass/bin/download_clone.sh \
@@ -191,6 +192,41 @@ docker run \
   --workdir /opt/overpass/db \
   overpass \
   -c planet-latest.osm.bz2.md5
+```
+
+Now, initialize the Overpass database from the planet file.
+
+```bash
+OVERPASS_BIN_DIR=   # path to the bin directory in your Overpass installation
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+META_FLAG=          # --data-only|--meta|--keep-attic depending on which data you want to preserve
+COMPRESSION_METHOD= # no|gz|lz4 (lz4 is recommended)
+nohup bash <<EOF &
+bunzip2 <"$OVERPASS_DB_DIR/planet-latest.osm.bz2" | \
+"$OVERPASS_BIN_DIR/update_database" \
+  --db-dir="$OVERPASS_DB_DIR" \
+  $META_FLAG \
+  --compression-method="$COMPRESSION_METHOD" \
+  --map-compression-method="$COMPRESSION_METHOD"
+EOF
+```
+
+Or, if you're using the container image:
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+META_FLAG=          # --data-only|--meta|--keep-attic depending on which data you want to preserve
+COMPRESSION_METHOD= # no|gz|lz4 (lz4 is recommended)
+docker run -d \
+  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
+  --entrypoint bash \
+  overpass \
+  -c "bunzip2 </opt/overpass/db/planet-latest.osm.bz2 | \
+      /opt/overpass/bin/update_database \
+        --db-dir=/opt/overpass/db \
+        $META_FLAG \
+        --compression-method=$COMPRESSION_METHOD \
+        --map-compression-method=$COMPRESSION_METHOD"
 ```
 
 #### Initialize the Database from an Extract
