@@ -424,8 +424,9 @@ get_latest_available_id()
     # Download failed or file invalid
     if [[ "$SOURCE_VERIFIED" == "true" ]]; then
       # Source was previously working - wait patiently and retry
-      log_message "Unable to reach replication source (likely network outage), retrying in ${UPDATE_FREQUENCY}s..."
+      log_message "Unable to reach replication source (likely network outage), sleeping ${UPDATE_FREQUENCY}s..."
       sleep_with_interrupts "$UPDATE_FREQUENCY"
+      log_message "Retrying to reach replication source"
       # Continue loop to retry
     else
       # Source has never worked - might be a configuration error
