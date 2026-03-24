@@ -70,6 +70,20 @@ namespace
   Cpu_Stopwatch* cpu_stopwatch(0);
 
   std::string data_version;
+  std::string max_data_version;
+
+  std::string escape_timestamp(const std::string& ts)
+  {
+    std::string result;
+    result.reserve(ts.size() + 3);
+    for (std::string::const_iterator it = ts.begin(); it != ts.end(); ++it)
+    {
+      if (*it == ':')
+        result += '\\';
+      result += *it;
+    }
+    return result;
+  }
 
   inline void tag_start(const char **attr)
   {
@@ -153,16 +167,20 @@ namespace
 	lon = atof(attr[i+1]);
       if (meta && (!strcmp(attr[i], "version")))
 	meta->version = atoi(attr[i+1]);
-      if (meta && (!strcmp(attr[i], "timestamp")))
+      if (!strcmp(attr[i], "timestamp"))
       {
-        meta->timestamp = Timestamp(
-            atol(attr[i+1]), //year
-            atoi(attr[i+1]+5), //month
-            atoi(attr[i+1]+8), //day
-            atoi(attr[i+1]+11), //hour
-            atoi(attr[i+1]+14), //minute
-            atoi(attr[i+1]+17) //second
-            ).timestamp;
+        std::string ts(attr[i+1]);
+        if (ts > max_data_version)
+          max_data_version = ts;
+        if (meta)
+          meta->timestamp = Timestamp(
+              atol(attr[i+1]), //year
+              atoi(attr[i+1]+5), //month
+              atoi(attr[i+1]+8), //day
+              atoi(attr[i+1]+11), //hour
+              atoi(attr[i+1]+14), //minute
+              atoi(attr[i+1]+17) //second
+              ).timestamp;
       }
       if (meta && (!strcmp(attr[i], "changeset")))
 	meta->changeset = atoi(attr[i+1]);
@@ -218,15 +236,21 @@ namespace
 	id = atoll(attr[i+1]);
       if (meta && (!strcmp(attr[i], "version")))
 	meta->version = atoi(attr[i+1]);
-      if (meta && (!strcmp(attr[i], "timestamp")))
+      if (!strcmp(attr[i], "timestamp"))
       {
-	meta->timestamp = 0;
-	meta->timestamp |= (atoll(attr[i+1])<<26); //year
-	meta->timestamp |= (atoi(attr[i+1]+5)<<22); //month
-	meta->timestamp |= (atoi(attr[i+1]+8)<<17); //day
-	meta->timestamp |= (atoi(attr[i+1]+11)<<12); //hour
-	meta->timestamp |= (atoi(attr[i+1]+14)<<6); //minute
-	meta->timestamp |= atoi(attr[i+1]+17); //second
+        std::string ts(attr[i+1]);
+        if (ts > max_data_version)
+          max_data_version = ts;
+        if (meta)
+        {
+          meta->timestamp = 0;
+          meta->timestamp |= (atoll(attr[i+1])<<26); //year
+          meta->timestamp |= (atoi(attr[i+1]+5)<<22); //month
+          meta->timestamp |= (atoi(attr[i+1]+8)<<17); //day
+          meta->timestamp |= (atoi(attr[i+1]+11)<<12); //hour
+          meta->timestamp |= (atoi(attr[i+1]+14)<<6); //minute
+          meta->timestamp |= atoi(attr[i+1]+17); //second
+        }
       }
       if (meta && (!strcmp(attr[i], "changeset")))
 	meta->changeset = atoi(attr[i+1]);
@@ -315,15 +339,21 @@ namespace
 	id = atoll(attr[i+1]);
       if (meta && (!strcmp(attr[i], "version")))
 	meta->version = atoi(attr[i+1]);
-      if (meta && (!strcmp(attr[i], "timestamp")))
+      if (!strcmp(attr[i], "timestamp"))
       {
-	meta->timestamp = 0;
-	meta->timestamp |= (atoll(attr[i+1])<<26); //year
-	meta->timestamp |= (atoi(attr[i+1]+5)<<22); //month
-	meta->timestamp |= (atoi(attr[i+1]+8)<<17); //day
-	meta->timestamp |= (atoi(attr[i+1]+11)<<12); //hour
-	meta->timestamp |= (atoi(attr[i+1]+14)<<6); //minute
-	meta->timestamp |= atoi(attr[i+1]+17); //second
+        std::string ts(attr[i+1]);
+        if (ts > max_data_version)
+          max_data_version = ts;
+        if (meta)
+        {
+          meta->timestamp = 0;
+          meta->timestamp |= (atoll(attr[i+1])<<26); //year
+          meta->timestamp |= (atoi(attr[i+1]+5)<<22); //month
+          meta->timestamp |= (atoi(attr[i+1]+8)<<17); //day
+          meta->timestamp |= (atoi(attr[i+1]+11)<<12); //hour
+          meta->timestamp |= (atoi(attr[i+1]+14)<<6); //minute
+          meta->timestamp |= atoi(attr[i+1]+17); //second
+        }
       }
       if (meta && (!strcmp(attr[i], "changeset")))
 	meta->changeset = atoi(attr[i+1]);
@@ -510,6 +540,7 @@ Osm_Updater::Osm_Updater(Osm_Backend_Callback* callback_, const std::string& dat
   dispatcher_client->write_start();
   logger.annotated_log("write_start() end");
   transaction = new Nonsynced_Transaction(Access_Mode::writeable, true, dispatcher_client->get_db_dir(), "");
+  if (!data_version_.empty())
   {
     std::ofstream version((dispatcher_client->get_db_dir()
         + "osm_base_version.shadow").c_str());
@@ -524,6 +555,7 @@ Osm_Updater::Osm_Updater(Osm_Backend_Callback* callback_, const std::string& dat
   flush_limit = flush_limit_;
 
   data_version = data_version_;
+  max_data_version = "";
 
   state = 0;
   osm_element_count = 0;
@@ -547,6 +579,7 @@ Osm_Updater::Osm_Updater
     throw Context_Error("File " + db_dir + osm_base_settings().shared_name + " present, "
         "which indicates a running dispatcher. Delete file if no dispatcher is running.");
 
+  if (!data_version_.empty())
   {
     std::ofstream version((db_dir + "osm_base_version").c_str());
     version<<data_version_<<'\n';
@@ -560,6 +593,7 @@ Osm_Updater::Osm_Updater
   flush_limit = flush_limit_;
 
   data_version = data_version_;
+  max_data_version = "";
 
   state = 0;
   osm_element_count = 0;
@@ -597,6 +631,12 @@ void Osm_Updater::flush()
       out<<' '<<*it;
     logger.annotated_log(out.str());
 
+    if (data_version.empty() && !max_data_version.empty())
+    {
+      std::ofstream version((dispatcher_client->get_db_dir() + "osm_base_version.shadow").c_str());
+      version << escape_timestamp(max_data_version) << '\n';
+    }
+
     dispatcher_client->write_commit();
     rename((dispatcher_client->get_db_dir() + "osm_base_version.shadow").c_str(),
 	   (dispatcher_client->get_db_dir() + "osm_base_version").c_str());
@@ -604,6 +644,11 @@ void Osm_Updater::flush()
     logger.annotated_log("write_commit() end");
     delete dispatcher_client;
     dispatcher_client = 0;
+  }
+  else if (data_version.empty() && !max_data_version.empty())
+  {
+    std::ofstream version((db_dir_ + "osm_base_version").c_str());
+    version << escape_timestamp(max_data_version) << '\n';
   }
 }
 
