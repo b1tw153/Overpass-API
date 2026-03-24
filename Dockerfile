@@ -31,6 +31,7 @@ COPY --from=builder /opt/overpass /opt/overpass
 COPY etc/overpass.conf /etc/nginx/conf.d/
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    aria2 \
     ca-certificates \
     curl \
     fcgiwrap \
