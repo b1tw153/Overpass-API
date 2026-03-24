@@ -1,0 +1,196 @@
+# Overpass-API
+
+This project is a fork of drolbr/Overpass-API which is an API to perform queries and analytical processing on OpenStreetMap data.
+
+* Upstream: [drolbr/Overpass-API](https://github.com/drolbr/Overpass-API)
+* [Overpass API Wiki](https://wiki.openstreetmap.org/wiki/Overpass_API)
+* [Overpass API Documentation](https://dev.overpass-api.de/)
+* [Overpass Releases](https://dev.overpass-api.de/releases/?C=M;O=D)
+
+Improvements in this fork:
+
+* More resilient replication downloads using `fetch_osc.sh` or `fetch_osc_and_apply.sh`
+* Safer recovery from uncontrolled shutdowns in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
+* Safer controlled shutdown in `apply_osc_to_db.sh` to reduce the risk of database corruption
+* Faster downloads in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `download_clone.sh`
+* Support and optimization for hourly and daily replication sources in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
+* Adaptive and customizable area creation scheduling in `rules_loop.sh`
+* NEW: Backup script that does not require the server to shut down in `backup.sh` and an associated `restore.sh` for recovery
+* NEW: Automated cleanup of old diff data in `clean_osc.sh`
+* NEW: Consolidated startup/entrypoint script in `run_osm3s.sh`
+  * Supports minutely/hourly/daily replication
+  * Supports attic/meta/basic data sets
+  * Supports scheduled area creation
+  * Automatically rotates log and output files
+  * Automatically remotes old diff data
+  * Automatically runs periodic backups
+  * Performs periodic health checks on processes
+  * Runs on bare metal or as a container entrypoint
+* NEW: Support for container image builds
+  * Minimal base image using debian:bookworm-slim
+  * External mounts for database, replication, and backup data
+  * Control all runtime parameters using environment variables
+
+## Overview
+
+This fork improves the project shell scripts to improve performance, resilience, and flexibility. It also adds support for Docker so that the project can be built as a container image.
+
+There are several useful branches in this repo:
+
+* `master`: Tracks the latest release in the upstream drolbr/Overpass-API repo
+* `drolbr/v0.*`: Track the latest revision/hotfix from https://dev.overpass-api.de/releases/ (not available in the upstream repo)
+* `b1tw153/improve-shell-scripts`: Feature branch with improved scripts
+* `b1tw153/docker`: Feature branch with Docker assets (based on improve-shell-scripts)
+
+If you plan to run Overpass directly in the OS, use the `b1tw153/improve-shell-scripts` branch. If you plan to build a container image, use the `b1tw153/docker` branch.
+
+If you prefer to build Overpass from the original source, use either the [tarballs from the Overpass release web site](https://dev.overpass-api.de/releases/?C=M;O=D) or the `drolbr/v0.*` branches in this fork.
+
+## Prerequisites / Requirements
+
+See the [basic system requirements](https://wiki.openstreetmap.org/wiki/Overpass_API/Installation#System_Requirements) in the Overpass Wiki page.
+
+The container build in this fork includes all of the necessary software. A container management or orchestration system such as Docker Compose or Kubernetes is recommended.
+
+## Installation
+
+### Building Overpass from Source
+
+If you plan to build the Overpass components directly from the source code, there are instructions and guides from several sources:
+
+* [Overpass API Wiki](https://wiki.openstreetmap.org/wiki/Overpass_API/Installation)
+* [Overpass API Quick Installation Guide](https://dev.overpass-api.de/no_frills.html)
+* [Overpass API Complete Installation Guide](https://dev.overpass-api.de/full_installation.html)
+* [ZeLonewolf/Overpass Installation Guide](https://wiki.openstreetmap.org/wiki/User:ZeLonewolf/Overpass_Installation_Guide)
+* [How to Build a Personal Overpass Server on a Tiny Budget](https://www.openstreetmap.org/user/Kai%20Johnson/diary/401263)
+* [Setting up an Overpass API server - how hard can it be?](https://www.openstreetmap.org/user/SomeoneElse/diary/408252)
+
+### Building the Container Image
+
+Start with the `b1tw153/docker` branch. In the repo directory, run:
+
+```bash
+docker build -t overpass .
+```
+
+The build process will compile the source code. This may take 10-20 minutes.
+
+### Initializing the Database
+
+The Overpass API requires a set of database files to run. There are several options to obtain an initial set of database files.
+
+#### Use an Existing Database
+
+If you're upgrading a previous Overpass instance to use the source code or container image from this fork, you can reuse your existing database files.
+
+#### Initialize the Database from a Clone
+
+Roland Olbricht maintains a daily clone of the full planet data for OpenStreetMap using minutely replication. If you built Overpass directly from source, download the clone using:
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or include attic data
+nohup download_clone.sh \
+  --source=http://dev.overpass-api.de/api_drolbr/ \
+  --db-dir="$OVERPASS_DB_DIR" \
+  --meta="$OVERPASS_META_MODE" &
+```
+
+Or using the container image:
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or include attic data
+docker run -d \
+  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
+  --entrypoint /opt/overpass/bin/download_clone.sh \
+  overpass \
+  --source="http://dev.overpass-api.de/api_drolbr/" \
+  --db-dir="/opt/overpass/db" \
+  --meta="$OVERPASS_META_MODE"
+```
+
+The database files are large and the download may take some time, so it's best to run it as a background process that will not terminate if the terminal connection is closed.
+
+#### Initialize the Database from a Planet File
+
+Importing a planet file gives you complete control over the Overpass database and ensures that it starts from a clean data set. The full planet file is very large. Check the current `planet-latest.osm.bz2` file size on [planet.openstreetmap.org](https://planet.openstreetmap.org/planet/) and make sure you have plenty of disk space for *both* the planet file and the Overpass database files.
+
+If you built Overpass from the source code, you will need to use a separate tool to download the planet file. A torrent client such as aria2c is the best choice:
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+cd "$OVERPASS_DB_DIR"
+
+# download .torrent and .md5 files
+aria2c https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.torrent \
+       https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.md5
+
+# download .bz2 file in the background without interrupts
+nohup aria2c planet-latest.osm.bz2.torrent &
+```
+
+Alternatively, you can download the files directly over HTTP. Check the current list of [Planet.osm mirrors](https://wiki.openstreetmap.org/wiki/Planet.osm#Planet.osm_mirrors) and choose an appropriate one for the download.
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+PLANET_OSM_MIRROR=  # URL to the planet directory on your chosen mirror
+cd "$OVERPASS_DB_DIR"
+
+# download .md5 file
+curl -f -S -L -O \
+  "$PLANET_OSM_MIRROR/planet-latest.osm.bz2.md5"
+
+# download .bz2 file in the background without interrupts
+nohup curl -f -S -L -C - -O \
+  --retry 10 \
+  --retry-delay 30 \
+  --speed-limit 1024 \
+  --speed-time 60 \
+  "$PLANET_OSM_MIRROR/planet-latest.osm.bz2" &
+```
+
+If you're using the container image, it already has aria2c installed.
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+
+# download .torrent and .md5 files
+docker run \
+  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
+  --entrypoint aria2c \
+  --workdir /opt/overpass/db \
+  overpass \
+  https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.torrent \
+  https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.md5
+
+# download .bz2 file in the background
+docker run -d \
+  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
+  --entrypoint aria2c \
+  --workdir /opt/overpass/db \
+  overpass \
+  planet-latest.osm.bz2.torrent
+```
+
+Whichever download method you use, check the MD5 checksum after the download.
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+cd "$OVERPASS_DB_DIR"
+md5sum -c planet-latest.osm.bz2.md5
+```
+
+... or ...
+
+```bash
+OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
+docker run \
+  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
+  --entrypoint md5sum \
+  --workdir /opt/overpass/db \
+  overpass \
+  -c planet-latest.osm.bz2.md5
+```
+
+#### Initialize the Database from an Extract
