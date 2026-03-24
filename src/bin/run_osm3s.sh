@@ -59,7 +59,7 @@ Environment variables (no argument equivalent):
   OVERPASS_UPDATE_FREQUENCY     Update interval in seconds (default: 60)
   OVERPASS_SOCKET_DIR           Directory for dispatcher socket files (default: DB_DIR)
   OVERPASS_STALL_MULTIPLIER     Stall detection threshold as a multiple of update
-                                frequency (default: 5)
+                                frequency
   OVERPASS_CLEANUP_MULTIPLIER   Diff cleanup frequency as a multiple of update
                                 frequency (default: 1440)
   OVERPASS_BACKUP_DIR           Directory for database backups
@@ -200,7 +200,7 @@ OVERPASS_DB_DIR="$(realpath "$OVERPASS_DB_DIR")"
 
 OVERPASS_UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
 OVERPASS_SOCKET_DIR=${OVERPASS_SOCKET_DIR:-"$OVERPASS_DB_DIR"}
-OVERPASS_STALL_MULTIPLIER=${OVERPASS_STALL_MULTIPLIER:-5}
+OVERPASS_STALL_MULTIPLIER=${OVERPASS_STALL_MULTIPLIER:-}
 OVERPASS_CLEANUP_MULTIPLIER=${OVERPASS_CLEANUP_MULTIPLIER:-1440}
 OVERPASS_BACKUP_DIR=${OVERPASS_BACKUP_DIR:-}
 OVERPASS_BACKUP_TIME=${OVERPASS_BACKUP_TIME:-}
@@ -229,7 +229,7 @@ else
   OVERPASS_SOCKET_DIR="$(realpath "$OVERPASS_SOCKET_DIR")"
 fi
 
-if [[ ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
+if [[ -n "$OVERPASS_STALL_MULTIPLIER" && ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
   message "ERROR: OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
   usage
   exit 1
@@ -819,7 +819,12 @@ fi
 NOW=$(date +%s)
 LAST_HEALTH_MESSAGE="$NOW"
 LAST_CLEANUP="$NOW"
-STALL_THRESHOLD=$(( OVERPASS_UPDATE_FREQUENCY * OVERPASS_STALL_MULTIPLIER ))
+if [[ -n "$OVERPASS_STALL_MULTIPLIER" ]]; then
+  STALL_DETECTION="yes"
+  STALL_THRESHOLD=$(( OVERPASS_UPDATE_FREQUENCY * OVERPASS_STALL_MULTIPLIER ))
+else
+  STALL_DETECTION="no"
+fi
 CLEANUP_THRESHOLD=$(( OVERPASS_UPDATE_FREQUENCY * OVERPASS_CLEANUP_MULTIPLIER ))
 SLEEP_TIME="$OVERPASS_UPDATE_FREQUENCY"
 
@@ -840,10 +845,8 @@ while true; do
 
   REPLICATE_ID_TIMESTAMP=$(stat -c %Y "$OVERPASS_DB_DIR/replicate_id" 2>/dev/null)
   if [[ -n "$REPLICATE_ID_TIMESTAMP" ]]; then
-    if (( NOW - REPLICATE_ID_TIMESTAMP > STALL_THRESHOLD )); then
-      message "ERROR: Database has not advanced in $(( NOW - REPLICATE_ID_TIMESTAMP ))s (threshold: ${STALL_THRESHOLD}s), shutting down"
-      stop_overpass
-      exit 1
+    if [[ "$STALL_DETECTION" == "yes" ]] && (( NOW - REPLICATE_ID_TIMESTAMP > STALL_THRESHOLD )); then
+      message "WARNING: Database has not advanced in $(( NOW - REPLICATE_ID_TIMESTAMP ))s (threshold: ${STALL_THRESHOLD}s)"
     fi
   fi
 
