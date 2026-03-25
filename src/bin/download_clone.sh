@@ -364,7 +364,7 @@ download_files_parallel()
         --speed-time "$SPEED_TIME" \
         -C - \
         -R \
-        --progress-bar \
+        --no-progress-meter \
         --http2 \
         "${curl_args[@]}" 2>"$CURL_ERROR_LOG"
 

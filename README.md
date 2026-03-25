@@ -79,6 +79,17 @@ The build process will compile the source code. This may take 10-20 minutes.
 
 The Overpass API requires a set of database files to run. There are several options to obtain an initial set of database files.
 
+If you're using the container image with bind-mounted host directories, create them and set ownership before running any container commands that write to them. The container runs as uid/gid 10001.
+
+```bash
+OVERPASS_DB_DIR=      # path to your Overpass database directory on the host
+OVERPASS_DIFF_DIR=    # path to your Overpass diff directory on the host
+OVERPASS_BACKUP_DIR=  # path to your Overpass backup directory on the host (optional)
+
+mkdir -p "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" "$OVERPASS_BACKUP_DIR"
+chown -R 10001:10001 "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" "$OVERPASS_BACKUP_DIR"
+```
+
 #### Use an Existing Database
 
 If you're upgrading a previous Overpass instance to use the source code or container image from this fork, you can reuse your existing database files.
@@ -227,6 +238,12 @@ docker run -d \
         $META_FLAG \
         --compression-method=$COMPRESSION_METHOD \
         --map-compression-method=$COMPRESSION_METHOD"
+```
+
+After importing the planet file, we need to find the correct `replicate_id` to use with the replication source. This is the sequence number of the last diff file that the planet file already includes. The first diff file to download will be the next one. Sequence numbers for `replicate_id` differ between replication sources. Use the `bisect_timestamp.sh` script to find the correct `replicate_id` for your chosen replication source.
+
+```bash
+
 ```
 
 #### Initialize the Database from an Extract
