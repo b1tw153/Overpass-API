@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libexpat1 \
     liblz4-1 \
     nginx \
+    osmium-tool \
     tini \
     zlib1g \
     && rm -rf /var/lib/apt/lists/* \
