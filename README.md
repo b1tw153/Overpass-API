@@ -126,275 +126,88 @@ The database files are large and the download may take some time, so it's best t
 
 #### Initialize the Database from a Planet File
 
-Importing a planet file gives you complete control over the Overpass database and ensures that it starts from a clean data set. The full planet file is very large. Check the current `planet-latest.osm.bz2` file size on [planet.openstreetmap.org](https://planet.openstreetmap.org/planet/) and make sure you have plenty of disk space for *both* the planet file and the Overpass database files.
+Importing a planet file gives you complete control over the Overpass database and ensures that it starts from a clean data set. The full planet file is very large. Check the current `planet-latest.osm.bz2` file size on [planet.openstreetmap.org](https://planet.openstreetmap.org/planet/) and make sure you have plenty of disk space for *both* the planet file and the Overpass database files. Downloading and importing a full planet file can take a couple of days. Make sure your system can run this task in the background.
 
-If you built Overpass from the source code, you will need to use a separate tool to download the planet file. A torrent client such as aria2c is the best choice:
+The import_osm_data.sh script takes care of downloading the planet file, verifying the MD5 checksum, importing the data, and setting the initial `replicate_id` file based on a chosen replication source. The script supports both HTTP and BitTorrent downloads (if you have aria2c installed), and will import either .osm.bz2 or .pbf files (if you have osmium installed).
 
-```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-cd "$OVERPASS_DB_DIR"
-
-# download .torrent and .md5 files
-aria2c --seed-time=0 \
-  https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.md5 \
-  https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.torrent
-```
-
-You can download the files directly over HTTP, but this option is much slower than the torrent download. Check the current list of [Planet.osm mirrors](https://wiki.openstreetmap.org/wiki/Planet.osm#Planet.osm_mirrors) and choose an appropriate one for the download.
+If you built Overpass directly from the source code:
 
 ```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-PLANET_OSM_MIRROR=  # URL to the planet directory on your chosen mirror
-cd "$OVERPASS_DB_DIR"
-
-# download .md5 file
-curl -f -S -L -O \
-  "$PLANET_OSM_MIRROR/planet-latest.osm.bz2.md5"
-
-# download .bz2 file in the background without interrupts
-nohup curl -f -S -L -C - -O \
-  --retry 10 \
-  --retry-delay 30 \
-  --speed-limit 1024 \
-  --speed-time 60 \
-  "$PLANET_OSM_MIRROR/planet-latest.osm.bz2" &
-```
-
-If you're using the container image, it already has aria2c installed for torrent downloads.
-
-```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-
-# download .md5 and .bz2 files in the background
-docker run -d \
-  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  --entrypoint aria2c \
-  --workdir /opt/overpass/db \
-  overpass \
-  --seed-time 0 \
-  https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.md5 \
-  https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.torrent
-```
-
-Whichever download method you use, check the MD5 checksum after the download.
-
-```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-cd "$OVERPASS_DB_DIR"
-md5sum -c planet-latest.osm.bz2.md5
-```
-
-... or ...
-
-```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-docker run --rm \
-  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  --entrypoint md5sum \
-  --workdir /opt/overpass/db \
-  overpass \
-  -c planet-latest.osm.bz2.md5
-```
-
-Now, initialize the Overpass database from the planet file.
-
-```bash
+PLANET_FILE_URL=    # URL of the planet file to import
+OVERPASS_DIFF_URL=  # URL of the chosen replication source associated with the planet file
 OVERPASS_BIN_DIR=   # path to the bin directory in your Overpass installation
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-META_FLAG=          # --data-only|--meta|--keep-attic depending on which data you want to preserve
-COMPRESSION_METHOD= # no|gz|lz4 (lz4 is recommended)
-nohup bash <<EOF &
-bunzip2 <"$OVERPASS_DB_DIR/planet-latest.osm.bz2" | \
-"$OVERPASS_BIN_DIR/update_database" \
+OVERPASS_DB_DIR=    # path to your Overpass database directory
+OVERPASS_DIFF_DIR=  # path to the directory that will be used to store diff files
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
+nohup "$OVERPASS_BIN_DIR/import_osm_data.sh" \
   --db-dir="$OVERPASS_DB_DIR" \
-  $META_FLAG \
-  --compression-method="$COMPRESSION_METHOD" \
-  --map-compression-method="$COMPRESSION_METHOD"
-EOF
+  --diff-dir="$OVERPASS_DIFF_DIR" \
+  --diff-url="$OVERPASS_DIFF_URL" \
+  --data-source="$PLANET_FILE_URL" \
+  --meta="$OVERPASS_META_MODE" &
 ```
 
-Or, if you're using the container image:
+The container image already has aria2c and osmium built in.
 
 ```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-META_FLAG=          # --data-only|--meta|--keep-attic depending on which data you want to preserve
-COMPRESSION_METHOD= # no|gz|lz4 (lz4 is recommended)
-docker run -d \
+PLANET_FILE_URL=    # URL of the planet file to import
+OVERPASS_DIFF_URL=  # URL of the chosen replication source associated with the planet file
+OVERPASS_DB_DIR=    # path to your Overpass database directory
+OVERPASS_DIFF_DIR=  # path to the directory that will be used to store diff files
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
+docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  --entrypoint bash \
-  overpass \
-  -c "$(cat <<EOF
-bunzip2 </opt/overpass/db/planet-latest.osm.bz2 |
-/opt/overpass/bin/update_database \
-  --db-dir=/opt/overpass/db \
-  $META_FLAG \
-  --compression-method=$COMPRESSION_METHOD \
-  --map-compression-method=$COMPRESSION_METHOD
-EOF
-)"
-```
-
-After importing the planet file, we need to find the correct `replicate_id` to use with the replication source. This is the sequence number of the last diff file that the planet file already includes. The first diff file to download will be the next one. Sequence numbers for `replicate_id` differ between replication sources, so you *must* use the replication source paired to the planet file. Use the `bisect_timestamp.sh` script to find the correct `replicate_id`.
-
-Use the same mirror that you used to download the planet file for your replication source: [Planet.osm mirrors](https://wiki.openstreetmap.org/wiki/Planet.osm#Planet.osm_mirrors).
-
-```bash
-OVERPASS_BIN_DIR=       # path to the bin directory in your Overpass installation
-OVERPASS_DIFF_DIR=      # path to the host directory that will be used to store diff files
-OVERPASS_DIFF_SOURCE=   # URL to replication data from the same source as the planet file
-export OVERPASS_DB_DIR= # path to your Overpass database directory on the host
-                        # exporting this variable will allow bisect_timestamp.sh to
-                        # read the osm_base_version file from the database directory
-if OUTPUT=$("$OVERPASS_BIN_DIR/bisect_timestamp.sh" "$OVERPASS_DIFF_SOURCE" "$OVERPASS_DIFF_DIR"); then
-  echo "REPLICATE_ID=$OUTPUT"
-  echo "$OUTPUT" > "$OVERPASS_DB_DIR/replicate_id"
-else
-  echo "Unable to determine REPLICATE_ID:"
-  echo "$OUTPUT"
-fi
-```
-
-Or do the same using the container image:
-
-```bash
-OVERPASS_DIFF_DIR=    # path to the host directory that will be used to store diff files
-OVERPASS_DB_DIR=      # path to your Overpass database directory on the host
-OVERPASS_DIFF_SOURCE= # URL to replication data from the same source as the planet file
-docker run --rm \
   -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
-  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  --entrypoint bash \
+  --entrypoint /opt/overpass/bin/import_osm_data.sh \
   overpass \
-  -c "$(cat <<EOF
-if OUTPUT=\$(/opt/overpass/bin/bisect_timestamp.sh "$OVERPASS_DIFF_SOURCE" /opt/overpass/diff); then
-  echo "REPLICATE_ID=\$OUTPUT"
-  echo "\$OUTPUT" > /opt/overpass/db/replicate_id
-else
-  echo "Unable to determine REPLICATE_ID:"
-  echo "\$OUTPUT"
-fi
-EOF
-)"
+  --db-dir=/opt/overpass/db \
+  --diff-dir=/opt/overpass/diff \
+  --diff-url="$OVERPASS_DIFF_URL" \
+  --data-source="$PLANET_FILE_URL" \
+  --meta="$OVERPASS_META_MODE"
 ```
 
 #### Initialize the Database from an Extract
 
 Importing an extract allows you to work with a slice of the global data set, which uses fewer resources and can make query responses faster. There are several [sources for extracts](https://wiki.openstreetmap.org/wiki/Planet.osm#Extracts) which vary in the regions they cover, the frequency of updates, the availability of diff files (critical for Overpass), and the metadata that is included.
 
-Once you've chosen an extract with diff files, initializing the database is similar to the full planet download but with a smaller file and typically with an additional format conversion step. Overpass requires input in OSM XML format, but most extracts are in PBF format. The extracts can be converted from PBF to OSM XML using osmium or a similar tool.
+Once you've chosen an extract with diff files, initializing the database is similar to the full planet download but with a smaller file.
+
+If you built Overpass directly from source code:
 
 ```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-EXTRACT_FILE_URL=   # URL to your chosen extract file
-
-cd "$OVERPASS_DB_DIR"
-
-# download the .md5 and .pbf file in the background without interrupts
-nohup curl -f -S -L -C - -O \
-  --retry 10 \
-  --retry-delay 30 \
-  --speed-limit 1024 \
-  --speed-time 60 \
-  "$EXTRACT_FILE_URL.md5" \
-  "$EXTRACT_FILE_URL" &
-```
-
-If you're using the container image, using aria2c for the download may be faster.
-
-```bash
-docker run -d \
-  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  --entrypoint aria2c \
-  --workdir /opt/overpass/db \
-  overpass \
-  -x 16 -s 16 \
-  "$EXTRACT_FILE_URL.md5" \
-  "$EXTRACT_FILE_URL"
-```
-
-If the extract file is in .osm.pbf format, it can be imported into the Overpass database using the same process as above for the planet file. Most extracts are .pbf files, which require a different conversion step. Keep in mind that many extracts have limited metadata and few extracts have the historical data required for Overpass attic data.
-
-If you built Overpass directly from the source code, install osmium for the PBF to OSM XML conversion.
-
-```bash
-sudo apt-get install osmium-tool # or the equivalent for your system, if needed
-
+EXTRACT_FILE_URL=   # URL of the extract file to import
+OVERPASS_DIFF_URL=  # URL of the chosen replication source associated with the extract file
 OVERPASS_BIN_DIR=   # path to the bin directory in your Overpass installation
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-EXTRACT_FILE_NAME=  # name of the extract file you downloaded
-META_FLAG=          # --data-only|--meta|--keep-attic depending on which data you want to preserve
-COMPRESSION_METHOD= # no|gz|lz4 (lz4 is recommended)
-nohup bash <<EOF &
-osmium cat -f osm "$OVERPASS_DB_DIR/$EXTRACT_FILE_NAME" | \
-"$OVERPASS_BIN_DIR/update_database" \
+OVERPASS_DB_DIR=    # path to your Overpass database directory
+OVERPASS_DIFF_DIR=  # path to the directory that will be used to store diff files
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
+nohup "$OVERPASS_BIN_DIR/import_osm_data.sh" \
   --db-dir="$OVERPASS_DB_DIR" \
-  $META_FLAG \
-  --compression-method="$COMPRESSION_METHOD" \
-  --map-compression-method="$COMPRESSION_METHOD"
-EOF
+  --diff-dir="$OVERPASS_DIFF_DIR" \
+  --diff-url="$OVERPASS_DIFF_URL" \
+  --data-source="$EXTRACT_FILE_URL" \
+  --meta="$OVERPASS_META_MODE" &
 ```
 
-If you're using the container image, it already has osmium installed.
+Or if you're using the container image:
 
 ```bash
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-EXTRACT_FILE_NAME=  # name of the extract file you downloaded
-META_FLAG=          # --data-only|--meta|--keep-attic depending on which data you want to preserve
-COMPRESSION_METHOD= # no|gz|lz4 (lz4 is recommended)
-docker run -d \
+EXTRACT_FILE_URL=   # URL of the extract file to import
+OVERPASS_DIFF_URL=  # URL of the chosen replication source associated with the extract file
+OVERPASS_DB_DIR=    # path to your Overpass database directory
+OVERPASS_DIFF_DIR=  # path to the directory that will be used to store diff files
+OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
+docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  --entrypoint bash \
-  overpass \
-  -c "$(cat <<EOF
-osmium cat -f osm "/opt/overpass/db/$EXTRACT_FILE_NAME" |
-/opt/overpass/bin/update_database \
-  --db-dir=/opt/overpass/db \
-  $META_FLAG \
-  --compression-method=$COMPRESSION_METHOD \
-  --map-compression-method=$COMPRESSION_METHOD
-EOF
-)"
-```
-
-After importing the extract file, we need to find the correct `replicate_id` to use with the replication source. This is the sequence number of the last diff file that the extract file already includes. The first diff file to download will be the next one. Sequence numbers for `replicate_id` differ between replication sources, so you *must* use the replication source paired to the extract file. Use the `bisect_timestamp.sh` script to find the correct `replicate_id` for your chosen replication source.
-
-```bash
-OVERPASS_BIN_DIR=       # path to the bin directory in your Overpass installation
-OVERPASS_DIFF_DIR=      # path to the host directory that will be used to store diff files
-OVERPASS_DIFF_SOURCE=   # URL to replication data from the same source as the extract file
-export OVERPASS_DB_DIR= # path to your Overpass database directory on the host
-                        # exporting this variable will allow bisect_timestamp.sh to
-                        # read the osm_base_version file from the database directory
-if OUTPUT=$("$OVERPASS_BIN_DIR/bisect_timestamp.sh" "$OVERPASS_DIFF_SOURCE" "$OVERPASS_DIFF_DIR"); then
-  echo "REPLICATE_ID=$OUTPUT"
-  echo "$OUTPUT" > "$OVERPASS_DB_DIR/replicate_id"
-else
-  echo "Unable to determine REPLICATE_ID:"
-  echo "$OUTPUT"
-fi
-```
-
-Or do the same using the container image:
-
-```bash
-OVERPASS_DIFF_DIR=    # path to the host directory that will be used to store diff files
-OVERPASS_DB_DIR=      # path to your Overpass database directory on the host
-OVERPASS_DIFF_SOURCE= # URL to replication data from the same source as the extract file
-docker run --rm \
   -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
-  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  --entrypoint bash \
+  --entrypoint /opt/overpass/bin/import_osm_data.sh \
   overpass \
-  -c "$(cat <<EOF
-if OUTPUT=\$(/opt/overpass/bin/bisect_timestamp.sh "$OVERPASS_DIFF_SOURCE" /opt/overpass/diff); then
-  echo "REPLICATE_ID=\$OUTPUT"
-  echo "\$OUTPUT" > /opt/overpass/db/replicate_id
-else
-  echo "Unable to determine REPLICATE_ID:"
-  echo "\$OUTPUT"
-fi
-EOF
-)"
+  --db-dir=/opt/overpass/db \
+  --diff-dir=/opt/overpass/diff \
+  --diff-url="$OVERPASS_DIFF_URL" \
+  --data-source="$EXTRACT_FILE_URL" \
+  --meta="$OVERPASS_META_MODE"
 ```
 
 ## Running Overpass
