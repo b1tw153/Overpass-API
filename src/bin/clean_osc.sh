@@ -81,7 +81,9 @@ if [[ "$ALL_MODE" == "false" ]]; then
     echo "ERROR: Database directory '$DB_DIR' is not readable (check permissions)"
     exit 1
   fi
-  
+
+  DB_DIR="$(realpath "$DB_DIR")"
+
   # State file
   STATE_FILE="$DB_DIR/replicate_id"
 fi
@@ -112,9 +114,7 @@ if [[ ! -w "$LOCAL_DIR" ]]; then
   exit 1
 fi
 
-# Log file
-#LOG_FILE="$LOCAL_DIR/clean_osc.log"
-# Note that we're logging to stdout and letting the caller write to the log directory
+LOCAL_DIR="$(realpath "$LOCAL_DIR")"
 
 # ============================================================================
 # LOGGING
@@ -122,13 +122,11 @@ fi
 
 log_message()
 {
-# echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
   echo "$(date -u '+%F %T'): $1"
 }
 
 log_error()
 {
-# echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
   echo "$(date -u '+%F %T'): ERROR: $1"
 }
 
@@ -139,63 +137,49 @@ log_error()
 read_current_state()
 {
   local STATE_PATH="$STATE_FILE"
-  
+
   if [[ ! -e "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' does not exist"
     echo "0"
     return 1
   fi
-  
+
   if [[ ! -f "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' exists but is not a regular file"
     echo "0"
     return 1
   fi
-  
+
   if [[ ! -r "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' is not readable (check permissions)"
     echo "0"
     return 1
   fi
-  
+
   if [[ ! -s "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' is empty"
     echo "0"
     return 1
   fi
-  
-  local STATE_VALUE=$(cat "$STATE_PATH" 2>/dev/null)
-  
+
+  local STATE_VALUE
+  STATE_VALUE=$(cat "$STATE_PATH" 2>/dev/null)
+
   if [[ -z "$STATE_VALUE" ]]; then
     log_error "Failed to read state file '$STATE_PATH'"
     echo "0"
     return 1
   fi
-  
+
   # Validate that it's a number
   if ! [[ "$STATE_VALUE" =~ ^[0-9]+$ ]]; then
     log_error "State file '$STATE_PATH' contains invalid data: '$STATE_VALUE'"
     echo "0"
     return 1
   fi
-  
+
   echo "$STATE_VALUE"
   return 0
-}
-
-# ============================================================================
-# PATH CONVERSION
-# ============================================================================
-
-get_replicate_path()
-{
-  local ID=$1
-  printf -v DIGIT3 %03u $(($ID % 1000))
-  local ARG=$(($ID / 1000))
-  printf -v DIGIT2 %03u $(($ARG % 1000))
-  ARG=$(($ARG / 1000))
-  printf -v DIGIT1 %03u $ARG
-  REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
 }
 
 # ============================================================================
@@ -205,124 +189,125 @@ get_replicate_path()
 cleanup_all_files()
 {
   log_message "Deleting ALL OSC files (recovery mode)"
-  
+
   local CLEANED_FILES=0
   local CLEANED_DIRS=0
-  
+
   # Find all OSC and state files
   for FILE in "$LOCAL_DIR"/[0-9][0-9][0-9]/[0-9][0-9][0-9]/[0-9][0-9][0-9].{osc.gz,state.txt}; do
     if [[ -f "$FILE" ]]; then
       rm -f "$FILE"
-      CLEANED_FILES=$(($CLEANED_FILES + 1))
+      (( ++CLEANED_FILES ))
     fi
   done
-  
+
   # Remove all numbered directories
   for DIR1 in "$LOCAL_DIR"/[0-9][0-9][0-9]; do
     if [[ -d "$DIR1" ]]; then
       rm -rf "$DIR1"
-      CLEANED_DIRS=$(($CLEANED_DIRS + 1))
+      (( ++CLEANED_DIRS ))
     fi
   done
-  
+
   # Also remove state.txt and replicate_id if present in LOCAL_DIR
-  rm -f "$LOCAL_DIR/state.txt" 2>/dev/null
-  rm -f "$LOCAL_DIR/replicate_id" 2>/dev/null
-  
+  rm -f "$LOCAL_DIR/state.txt" "$LOCAL_DIR/replicate_id"
+
   log_message "Deleted $CLEANED_FILES files and removed $CLEANED_DIRS directories"
-  
+
   return 0
 }
 
 cleanup_old_files()
 {
-  local CURRENT_STATE=$1
-  local CLEANUP_THRESHOLD=$(($CURRENT_STATE - $KEEP_COUNT))
-  
+  local CURRENT_STATE="$1"
+  local CLEANUP_THRESHOLD
+  CLEANUP_THRESHOLD=$(( CURRENT_STATE - KEEP_COUNT ))
+
   if [[ $CLEANUP_THRESHOLD -le 0 ]]; then
     log_message "Cleanup threshold is $CLEANUP_THRESHOLD, nothing to clean"
     return 0
   fi
-  
+
   log_message "Cleaning OSC files older than $CLEANUP_THRESHOLD (current state: $CURRENT_STATE, keeping $KEEP_COUNT extra)"
-  
+
   local CLEANED_FILES=0
   local CLEANED_DIRS=0
-  
+
   # Calculate threshold path components
-  printf -v THRESHOLD_DIGIT3 %03u $(($CLEANUP_THRESHOLD % 1000))
-  local ARG=$(($CLEANUP_THRESHOLD / 1000))
-  printf -v THRESHOLD_DIGIT2 %03u $(($ARG % 1000))
-  ARG=$(($ARG / 1000))
-  printf -v THRESHOLD_DIGIT1 %03u $ARG
-  
+  printf -v THRESHOLD_DIGIT3 '%03u' $(( CLEANUP_THRESHOLD % 1000 ))
+  local ARG=$(( CLEANUP_THRESHOLD / 1000 ))
+  printf -v THRESHOLD_DIGIT2 '%03u' $(( ARG % 1000 ))
+  ARG=$(( ARG / 1000 ))
+  printf -v THRESHOLD_DIGIT1 '%03u' "$ARG"
+
   log_message "Threshold path: $THRESHOLD_DIGIT1/$THRESHOLD_DIGIT2/$THRESHOLD_DIGIT3"
-  
+
   # Find all top-level directories (000-999)
   for DIR1 in "$LOCAL_DIR"/[0-9][0-9][0-9]; do
     if [[ ! -d "$DIR1" ]]; then
       continue
     fi
-    
-    local DIGIT1=$(basename "$DIR1")
-    
+
+    local DIGIT1
+    DIGIT1=$(basename "$DIR1")
+
     # Skip if this top-level directory is beyond our threshold
     if [[ $DIGIT1 -gt $THRESHOLD_DIGIT1 ]]; then
       continue
     fi
-    
+
     # Find all second-level directories (000-999)
     for DIR2 in "$DIR1"/[0-9][0-9][0-9]; do
       if [[ ! -d "$DIR2" ]]; then
         continue
       fi
-      
-      local DIGIT2=$(basename "$DIR2")
-      
+
+      local DIGIT2
+      DIGIT2=$(basename "$DIR2")
+
       # Skip if this directory path is beyond our threshold
       if [[ $DIGIT1 -eq $THRESHOLD_DIGIT1 && $DIGIT2 -gt $THRESHOLD_DIGIT2 ]]; then
         continue
       fi
-      
+
       # Process all files in this directory
       for FILE in "$DIR2"/[0-9][0-9][0-9].{osc.gz,state.txt}; do
         if [[ ! -f "$FILE" ]]; then
           continue
         fi
-        
-        local FILENAME=$(basename "$FILE")
+
+        local FILENAME
+        FILENAME=$(basename "$FILE")
         local DIGIT3="${FILENAME:0:3}"
-        
+
         # Calculate the full ID
-        local FILE_ID=$((10#$DIGIT1 * 1000000 + 10#$DIGIT2 * 1000 + 10#$DIGIT3))
-        
+        local FILE_ID=$(( 10#$DIGIT1 * 1000000 + 10#$DIGIT2 * 1000 + 10#$DIGIT3 ))
+
         # Delete if older than threshold
         if [[ $FILE_ID -le $CLEANUP_THRESHOLD ]]; then
           rm -f "$FILE"
-          CLEANED_FILES=$(($CLEANED_FILES + 1))
+          (( ++CLEANED_FILES ))
         fi
       done
-      
-      # Check if directory is now empty and remove it
-      if [[ -z "$(ls -A "$DIR2" 2>/dev/null)" ]]; then
-        rmdir "$DIR2" 2>/dev/null
-        CLEANED_DIRS=$(($CLEANED_DIRS + 1))
+
+      # Remove directory if now empty
+      if rmdir "$DIR2" 2>/dev/null; then
+        (( ++CLEANED_DIRS ))
       fi
     done
-    
-    # Check if top-level directory is now empty and remove it
-    if [[ -z "$(ls -A "$DIR1" 2>/dev/null)" ]]; then
-      rmdir "$DIR1" 2>/dev/null
-      CLEANED_DIRS=$(($CLEANED_DIRS + 1))
+
+    # Remove directory if now empty
+    if rmdir "$DIR1" 2>/dev/null; then
+      (( ++CLEANED_DIRS ))
     fi
   done
-  
+
   if [[ $CLEANED_FILES -gt 0 ]]; then
     log_message "Cleaned up $CLEANED_FILES files and removed $CLEANED_DIRS empty directories"
   else
     log_message "No files needed cleaning"
   fi
-  
+
   return 0
 }
 
@@ -335,9 +320,9 @@ if [[ "$ALL_MODE" == "true" ]]; then
   log_message "Starting cleanup process (ALL MODE)"
   log_message "Local directory: $LOCAL_DIR"
   log_message "=========================================="
-  
+
   cleanup_all_files
-  
+
   log_message "Cleanup complete"
   log_message "=========================================="
   exit 0
@@ -366,7 +351,7 @@ fi
 
 log_message "Current database state: $CURRENT_STATE"
 
-cleanup_old_files $CURRENT_STATE
+cleanup_old_files "$CURRENT_STATE"
 
 log_message "Cleanup complete"
 log_message "=========================================="
