@@ -93,6 +93,14 @@ if [[ ! -d "$DB_DIR" ]]; then
   exit 1
 fi
 
+# Check for buggy date implementation
+DATE_CHECK=$(date -d "2026-01-31T20:00:30Z" +%s 2>/dev/null)
+if [[ "$?" -ne 0 || "$DATE_CHECK" -ne 1769889630 ]]; then
+  echo "ERROR: The 'date' command on this system cannot parse the ISO-8601 timestamps used in OSM data."
+  echo "Update your system packages, install GNU date, or use the Docker container instead."
+  exit 1
+fi
+
 # State file
 STATE_FILE="$DB_DIR/replicate_id"
 
