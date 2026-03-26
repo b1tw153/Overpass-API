@@ -104,7 +104,7 @@ message()
 
 PARSED=$(getopt \
   --options '' \
-  --longoptions 'run:,db-dir:,replicate-dir:,source-url:,meta:,areas:,help' \
+  --longoptions 'run:,db-dir:,diff-dir:,diff-url:,meta:,areas:,help' \
   --name "$0" \
   -- "$@") || { usage; exit 1; }
 

@@ -38,7 +38,7 @@ Usage: $0 [options]
   --diff-url=URL              URL to the replication source, e.g.:
                               https://planet.openstreetmap.org/replication/minute
   --data-source=URL           URL to the planet or extract file
-                              (default: planet-latest.osm.bz2.torrent from
+                              (default: planet-latest.osm.pbf.torrent from
                               planet.openstreetmap.org)
   --meta=yes|no|attic         Metadata mode (default: no)
   --compression-method=METHOD Compression: no|gz|lz4 (default: lz4)
@@ -69,7 +69,7 @@ message()
 # CONFIGURATION
 # ============================================================================
 
-DEFAULT_DATA_SOURCE="https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.torrent"
+DEFAULT_DATA_SOURCE="https://planet.openstreetmap.org/pbf/planet-latest.osm.pbf.torrent"
 
 DB_DIR="${OVERPASS_DB_DIR:-}"
 DIFF_DIR="${OVERPASS_DIFF_DIR:-}"
@@ -84,7 +84,7 @@ COMPRESSION="${IMPORT_OSM_COMPRESSION_METHOD:-lz4}"
 
 PARSED=$(getopt \
   --options '' \
-  --longoptions 'db-dir:,diff-dir:,data-source:,replication-source:,meta:,compression-method:,help' \
+  --longoptions 'db-dir:,diff-dir:,data-source:,diff-url:,meta:,compression-method:,help' \
   --name "$0" \
   -- "$@") || { usage; exit 1; }
 
