@@ -238,7 +238,7 @@ fetch_state()
       "$REMOTE_URL" 2>/dev/null)
 
     if [[ "$HTTP_CODE" == "404" ]]; then
-      echo "ERROR: Failed to download $REMOTE_URL"
+      echo "WARNING: Failed to download $REMOTE_URL" >&2
       rm -f "$TMP_FILE"
       DATA_VERSION=
       return 1
