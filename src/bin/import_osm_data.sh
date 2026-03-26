@@ -229,22 +229,33 @@ message "Downloading $FILENAME ..."
 cd "$DB_DIR" || exit 1
 
 if [[ $USE_TORRENT -eq 1 ]]; then
-  aria2c -Z --seed-time=0 "$MD5_URL" "$DATA_SOURCE"
+  aria2c --allow-overwrite=true -o "$FILENAME.md5" "$MD5_URL" \
+    || { message "ERROR: Download failed"; exit 1; }
+  aria2c --allow-overwrite=true --seed-time=0 -o "$FILENAME" "$DATA_SOURCE" \
+    || { message "ERROR: Download failed"; exit 1; }
 elif [[ $HAS_ARIA2C -eq 1 ]]; then
-  aria2c -Z -x 16 -s 16 "$MD5_URL" "$FILE_URL"
+  aria2c --allow-overwrite=true -o "$FILENAME.md5" "$MD5_URL" \
+    || { message "ERROR: Download failed"; exit 1; }
+  aria2c --allow-overwrite=true -x 16 -s 16 -o "$FILENAME" "$FILE_URL" \
+    || { message "ERROR: Download failed"; exit 1; }
 else
-  curl -f -S -L -C - -O \
+  curl -f -S -L \
     --retry 10 \
     --retry-delay 30 \
     --speed-limit 1024 \
     --speed-time 60 \
+    -o "$FILENAME.md5" \
     "$MD5_URL" \
-    "$FILE_URL"
-fi
+  || { message "ERROR: Download failed"; exit 1; }
 
-if [[ $? -ne 0 ]]; then
-  message "ERROR: Download failed"
-  exit 1
+  curl -f -S -L \
+    --retry 10 \
+    --retry-delay 30 \
+    --speed-limit 1024 \
+    --speed-time 60 \
+    -o "$FILENAME" \
+    "$FILE_URL" \
+    || { message "ERROR: Download failed"; exit 1; }
 fi
 
 message "Download complete"
