@@ -142,6 +142,24 @@ if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
+if [[ -n "$BACKUP_TIME" ]]; then
+  DATE_CHECK=$(date -d "today $BACKUP_TIME" +%s 2>/dev/null)
+  if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')."
+    echo "Update your system packages, install GNU date, or use the Docker container instead."
+    exit 1
+  fi
+fi
+
+if [[ "$BACKUP_DAY" =~ ^[0-9]+$ ]]; then
+  DATE_CHECK=$(date +%-d 2>/dev/null)
+  if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: The 'date' command on this system does not support the '%-d' format specifier."
+    echo "Update your system packages, install GNU date, or use the Docker container instead."
+    exit 1
+  fi
+fi
+
 # ============================================================================
 # LOGGING
 # ============================================================================

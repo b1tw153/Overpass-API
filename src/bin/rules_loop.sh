@@ -55,6 +55,15 @@ if [[ -n "$OVERPASS_AREA_UPDATE_TIME" ]] && \
   exit 1
 fi
 
+if [[ -n "$OVERPASS_AREA_UPDATE_TIME" ]]; then
+  DATE_CHECK=$(date -d "today $OVERPASS_AREA_UPDATE_TIME" +%s 2>/dev/null)
+  if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')."
+    echo "Update your system packages, install GNU date, or use the Docker container instead."
+    exit 1
+  fi
+fi
+
 LOG_FILE="$DB_DIR/rules_loop.log"
 
 log_message() {
