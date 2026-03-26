@@ -39,7 +39,7 @@ Usage: $0 [source_url [local_dir [target_time [lower [upper]]]]]
                (default: current latest sequence number from source_url)
 
 Environment variables:
-  FETCH_OSC_SOURCE        Same as source_url argument
+  OVERPASS_DIFF_SOURCE    Same as source_url argument
   OVERPASS_DIFF_DIR       Same as local_dir argument
   OVERPASS_DB_VERSION     Same as target_time argument
                           (default: read from OVERPASS_DB_DIR/osm_base_version)
@@ -54,7 +54,7 @@ number of the last diff that would have been applied to the database.
 EOF
 }
 
-if [[ $# -eq 0 && -z "$FETCH_OSC_SOURCE" ]]; then
+if [[ $# -eq 0 && -z "$OVERPASS_DIFF_SOURCE" ]]; then
   usage
   exit 1
 fi
@@ -63,7 +63,7 @@ fi
 # CONFIGURATION
 # ============================================================================
 
-SOURCE_URL="${1:-$FETCH_OSC_SOURCE}"
+SOURCE_URL="${1:-$OVERPASS_DIFF_SOURCE}"
 LOCAL_DIR="${2:-$OVERPASS_DIFF_DIR}"
 TARGET_TIME="${3:-$OVERPASS_DB_VERSION}"
 LOWER="${4:-${BISECT_TIMESTAMP_LOWER:-1}}"
@@ -71,7 +71,7 @@ UPPER="${5:-${BISECT_TIMESTAMP_UPPER:-}}"
 
 # Validate source_url
 if [[ -z "$SOURCE_URL" ]]; then
-  echo "ERROR: source_url is required (or set FETCH_OSC_SOURCE)"
+  echo "ERROR: source_url is required (or set OVERPASS_DIFF_SOURCE)"
   usage
   exit 1
 fi

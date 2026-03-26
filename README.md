@@ -239,13 +239,13 @@ After importing the planet file, we need to find the correct `replicate_id` to u
 Use the same mirror that you used to download the planet file for your replication source: [Planet.osm mirrors](https://wiki.openstreetmap.org/wiki/Planet.osm#Planet.osm_mirrors).
 
 ```bash
-OVERPASS_BIN_DIR=   # path to the bin directory in your Overpass installation
-OVERPASS_DIFF_DIR=  # path to the host directory that will be used to store diff files
-FETCH_OSC_SOURCE=   # URL to replication data from the same source as the planet file
-export OVERPASS_DB_DIR=   # path to your Overpass database directory on the host
-                          # exporting this variable will allow bisect_timestamp.sh to
-                          # read the osm_base_version file from the database directory
-if OUTPUT=$("$OVERPASS_BIN_DIR/bisect_timestamp.sh" "$FETCH_OSC_SOURCE" "$OVERPASS_DIFF_DIR"); then
+OVERPASS_BIN_DIR=       # path to the bin directory in your Overpass installation
+OVERPASS_DIFF_DIR=      # path to the host directory that will be used to store diff files
+OVERPASS_DIFF_SOURCE=   # URL to replication data from the same source as the planet file
+export OVERPASS_DB_DIR= # path to your Overpass database directory on the host
+                        # exporting this variable will allow bisect_timestamp.sh to
+                        # read the osm_base_version file from the database directory
+if OUTPUT=$("$OVERPASS_BIN_DIR/bisect_timestamp.sh" "$OVERPASS_DIFF_SOURCE" "$OVERPASS_DIFF_DIR"); then
   echo "REPLICATE_ID=$OUTPUT"
   echo "$OUTPUT" > "$OVERPASS_DB_DIR/replicate_id"
 else
@@ -257,16 +257,16 @@ fi
 Or do the same using the container image:
 
 ```bash
-OVERPASS_DIFF_DIR=  # path to the host directory that will be used to store diff files
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-FETCH_OSC_SOURCE=   # URL to replication data from the same source as the planet file
+OVERPASS_DIFF_DIR=    # path to the host directory that will be used to store diff files
+OVERPASS_DB_DIR=      # path to your Overpass database directory on the host
+OVERPASS_DIFF_SOURCE= # URL to replication data from the same source as the planet file
 docker run --rm \
   -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint bash \
   overpass \
   -c "$(cat <<EOF
-if OUTPUT=\$(/opt/overpass/bin/bisect_timestamp.sh "$FETCH_OSC_SOURCE" /opt/overpass/diff); then
+if OUTPUT=\$(/opt/overpass/bin/bisect_timestamp.sh "$OVERPASS_DIFF_SOURCE" /opt/overpass/diff); then
   echo "REPLICATE_ID=\$OUTPUT"
   echo "\$OUTPUT" > /opt/overpass/db/replicate_id
 else
@@ -359,13 +359,13 @@ EOF
 After importing the extract file, we need to find the correct `replicate_id` to use with the replication source. This is the sequence number of the last diff file that the extract file already includes. The first diff file to download will be the next one. Sequence numbers for `replicate_id` differ between replication sources, so you *must* use the replication source paired to the extract file. Use the `bisect_timestamp.sh` script to find the correct `replicate_id` for your chosen replication source.
 
 ```bash
-OVERPASS_BIN_DIR=   # path to the bin directory in your Overpass installation
-OVERPASS_DIFF_DIR=  # path to the host directory that will be used to store diff files
-FETCH_OSC_SOURCE=   # URL to replication data from the same source as the extract file
-export OVERPASS_DB_DIR=   # path to your Overpass database directory on the host
-                          # exporting this variable will allow bisect_timestamp.sh to
-                          # read the osm_base_version file from the database directory
-if OUTPUT=$("$OVERPASS_BIN_DIR/bisect_timestamp.sh" "$FETCH_OSC_SOURCE" "$OVERPASS_DIFF_DIR"); then
+OVERPASS_BIN_DIR=       # path to the bin directory in your Overpass installation
+OVERPASS_DIFF_DIR=      # path to the host directory that will be used to store diff files
+OVERPASS_DIFF_SOURCE=   # URL to replication data from the same source as the extract file
+export OVERPASS_DB_DIR= # path to your Overpass database directory on the host
+                        # exporting this variable will allow bisect_timestamp.sh to
+                        # read the osm_base_version file from the database directory
+if OUTPUT=$("$OVERPASS_BIN_DIR/bisect_timestamp.sh" "$OVERPASS_DIFF_SOURCE" "$OVERPASS_DIFF_DIR"); then
   echo "REPLICATE_ID=$OUTPUT"
   echo "$OUTPUT" > "$OVERPASS_DB_DIR/replicate_id"
 else
@@ -377,16 +377,16 @@ fi
 Or do the same using the container image:
 
 ```bash
-OVERPASS_DIFF_DIR=  # path to the host directory that will be used to store diff files
-OVERPASS_DB_DIR=    # path to your Overpass database directory on the host
-FETCH_OSC_SOURCE=   # URL to replication data from the same source as the extract file
+OVERPASS_DIFF_DIR=    # path to the host directory that will be used to store diff files
+OVERPASS_DB_DIR=      # path to your Overpass database directory on the host
+OVERPASS_DIFF_SOURCE= # URL to replication data from the same source as the extract file
 docker run --rm \
   -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint bash \
   overpass \
   -c "$(cat <<EOF
-if OUTPUT=\$(/opt/overpass/bin/bisect_timestamp.sh "$FETCH_OSC_SOURCE" /opt/overpass/diff); then
+if OUTPUT=\$(/opt/overpass/bin/bisect_timestamp.sh "$OVERPASS_DIFF_SOURCE" /opt/overpass/diff); then
   echo "REPLICATE_ID=\$OUTPUT"
   echo "\$OUTPUT" > /opt/overpass/db/replicate_id
 else

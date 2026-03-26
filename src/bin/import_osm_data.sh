@@ -47,7 +47,7 @@ Environment variables:
   OVERPASS_DB_DIR                 Same as --db-dir
   OVERPASS_DIFF_DIR               Same as --diff-dir
   IMPORT_OSM_DATA_SOURCE          Same as --data-source
-  FETCH_OSC_SOURCE                Same as --replication-source
+  OVERPASS_DIFF_SOURCE            Same as --replication-source
   OVERPASS_META_MODE              Same as --meta
   IMPORT_OSM_COMPRESSION_METHOD   Same as --compression-method
 
@@ -74,7 +74,7 @@ DEFAULT_DATA_SOURCE="https://planet.openstreetmap.org/planet/planet-latest.osm.b
 DB_DIR="${OVERPASS_DB_DIR:-}"
 DIFF_DIR="${OVERPASS_DIFF_DIR:-}"
 DATA_SOURCE="${IMPORT_OSM_DATA_SOURCE:-$DEFAULT_DATA_SOURCE}"
-REPLICATION_SOURCE="${FETCH_OSC_SOURCE:-}"
+REPLICATION_SOURCE="${OVERPASS_DIFF_SOURCE:-}"
 META="${OVERPASS_META_MODE:-no}"
 COMPRESSION="${IMPORT_OSM_COMPRESSION_METHOD:-lz4}"
 
