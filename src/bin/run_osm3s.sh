@@ -23,8 +23,8 @@ usage() {
 Usage: $0
     --run=REPLICATE_ID 
     --db-dir=DB_DIR 
-    --replicate-dir=OVERPASS_DIFF_DIR
-    --source-url=OVERPASS_DIFF_SOURCE
+    --diff-dir=OVERPASS_DIFF_DIR
+    --diff-url=OVERPASS_DIFF_URL
     --meta=no|yes|attic
     --areas=no|yes
 
@@ -34,10 +34,10 @@ Usage: $0
 --db-dir=DB_DIR
     The directory where the database is stored.
 
---replicate-dir=OVERPASS_DIFF_DIR
+--diff-dir=OVERPASS_DIFF_DIR
     The directory where the diffs are stored.
 
---source-url=OVERPASS_DIFF_SOURCE
+--diff-url=OVERPASS_DIFF_URL
     Specify the URL to download the diffs from. The usual URL is
     https://planet.openstreetmap.org/replication/minute/
 
@@ -50,8 +50,8 @@ Usage: $0
 Environment variables (overridden by arguments):
   OVERPASS_REPLICATE_ID         Same as --run
   OVERPASS_DB_DIR               Same as --db-dir
-  OVERPASS_DIFF_DIR             Same as --replicate-dir
-  OVERPASS_DIFF_SOURCE          Same as --source-url
+  OVERPASS_DIFF_DIR             Same as --diff-dir
+  OVERPASS_DIFF_URL             Same as --diff-url
   OVERPASS_META_MODE            Same as --meta
   OVERPASS_AREAS                Same as --areas
 
@@ -113,7 +113,7 @@ eval set -- "$PARSED"
 START_ID="${OVERPASS_REPLICATE_ID:-}"
 OVERPASS_DB_DIR="${OVERPASS_DB_DIR:-}"
 OVERPASS_DIFF_DIR="${OVERPASS_DIFF_DIR:-}"
-OVERPASS_DIFF_SOURCE="${OVERPASS_DIFF_SOURCE:-}"
+OVERPASS_DIFF_URL="${OVERPASS_DIFF_URL:-}"
 OVERPASS_META_MODE="${OVERPASS_META_MODE:-}"
 AREAS="${OVERPASS_AREAS:-}"
 
@@ -121,8 +121,8 @@ while true; do
   case "$1" in
     --run)           START_ID="$2";             shift 2 ;;
     --db-dir)        OVERPASS_DB_DIR="$2";      shift 2 ;;
-    --replicate-dir) OVERPASS_DIFF_DIR="$2";    shift 2 ;;
-    --source-url)    OVERPASS_DIFF_SOURCE="$2"; shift 2 ;;
+    --diff-dir)      OVERPASS_DIFF_DIR="$2";    shift 2 ;;
+    --diff-url)      OVERPASS_DIFF_URL="$2";    shift 2 ;;
     --meta)          OVERPASS_META_MODE="$2";   shift 2 ;;
     --areas)         AREAS="$2";                shift 2 ;;
     --help)          print_help;                exit  0 ;;
@@ -155,25 +155,25 @@ if ! [[ -d $OVERPASS_DB_DIR && -w $OVERPASS_DB_DIR ]]; then
 fi
     
 if [[ -z $OVERPASS_DIFF_DIR ]]; then
-  message "ERROR: --replicate-dir is required"
+  message "ERROR: --diff-dir is required"
   usage
   exit 1
 fi
 
 if ! [[ -d "$OVERPASS_DIFF_DIR" && -w "$OVERPASS_DIFF_DIR" ]]; then
-  message "ERROR: --replicate-dir '$OVERPASS_DIFF_DIR' is not a writeable directory"
+  message "ERROR: --diff-dir '$OVERPASS_DIFF_DIR' is not a writeable directory"
   usage
   exit 1
 fi
 
-if [[ -z $OVERPASS_DIFF_SOURCE ]]; then
-  message "ERROR: --source-url is required"
+if [[ -z $OVERPASS_DIFF_URL ]]; then
+  message "ERROR: --diff-url is required"
   usage
   exit 1
 fi
 
-if [[ ! "$OVERPASS_DIFF_SOURCE" =~ ^https?:// ]]; then
-  message "ERROR: Invalid OVERPASS_DIFF_SOURCE '$OVERPASS_DIFF_SOURCE': must start with http:// or https://"
+if [[ ! "$OVERPASS_DIFF_URL" =~ ^https?:// ]]; then
+  message "ERROR: Invalid OVERPASS_DIFF_URL '$OVERPASS_DIFF_URL': must start with http:// or https://"
   usage
   exit 1
 fi
@@ -422,7 +422,7 @@ start_fetch_osc()
 
   "$EXEC_DIR/fetch_osc.sh" \
     "$FETCH_START_ID" \
-    "$OVERPASS_DIFF_SOURCE" \
+    "$OVERPASS_DIFF_URL" \
     "$OVERPASS_DIFF_DIR" \
     >> "$OVERPASS_DIFF_DIR/fetch_osc.out" 2>&1 \
     &
@@ -737,7 +737,7 @@ message "-----------------------------------"
 message "OVERPASS_REPLICATE_ID              $START_ID"
 message "OVERPASS_DB_DIR                    $OVERPASS_DB_DIR"
 message "OVERPASS_DIFF_DIR                  $OVERPASS_DIFF_DIR"
-message "OVERPASS_DIFF_SOURCE               $OVERPASS_DIFF_SOURCE"
+message "OVERPASS_DIFF_URL                  $OVERPASS_DIFF_URL"
 message "OVERPASS_META_MODE                 $OVERPASS_META_MODE"
 message "OVERPASS_AREAS                     $AREAS"
 message "OVERPASS_UPDATE_FREQUENCY          $OVERPASS_UPDATE_FREQUENCY seconds"

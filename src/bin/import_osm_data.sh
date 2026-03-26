@@ -7,7 +7,7 @@
 # USAGE NOTE: This script downloads and imports a planet file or extract and
 # may run for many hours. Run it in the background to prevent interruption:
 #
-#   nohup ./import_osm_data.sh --db-dir=/opt/overpass/db --diff-dir=/opt/overpass/diff --replication-source=https://... &
+#   nohup ./import_osm_data.sh --db-dir=/opt/overpass/db --diff-dir=/opt/overpass/diff --diff-url=https://... &
 #
 # Overpass_API is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -35,7 +35,7 @@ Usage: $0 [options]
 
   --db-dir=DIR                Path to the Overpass database directory (required)
   --diff-dir=DIR              Path to the Overpass diff directory (required)
-  --replication-source=URL    URL to the replication source, e.g.:
+  --diff-url=URL              URL to the replication source, e.g.:
                               https://planet.openstreetmap.org/replication/minute
   --data-source=URL           URL to the planet or extract file
                               (default: planet-latest.osm.bz2.torrent from
@@ -47,7 +47,7 @@ Environment variables:
   OVERPASS_DB_DIR                 Same as --db-dir
   OVERPASS_DIFF_DIR               Same as --diff-dir
   IMPORT_OSM_DATA_SOURCE          Same as --data-source
-  OVERPASS_DIFF_SOURCE            Same as --replication-source
+  OVERPASS_DIFF_URL               Same as --diff-url
   OVERPASS_META_MODE              Same as --meta
   IMPORT_OSM_COMPRESSION_METHOD   Same as --compression-method
 
@@ -74,7 +74,7 @@ DEFAULT_DATA_SOURCE="https://planet.openstreetmap.org/planet/planet-latest.osm.b
 DB_DIR="${OVERPASS_DB_DIR:-}"
 DIFF_DIR="${OVERPASS_DIFF_DIR:-}"
 DATA_SOURCE="${IMPORT_OSM_DATA_SOURCE:-$DEFAULT_DATA_SOURCE}"
-REPLICATION_SOURCE="${OVERPASS_DIFF_SOURCE:-}"
+REPLICATION_SOURCE="${OVERPASS_DIFF_URL:-}"
 META="${OVERPASS_META_MODE:-no}"
 COMPRESSION="${IMPORT_OSM_COMPRESSION_METHOD:-lz4}"
 
@@ -95,7 +95,7 @@ while true; do
     --db-dir)               DB_DIR="$2";               shift 2 ;;
     --diff-dir)             DIFF_DIR="$2";             shift 2 ;;
     --data-source)          DATA_SOURCE="$2";          shift 2 ;;
-    --replication-source)   REPLICATION_SOURCE="$2";   shift 2 ;;
+    --diff-url)             REPLICATION_SOURCE="$2";   shift 2 ;;
     --meta)                 META="$2";                 shift 2 ;;
     --compression-method)   COMPRESSION="$2";          shift 2 ;;
     --help)                 usage; exit 0 ;;
@@ -120,7 +120,7 @@ if [[ -z "$DIFF_DIR" ]]; then
 fi
 
 if [[ -z "$REPLICATION_SOURCE" ]]; then
-  message "ERROR: --replication-source is required (or set IMPORT_OSM_REPLICATION_SOURCE)"
+  message "ERROR: --diff-url is required (or set OVERPASS_DIFF_URL)"
   usage
   exit 1
 fi

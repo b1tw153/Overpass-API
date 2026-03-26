@@ -26,9 +26,9 @@
 usage()
 {
   cat << EOF
-Usage: $0 source_url
+Usage: $0 diff_url
 
-  source_url   Replication source URL
+  diff_url     Replication source URL
                (e.g., https://planet.openstreetmap.org/replication/minute)
 
 This script combines fetching and applying OSM change files in a single process.

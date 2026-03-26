@@ -26,10 +26,10 @@
 
 if [[ -z $3 ]]; then
   cat << EOF
-Usage: $0 replicate_dir start_id --meta=(attic|yes|no)
+Usage: $0 diff_dir replicate_id --meta=(attic|yes|no)
 
-  replicate_dir   Directory containing downloaded replicate files
-  start_id        Starting replicate ID or 'auto' to resume from database state
+  diff_dir        Directory containing downloaded .osc.gz files
+  replicate_id    Starting replicate ID or 'auto' to resume from database state
   --meta          Metadata handling mode (attic=full history, yes=metadata, no=current only)
 
 Environment variables:

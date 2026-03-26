@@ -26,11 +26,11 @@
 
 if [[ -z $3 ]]; then
   cat << EOF
-Usage: $0 replicate_id source_url local_dir [sleep]
+Usage: $0 replicate_id diff_url diff_dir [sleep]
 
   replicate_id   Starting replicate ID or 'auto' to resume from last fetch
-  source_url     Remote replication source (e.g., https://planet.openstreetmap.org/replication/minute)
-  local_dir      Local directory for downloaded files
+  diff_url       Remote replication source (e.g., https://planet.openstreetmap.org/replication/minute)
+  diff_dir       Local directory for downloaded files
   sleep          (Optional, ignored - kept for compatibility)
 
 Environment variables:

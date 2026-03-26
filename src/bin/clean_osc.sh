@@ -26,11 +26,11 @@
 
 if [[ -z $2 ]]; then
 {
-  echo "Usage: $0 db_dir local_dir [keep_count]"
-  echo "       $0 --all local_dir"
+  echo "Usage: $0 db_dir diff_dir [keep_count]"
+  echo "       $0 --all diff_dir"
   echo ""
   echo "  db_dir:      Database directory (contains replicate_id file)"
-  echo "  local_dir:   Directory containing downloaded OSC files"
+  echo "  diff_dir:    Directory containing downloaded OSC files"
   echo "  keep_count:  Optional number of additional files to keep beyond database state (default: 360)"
   echo ""
   echo "  --all:       Delete ALL downloaded OSC files (for recovery scenarios)"
