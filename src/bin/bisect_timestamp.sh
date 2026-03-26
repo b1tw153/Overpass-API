@@ -213,7 +213,7 @@ DATA_VERSION=
 fetch_state()
 {
   local TARGET="$1"
-  local LOCAL_PATH LOCAL_FILE REMOTE_URL TMP_FILE TIMESTAMP_LINE
+  local LOCAL_PATH LOCAL_FILE REMOTE_URL TMP_FILE TIMESTAMP_LINE HTTP_CODE
 
   get_path "$TARGET"
 
@@ -225,24 +225,31 @@ fetch_state()
     if ! mkdir -p "$LOCAL_PATH"; then
       echo "ERROR: Failed to create directory $LOCAL_PATH"
       DATA_VERSION=
-      return
+      return 2
     fi
 
     TMP_FILE="$LOCAL_FILE.tmp"
-    if curl -fsSL \
+    HTTP_CODE=$(curl -sSL \
       --connect-timeout 30 \
       --retry 3 \
       --retry-delay 5 \
-      --retry-all-errors \
       -o "$TMP_FILE" \
-      "$REMOTE_URL" 2>/dev/null && [[ -s "$TMP_FILE" ]]; then
-      mv "$TMP_FILE" "$LOCAL_FILE"
-    else
+      --write-out "%{http_code}" \
+      "$REMOTE_URL" 2>/dev/null)
+
+    if [[ "$HTTP_CODE" == "404" ]]; then
       echo "ERROR: Failed to download $REMOTE_URL"
       rm -f "$TMP_FILE"
       DATA_VERSION=
-      return
+      return 1
+    elif [[ "$HTTP_CODE" != "200" || ! -s "$TMP_FILE" ]]; then
+      echo "ERROR: Failed to download $REMOTE_URL"
+      rm -f "$TMP_FILE"
+      DATA_VERSION=
+      return 2
     fi
+
+    mv "$TMP_FILE" "$LOCAL_FILE"
   fi
 
   TIMESTAMP_LINE=$(grep "^timestamp" < "$LOCAL_FILE")
@@ -251,7 +258,10 @@ fetch_state()
   if [[ ! "$DATA_VERSION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}\\:[0-9]{2}\\:[0-9]{2}Z$ ]]; then
     echo "ERROR: Invalid or missing timestamp in $LOCAL_FILE"
     DATA_VERSION=
+    return 2
   fi
+
+  return 0
 }
 
 # ============================================================================
@@ -261,7 +271,14 @@ fetch_state()
 while ((LOWER + 1 < UPPER )); do
   TARGET=$(( (LOWER + UPPER) / 2 ))
   fetch_state "$TARGET"
-  if [[ -n "$DATA_VERSION" && ! "$DATA_VERSION" > "$TARGET_TIME" ]]; then
+  FETCH_STATUS=$?
+  if [[ $FETCH_STATUS -eq 2 ]]; then
+    echo "ERROR: Aborting bisect due to download failure"
+    exit 1
+  elif [[ $FETCH_STATUS -eq 1 ]]; then
+    # assume that 404 means that LOWER is less than the starting sequence number
+    LOWER="$TARGET"
+  elif [[ -n "$DATA_VERSION" && ! "$DATA_VERSION" > "$TARGET_TIME" ]]; then
     LOWER="$TARGET"
   else
     UPPER="$TARGET"
