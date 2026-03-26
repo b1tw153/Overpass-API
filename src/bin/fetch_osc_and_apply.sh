@@ -91,7 +91,7 @@ APPLY_MAX_RETRIES=${APPLY_OSC_APPLY_MAX_RETRIES:-5}
 SOURCE_VERIFIED=false
 
 # Timestamp tracking
-LAST_UPDATE_WALL_CLOCK=
+LAST_UPDATE_TIME=
 
 # Child process tracking
 CHILD_PID=
@@ -250,14 +250,14 @@ verify_globals()
 
 calculate_sleep_time()
 {
-  if [[ -z "$LAST_UPDATE_WALL_CLOCK" ]]; then
+  if [[ -z "$LAST_UPDATE_TIME" ]]; then
     echo 10
     return
   fi
 
   local NOW
   NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_WALL_CLOCK + UPDATE_FREQUENCY + UPDATE_TRIM))
+  local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
 
   if [[ $SLEEP_TIME -lt 1 ]]; then
@@ -686,7 +686,7 @@ while true; do
       if apply_minute_diffs "$TEMP_TARGET_DIR"; then
         update_state "$BATCH_END"
         CURRENT_ID=$BATCH_END
-        LAST_UPDATE_WALL_CLOCK=$(date +%s)
+        LAST_UPDATE_TIME=$(date +%s)
         log_message "Update complete: $CURRENT_ID"
       else
         log_error "Failed to apply batch"
