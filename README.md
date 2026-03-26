@@ -92,7 +92,7 @@ chown -R 10001:10001 "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" "$OVERPASS_BACKUP_D
 
 #### Use an Existing Database
 
-If you're upgrading a previous Overpass instance to use the source code or container image from this fork, you can reuse your existing database files.
+If you're upgrading a previous Overpass instance to use the source code or container image from this fork, you can reuse your existing database files. Skip to the **Running Overpass** section below to start the processes with your existing data.
 
 #### Initialize the Database from a Clone
 
@@ -212,4 +212,106 @@ docker run -d --rm \
 
 ## Running Overpass
 
+After you have downloaded a database clone or imported a planet file or extract, or if you have an existing database, Overpass is ready to run.
+
+If you built Overpass from the source code:
+
+```bash
+OVERPASS_BIN_DIR=                 # path to the bin directory in your Overpass installation
+export OVERPASS_REPLICATE_ID=auto # use the replicate_id file from the database directory
+export OVERPASS_DB_DIR=           # path to your Overpass database directory
+export OVERPASS_DIFF_DIR=         # path to the directory that will be used to store diff files
+export OVERPASS_DIFF_URL=         # URL of the replication source that matches the database
+export OVERPASS_UPDATE_FREQUENCY= # update interval in seconds (should match replication source)
+export OVERPASS_META_MODE=        # yes|no|attic - include meta data, base data only, or attic data (should match existing database or import)
+export OVERPASS_AREAS=            # yes|no - create or skip derived area data
+nohup "$OVERPASS_BIN_DIR/run_osm3s.sh" &
+```
+
+And if you built from the source code, you will need to run your own web server with the /api path mapped to the Overpass cgi-bin directory. See the various guides at the top of this README for information on how to set that up.
+
+Or if you're using the container image, it comes preconfigured with nginx:
+
+```bash
+export OVERPASS_REPLICATE_ID=auto # use the replicate_id file from the database directory
+export OVERPASS_DB_DIR=           # path to your Overpass database directory
+export OVERPASS_DIFF_DIR=         # path to the directory that will be used to store diff files
+export OVERPASS_DIFF_URL=         # URL of the replication source that matches the database
+export OVERPASS_UPDATE_FREQUENCY= # update interval in seconds (should match replication source)
+export OVERPASS_META_MODE=        # yes|no|attic - include meta data, base data only, or attic data (should match existing database or import)
+export OVERPASS_AREAS=            # yes|no - create or skip derived area data
+docker run -d \
+  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
+  -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
+  -e OVERPASS_REPLICATE_ID \
+  -e OVERPASS_DIFF_URL \
+  -e OVERPASS_UPDATE_FREQUENCY \
+  -e OVERPASS_META_MODE \
+  -e OVERPASS_AREAS \
+  -p 80:8080 \
+  overpass
+```
+
+Alternatively, you can set the container parameters as environment variables using a .env script or your preferred container orchestration environment.
+
 ## Maintenance
+
+### Monitoring Overpass
+
+The output from run_osm3s.sh will give you the status of the Overpass executables. There are several executables to watch for:
+
+* The base dispatcher (dispatcher --osm-base), which controls access to the base, meta, and attic database files
+* The areas dispatcher (dispatcher --areas), which controls access to the area database files
+* fetch_osc.sh, which downloads diff files from the replication source
+* apply_osc_to_db.sh, which unzips the .osc files from the replication source and sends them to update_database
+* update_database, which writes the changes from .osc files to the database (runs only during database updates)
+* rules_loop.sh, which periodically invokes the query to regenerate area data (optional)
+* osm3s_query, which uses a rules file in the database directory to regenerate area data (runs only during area updates)
+* backup.sh, which periodically copies the database files to a backup directory (optional)
+
+If any of the core executables stops running, run_osm3s.sh will attempt to cleanly shut down the rest of the system.
+
+The safest way to shutdown Overpass is to send SIGTERM to run_osm3s.sh. On bare metal, that's `kill "$RUN_OSM3S_PID"`. With the container image, that's `docker stop`. In either case, the run_osm3s.sh script will attempt to stop the components without interrupting the `update_database` process.
+
+**Use caution when shutting down Overpass.** There is no safe way to interrupt the process of writing to the database. Killing the `update_database` process while it is running will often result in a corrupted database that must be replaced by restoring the files from a backup, downloading a new clone, or importing a new extract or planet file.
+
+### Log Files
+
+Each of the executables produces log files and/or output files that have status information and may have an explanation if a component has failed:
+
+| Executable | Log File | Output File |
+| -- | -- | -- |
+| dispatcher --osm-base | db/database.log | db/base-dispatcher.out |
+| dispatcher --areas | db/database.log | db/areas-dispatcher.out |
+| fetch_osc.sh | diff/fetch_osc.log | diff/fetch_osc.out |
+| apply_osc_to_db.sh | db/apply_osc_to_db.log | db/apply_osc_to_db.out |
+| update_database | db/database.log | db/apply_osc_to_db.out |
+| rules_loop.sh | db/rules_loop.log | db/rules_loop.out |
+| osm3s_query | db/transactions.log | db/rules_loop.out |
+| backup.sh | db/backup.log | db/backup.out |
+
+You can also tail these files to confirm the health of the Overpass system. A healthy Overpass instance will have periodic updates in the `fetch_osc.log` and `apply_osc_to_db.log` files. And the results of the latest area generation and backup will be in the `rules_loop.log` and `backup.log` files.
+
+The run_osm3s.sh script includes automatic log and output file rotation to ensure that the files don't fill the file system.
+
+### Database Backups
+
+Overpass database backups are optional but *strongly* recommended. Even under the best circumstances, the Overpass database can eventually become corrupted. When this happens, the easiest and fastest way to recover is to restore the database files from a recent backup.
+
+To enable automatic backups, set the following environment variables:
+
+```bash
+export OVERPASS_BACKUP_DIR=  # Target directory for backup files
+export OVERPASS_BACKUP_TIME= # Time of day to run backup (00:00-23:59)
+                             # Backup runs every day if OVERPASS_BACKUP_DAY is not set
+export OVERPASS_BACKUP_DAY=  # Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
+                             # Backup runs at 00:00 if OVERPASS_BACKUP_TIME is not set
+```
+
+The backup script will pause database updates while the files are being copied.
+
+Alternatively, you may run the `backup.sh` script manually or in a cron job.
+
+### Optional Settings
+
+All of the parameters for Overpass can be set using environment variables. See the `overpass.env` template or the usage for individual scripts for additional documentation.
