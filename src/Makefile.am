@@ -4,6 +4,7 @@ ACLOCAL_AMFLAGS = -I m4
 bin_mandatory = bin/osm3s_query bin/dispatcher bin/migrate_database bin/update_database bin/update_from_dir
 bin_script_mandatory = \
   bin/apply_osc_to_db.sh\
+  bin/bisect_timestamp.sh\
   bin/download_clone.sh\
   bin/fetch_osc.sh\
   bin/reboot.sh\
@@ -44,6 +45,7 @@ bin_script_convenience = \
   bin/backup.sh \
   bin/clean_osc.sh \
   bin/fetch_osc_and_apply.sh \
+  bin/import_osm_data.sh \
   bin/init_osm3s.sh \
   bin/restore.sh \
   bin/run_osm3s.sh \
