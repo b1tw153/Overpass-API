@@ -1,0 +1,337 @@
+#!/usr/bin/env bash
+
+# Copyright 2026 Kai Johnson
+#
+# This file is part of Overpass_API.
+#
+# USAGE NOTE: This script downloads and imports a planet file or extract and
+# may run for many hours. Run it in the background to prevent interruption:
+#
+#   nohup ./import_osm_data.sh --db-dir=/opt/overpass/db --diff-dir=/opt/overpass/diff --replication-source=https://... &
+#
+# Overpass_API is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# Overpass_API is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
+
+# ============================================================================
+# Script: import_osm_data.sh
+# Purpose: Downloads and imports an OSM planet file or extract into the
+#          Overpass database, then determines the correct replicate_id.
+# ============================================================================
+
+usage()
+{
+  cat << EOF
+Usage: $0 [options]
+
+  --db-dir=DIR                Path to the Overpass database directory (required)
+  --diff-dir=DIR              Path to the Overpass diff directory (required)
+  --replication-source=URL    URL to the replication source, e.g.:
+                              https://planet.openstreetmap.org/replication/minute
+  --data-source=URL           URL to the planet or extract file
+                              (default: planet-latest.osm.bz2.torrent from
+                              planet.openstreetmap.org)
+  --meta=yes|no|attic         Metadata mode (default: no)
+  --compression-method=METHOD Compression: no|gz|lz4 (default: lz4)
+
+Environment variables:
+  OVERPASS_DB_DIR                 Same as --db-dir
+  OVERPASS_DIFF_DIR               Same as --diff-dir
+  IMPORT_OSM_DATA_SOURCE          Same as --data-source
+  FETCH_OSC_SOURCE                Same as --replication-source
+  OVERPASS_META_MODE              Same as --meta
+  IMPORT_OSM_COMPRESSION_METHOD   Same as --compression-method
+
+Supported file formats (detected from URL):
+  .osm.bz2.torrent  BitTorrent download, decompressed with bunzip2
+  .osm.bz2          HTTP download, decompressed with bunzip2
+  .pbf.torrent      BitTorrent download, converted with osmium
+  .pbf              HTTP download, converted with osmium
+  .osm              HTTP download, no conversion
+EOF
+}
+
+message()
+{
+  echo "$(date -u '+%F %T'): $1"
+}
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+DEFAULT_DATA_SOURCE="https://planet.openstreetmap.org/planet/planet-latest.osm.bz2.torrent"
+
+DB_DIR="${OVERPASS_DB_DIR:-}"
+DIFF_DIR="${OVERPASS_DIFF_DIR:-}"
+DATA_SOURCE="${IMPORT_OSM_DATA_SOURCE:-$DEFAULT_DATA_SOURCE}"
+REPLICATION_SOURCE="${FETCH_OSC_SOURCE:-}"
+META="${OVERPASS_META_MODE:-no}"
+COMPRESSION="${IMPORT_OSM_COMPRESSION_METHOD:-lz4}"
+
+# ============================================================================
+# ARGUMENT PARSING
+# ============================================================================
+
+PARSED=$(getopt \
+  --options '' \
+  --longoptions 'db-dir:,diff-dir:,data-source:,replication-source:,meta:,compression-method:,help' \
+  --name "$0" \
+  -- "$@") || { usage; exit 1; }
+
+eval set -- "$PARSED"
+
+while true; do
+  case "$1" in
+    --db-dir)               DB_DIR="$2";               shift 2 ;;
+    --diff-dir)             DIFF_DIR="$2";             shift 2 ;;
+    --data-source)          DATA_SOURCE="$2";          shift 2 ;;
+    --replication-source)   REPLICATION_SOURCE="$2";   shift 2 ;;
+    --meta)                 META="$2";                 shift 2 ;;
+    --compression-method)   COMPRESSION="$2";          shift 2 ;;
+    --help)                 usage; exit 0 ;;
+    --)                     shift; break ;;
+  esac
+done
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+
+if [[ -z "$DB_DIR" ]]; then
+  message "ERROR: --db-dir is required (or set OVERPASS_DB_DIR)"
+  usage
+  exit 1
+fi
+
+if [[ -z "$DIFF_DIR" ]]; then
+  message "ERROR: --diff-dir is required (or set OVERPASS_DIFF_DIR)"
+  usage
+  exit 1
+fi
+
+if [[ -z "$REPLICATION_SOURCE" ]]; then
+  message "ERROR: --replication-source is required (or set IMPORT_OSM_REPLICATION_SOURCE)"
+  usage
+  exit 1
+fi
+
+if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
+  message "ERROR: Invalid value for --meta: $META (expected yes, no, or attic)"
+  exit 1
+fi
+
+if ! [[ "$COMPRESSION" =~ ^(no|gz|lz4)$ ]]; then
+  message "ERROR: Invalid value for --compression-method: $COMPRESSION (expected no, gz, or lz4)"
+  exit 1
+fi
+
+# ============================================================================
+# FILE FORMAT DETECTION
+# ============================================================================
+
+# Strip .torrent to get the actual file URL and name
+USE_TORRENT=0
+FILE_URL="$DATA_SOURCE"
+if [[ "$FILE_URL" == *.torrent ]]; then
+  USE_TORRENT=1
+  FILE_URL="${FILE_URL%.torrent}"
+fi
+
+FILENAME=$(basename "$FILE_URL")
+MD5_URL="${FILE_URL}.md5"
+
+# Strip .bz2 to detect decompression requirement
+USE_BUNZIP2=0
+FORMAT_EXT="$FILENAME"
+if [[ "$FORMAT_EXT" == *.bz2 ]]; then
+  USE_BUNZIP2=1
+  FORMAT_EXT="${FORMAT_EXT%.bz2}"
+fi
+
+# Detect converter from remaining extension
+USE_OSMIUM=0
+if [[ "$FORMAT_EXT" == *.pbf ]]; then
+  USE_OSMIUM=1
+elif [[ "$FORMAT_EXT" == *.osm ]]; then
+  : # no conversion needed
+else
+  message "ERROR: Unrecognized file format in URL: $DATA_SOURCE"
+  message "       Expected .osm, .osm.bz2, .pbf, .osm.bz2.torrent, or .pbf.torrent"
+  exit 1
+fi
+
+# ============================================================================
+# TOOL DETECTION
+# ============================================================================
+
+EXEC_DIR="$(realpath "$(dirname "$0")")"
+
+if [[ ! -x "$EXEC_DIR/update_database" ]]; then
+  message "ERROR: update_database not found in $EXEC_DIR"
+  exit 1
+fi
+
+if [[ ! -x "$EXEC_DIR/bisect_timestamp.sh" ]]; then
+  message "ERROR: bisect_timestamp.sh not found in $EXEC_DIR"
+  exit 1
+fi
+
+HAS_ARIA2C=0
+if command -v aria2c > /dev/null 2>&1; then
+  HAS_ARIA2C=1
+fi
+
+if [[ $USE_TORRENT -eq 1 && $HAS_ARIA2C -eq 0 ]]; then
+  message "ERROR: aria2c is required for torrent downloads but is not installed"
+  exit 1
+fi
+
+if [[ $USE_OSMIUM -eq 1 ]] && ! command -v osmium > /dev/null 2>&1; then
+  message "ERROR: osmium is required for .pbf imports but is not installed"
+  exit 1
+fi
+
+if ! command -v md5sum > /dev/null 2>&1; then
+  message "ERROR: md5sum is not available"
+  exit 1
+fi
+
+# ============================================================================
+# SETUP
+# ============================================================================
+
+if ! mkdir -p "$DB_DIR"; then
+  message "ERROR: Failed to create or access database directory: $DB_DIR"
+  exit 1
+fi
+
+if ! mkdir -p "$DIFF_DIR"; then
+  message "ERROR: Failed to create or access diff directory: $DIFF_DIR"
+  exit 1
+fi
+
+# ============================================================================
+# DOWNLOAD
+# ============================================================================
+
+message "Downloading $FILENAME ..."
+
+cd "$DB_DIR" || exit 1
+
+if [[ $USE_TORRENT -eq 1 ]]; then
+  aria2c --seed-time=0 "$MD5_URL" "$DATA_SOURCE"
+elif [[ $HAS_ARIA2C -eq 1 ]]; then
+  aria2c -x 16 -s 16 "$MD5_URL" "$FILE_URL"
+else
+  curl -f -S -L -C - -O \
+    --retry 10 \
+    --retry-delay 30 \
+    --speed-limit 1024 \
+    --speed-time 60 \
+    "$MD5_URL" \
+    "$FILE_URL"
+fi
+
+if [[ $? -ne 0 ]]; then
+  message "ERROR: Download failed"
+  exit 1
+fi
+
+message "Download complete"
+
+# ============================================================================
+# MD5 VERIFICATION
+# ============================================================================
+
+message "Verifying MD5 checksum ..."
+if ! md5sum -c "${FILENAME}.md5"; then
+  message "ERROR: MD5 verification failed for $FILENAME"
+  exit 1
+fi
+
+message "Verified MD5 checksum"
+
+# ============================================================================
+# IMPORT
+# ============================================================================
+
+case "$META" in
+  yes)   META_FLAG="--meta" ;;
+  attic) META_FLAG="--keep-attic" ;;
+  *)     META_FLAG="--data-only" ;;
+esac
+
+message "Importing $FILENAME into database ..."
+
+if [[ $USE_BUNZIP2 -eq 1 ]]; then
+  bunzip2 <"$DB_DIR/$FILENAME" \
+    | "$EXEC_DIR/update_database" \
+        --db-dir="$DB_DIR" \
+        "$META_FLAG" \
+        --compression-method="$COMPRESSION" \
+        --map-compression-method="$COMPRESSION"
+elif [[ $USE_OSMIUM -eq 1 ]]; then
+  osmium cat -f osm "$DB_DIR/$FILENAME" \
+    | "$EXEC_DIR/update_database" \
+        --db-dir="$DB_DIR" \
+        "$META_FLAG" \
+        --compression-method="$COMPRESSION" \
+        --map-compression-method="$COMPRESSION"
+else
+  "$EXEC_DIR/update_database" \
+    --db-dir="$DB_DIR" \
+    "$META_FLAG" \
+    --compression-method="$COMPRESSION" \
+    --map-compression-method="$COMPRESSION" \
+    < "$DB_DIR/$FILENAME"
+fi
+
+PIPE_STATUS=("${PIPESTATUS[@]}")
+if [[ $USE_BUNZIP2 -eq 1 || $USE_OSMIUM -eq 1 ]]; then
+  if [[ ${PIPE_STATUS[0]:-0} -ne 0 ]]; then
+    if [[ $USE_BUNZIP2 -eq 1 ]]; then
+      message "ERROR: bunzip2 failed (exit code ${PIPE_STATUS[0]})"
+    else
+      message "ERROR: osmium failed (exit code ${PIPE_STATUS[0]})"
+    fi
+    exit 1
+  fi
+  if [[ ${PIPE_STATUS[1]:-0} -ne 0 ]]; then
+    message "ERROR: update_database failed (exit code ${PIPE_STATUS[1]})"
+    exit 1
+  fi
+else
+  if [[ ${PIPE_STATUS[0]:-0} -ne 0 ]]; then
+    message "ERROR: update_database failed (exit code ${PIPE_STATUS[0]})"
+    exit 1
+  fi
+fi
+
+message "Database import complete"
+
+# ============================================================================
+# REPLICATE ID
+# ============================================================================
+
+message "Finding replicate_id for $REPLICATION_SOURCE ..."
+
+if OUTPUT=$(OVERPASS_DB_DIR="$DB_DIR" "$EXEC_DIR/bisect_timestamp.sh" "$REPLICATION_SOURCE" "$DIFF_DIR"); then
+  message "REPLICATE_ID=$OUTPUT"
+  echo "$OUTPUT" > "$DB_DIR/replicate_id"
+else
+  message "ERROR: Unable to determine replicate_id:"
+  message "$OUTPUT"
+  exit 1
+fi
+
+message "Database ready"
