@@ -229,9 +229,9 @@ message "Downloading $FILENAME ..."
 cd "$DB_DIR" || exit 1
 
 if [[ $USE_TORRENT -eq 1 ]]; then
-  aria2c --seed-time=0 "$MD5_URL" "$DATA_SOURCE"
+  aria2c -Z --seed-time=0 "$MD5_URL" "$DATA_SOURCE"
 elif [[ $HAS_ARIA2C -eq 1 ]]; then
-  aria2c -x 16 -s 16 "$MD5_URL" "$FILE_URL"
+  aria2c -Z -x 16 -s 16 "$MD5_URL" "$FILE_URL"
 else
   curl -f -S -L -C - -O \
     --retry 10 \
