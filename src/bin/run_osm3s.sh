@@ -885,15 +885,15 @@ while true; do
     message "Running periodic diff cleanup"
     "$EXEC_DIR/clean_osc.sh" "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" \
       >> "$OVERPASS_DIFF_DIR/clean_osc.out" 2>&1
-    if [[ "$LOGROTATE_AVAILABLE" == "true" ]]; then
-      message "Running periodic log rotation"
-      logrotate --state "$OVERPASS_DB_DIR/logrotate.status" \
-        -f "$OVERPASS_DB_DIR/logrotate.conf" \
-        >> "$OVERPASS_DB_DIR/logrotate.out" 2>&1
-    fi
     LAST_CLEANUP=$NOW
   fi
   
+  if [[ "$LOGROTATE_AVAILABLE" == "true" ]]; then
+    logrotate --state "$OVERPASS_DB_DIR/logrotate.status" \
+      -f "$OVERPASS_DB_DIR/logrotate.conf" \
+      >> "$OVERPASS_DB_DIR/logrotate.out" 2>&1
+  fi
+
   SLEEP_TIME=$(( OVERPASS_UPDATE_FREQUENCY - $(date +%s) + NOW ))
   (( SLEEP_TIME < 0 )) && SLEEP_TIME=$(( (SLEEP_TIME % OVERPASS_UPDATE_FREQUENCY) + OVERPASS_UPDATE_FREQUENCY ))
 done
