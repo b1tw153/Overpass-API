@@ -29,23 +29,34 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
-# Global variables
-USAGE="Usage: $0 --db-dir=database_dir --source=https://dev.overpass-api.de/api_drolbr/ --meta=(yes|no|attic) [--parallel=N]"
-CLONE_DIR=
-REMOTE_DIR=
-SOURCE=
-META=
-LOCK_FILE=
-INTERRUPTED=0
+# ============================================================================
+# USAGE
+# ============================================================================
 
-# Download parameters
-PARALLEL_JOBS=${DOWNLOAD_CLONE_PARALLEL_JOBS:-3}      # Number of parallel downloads
-MAX_TIME=${DOWNLOAD_CLONE_MAX_TIME:-86400}            # 24 hours - total time limit for all downloads
-CONNECT_TIMEOUT=${DOWNLOAD_CLONE_CONNECT_TIMEOUT:-30} # Timeout for initial connection
-RETRY_COUNT=${DOWNLOAD_CLONE_RETRY_COUNT:-240}        # Number of retries per file
-RETRY_DELAY=${DOWNLOAD_CLONE_RETRY_DELAY:-15}         # Seconds between retries
-SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-1024}       # Minimum bytes/sec before considering stalled
-SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-30}           # Seconds below speed limit before aborting
+usage()
+{
+  cat << EOF
+Usage: $0 [options]
+
+  --db-dir=DIR              Path to the Overpass database directory (required)
+  --source=URL              URL of the Overpass API instance to clone from (required)
+                            e.g.: https://dev.overpass-api.de/api_drolbr/
+  --meta=yes|no|attic       Metadata mode (default: no)
+  --parallel=N              Number of parallel downloads
+
+Environment variables:
+  OVERPASS_DB_DIR               Same as --db-dir
+  DOWNLOAD_CLONE_SOURCE         Same as --source
+  OVERPASS_META_MODE            Same as --meta
+  DOWNLOAD_CLONE_PARALLEL_JOBS  Same as --parallel (default: 3)
+  DOWNLOAD_CLONE_MAX_TIME       Total time limit in seconds (default: 86400)
+  DOWNLOAD_CLONE_CONNECT_TIMEOUT  Connection timeout in seconds (default: 30)
+  DOWNLOAD_CLONE_RETRY_COUNT    Retries per file (default: 240)
+  DOWNLOAD_CLONE_RETRY_DELAY    Seconds between retries (default: 15)
+  DOWNLOAD_CLONE_SPEED_LIMIT    Minimum bytes/sec before stall detection (default: 1024)
+  DOWNLOAD_CLONE_SPEED_TIME     Seconds below speed limit before aborting (default: 30)
+EOF
+}
 
 FILES_BASE="\
 nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
@@ -87,109 +98,110 @@ log_message()
   echo "$message"
 }
 
-# Process parameters
-process_params()
-{
-  if [[ -z "$1" ]]; then
-  {
-    log_message "$USAGE"
-    exit 1
-  }; fi
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-  # Process all parameters
-  for arg in "$@"; do
-  {
-    if [[ "${arg:0:9}" == "--db-dir=" ]]; then
-    {
-      CLONE_DIR="${arg:9}"
-    };
-    elif [[ "${arg:0:9}" == "--source=" ]]; then
-    {
-      SOURCE="${arg:9}"
-    };
-    elif [[ "${arg:0:7}" == "--meta=" ]]; then
-    {
-      META="${arg:7}"
-      if ! [[ $META =~ ^(yes|no|attic)$ ]]; then
-        log_error "Unknown value for --meta: $arg"
-        exit 1
-      fi
-    };
-    elif [[ "${arg:0:11}" == "--parallel=" ]]; then
-    {
-      PARALLEL_JOBS="${arg:11}"
-    };
-    else
-    {
-      log_error "Unknown argument: $arg"
-      exit 1
-    }; fi
-  }; done
+CLONE_DIR="${OVERPASS_DB_DIR:-}"
+SOURCE="${DOWNLOAD_CLONE_SOURCE:-}"
+META="${OVERPASS_META_MODE:-no}"
 
-  # Validate required parameters
-  if [[ -z "$CLONE_DIR" ]]; then
-  {
-    log_error "--db-dir parameter is required"
-    log_message "$USAGE"
-    exit 1
-  }; fi
+# ============================================================================
+# ARGUMENT PARSING
+# ============================================================================
 
-  if [[ -z "$SOURCE" ]]; then
-  {
-    log_error "--source parameter is required"
-    log_message "$USAGE"
-    exit 1
-  }; fi
+PARSED=$(getopt \
+  --options '' \
+  --longoptions 'db-dir:,source:,meta:,parallel:,help' \
+  --name "$0" \
+  -- "$@") || { usage; exit 1; }
 
-  # Initialize lock file path
-  LOCK_FILE="$CLONE_DIR/.download_clone.lock"
-}
+eval set -- "$PARSED"
 
-# Verify global variables
-verify_globals()
-{
-  if [[ ! $PARALLEL_JOBS =~ ^[1-9][0-9]*$ ]]; then
-  {
-    log_error "Invalid value for parallel jobs: $PARALLEL_JOBS"
-    exit 1
-  }; fi
+while true; do
+  case "$1" in
+    --db-dir)    CLONE_DIR="$2";                    shift 2 ;;
+    --source)    SOURCE="$2";                       shift 2 ;;
+    --meta)      META="$2";                         shift 2 ;;
+    --parallel)  DOWNLOAD_CLONE_PARALLEL_JOBS="$2"; shift 2 ;;
+    --help)      usage; exit 0 ;;
+    --)          shift; break ;;
+  esac
+done
 
-  if [[ ! $MAX_TIME =~ ^[1-9][0-9]*$ ]]; then
-  {
-    log_error "Invalid value for max time: $MAX_TIME"
-    exit 1
-  }; fi
+# ============================================================================
+# VALIDATION
+# ============================================================================
 
-  if [[ ! $CONNECT_TIMEOUT =~ ^[1-9][0-9]*$ ]]; then
-  {
-    log_error "Invalid value for connect timeout: $CONNECT_TIMEOUT"
-    exit 1
-  }; fi
+if [[ -z "$CLONE_DIR" ]]; then
+  log_error "--db-dir is required (or set OVERPASS_DB_DIR)"
+  usage
+  exit 1
+fi
 
-  if [[ ! $RETRY_COUNT =~ ^[0-9]+$ ]]; then
-  {
-    log_error "Invalid value for retry count: $RETRY_COUNT"
-    exit 1
-  }; fi
+CLONE_DIR="$(realpath "$CLONE_DIR")"
 
-  if [[ ! $RETRY_DELAY =~ ^[0-9]+$ ]]; then
-  {
-    log_error "Invalid value for retry delay: $RETRY_DELAY"
-    exit 1
-  }; fi
+if [[ -z "$SOURCE" ]]; then
+  log_error "--source is required (or set DOWNLOAD_CLONE_SOURCE)"
+  usage
+  exit 1
+fi
 
-  if [[ ! $SPEED_LIMIT =~ ^[0-9]+$ ]]; then
-  {
-    log_error "Invalid value for speed limit: $SPEED_LIMIT"
-    exit 1
-  }; fi
+if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
+  log_error "Invalid value for --meta: $META (expected yes, no, or attic)"
+  exit 1
+fi
 
-  if [[ ! $SPEED_TIME =~ ^[1-9][0-9]*$ ]]; then
-  {
-    log_error "Invalid value for speed time: $SPEED_TIME"
-    exit 1
-  }; fi
-}
+# ============================================================================
+# DOWNLOAD PARAMETERS
+# ============================================================================
+
+PARALLEL_JOBS=${DOWNLOAD_CLONE_PARALLEL_JOBS:-3}      # Number of parallel downloads
+MAX_TIME=${DOWNLOAD_CLONE_MAX_TIME:-86400}            # 24 hours - total time limit for all downloads
+CONNECT_TIMEOUT=${DOWNLOAD_CLONE_CONNECT_TIMEOUT:-30} # Timeout for initial connection
+RETRY_COUNT=${DOWNLOAD_CLONE_RETRY_COUNT:-240}        # Number of retries per file
+RETRY_DELAY=${DOWNLOAD_CLONE_RETRY_DELAY:-15}         # Seconds between retries
+SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-1024}       # Minimum bytes/sec before considering stalled
+SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-30}           # Seconds below speed limit before aborting
+
+if [[ ! "$PARALLEL_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+  log_error "Invalid value for DOWNLOAD_CLONE_PARALLEL_JOBS: $PARALLEL_JOBS"
+  exit 1
+fi
+
+if [[ ! "$MAX_TIME" =~ ^[1-9][0-9]*$ ]]; then
+  log_error "Invalid value for DOWNLOAD_CLONE_MAX_TIME: $MAX_TIME"
+  exit 1
+fi
+
+if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  log_error "Invalid value for DOWNLOAD_CLONE_CONNECT_TIMEOUT: $CONNECT_TIMEOUT"
+  exit 1
+fi
+
+if [[ ! "$RETRY_COUNT" =~ ^[0-9]+$ ]]; then
+  log_error "Invalid value for DOWNLOAD_CLONE_RETRY_COUNT: $RETRY_COUNT"
+  exit 1
+fi
+
+if [[ ! "$RETRY_DELAY" =~ ^[0-9]+$ ]]; then
+  log_error "Invalid value for DOWNLOAD_CLONE_RETRY_DELAY: $RETRY_DELAY"
+  exit 1
+fi
+
+if [[ ! "$SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
+  log_error "Invalid value for DOWNLOAD_CLONE_SPEED_LIMIT: $SPEED_LIMIT"
+  exit 1
+fi
+
+if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
+  log_error "Invalid value for DOWNLOAD_CLONE_SPEED_TIME: $SPEED_TIME"
+  exit 1
+fi
+
+LOCK_FILE="$CLONE_DIR/.download_clone.lock"
+INTERRUPTED=0
+REMOTE_DIR=
 
 # Cleanup function - called on exit or interruption
 # $1 - exit code (optional, defaults to $?)
@@ -215,7 +227,7 @@ cleanup()
     }; fi
   }; fi
 
-  exit $exit_code
+  exit "$exit_code"
 }
 
 # Signal handler for graceful interruption
@@ -499,10 +511,6 @@ download_files_parallel()
 # Main function
 main()
 {
-  process_params "$@"
-
-  verify_globals
-
   if ! mkdir -p "$CLONE_DIR"; then
   {
     log_error "Failed to create or access database directory: $CLONE_DIR"
@@ -563,4 +571,4 @@ trap 'handle_interrupt 129' SIGHUP
 trap cleanup EXIT
 
 # Run main
-main "$@"
+main

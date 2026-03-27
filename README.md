@@ -124,7 +124,6 @@ docker run -d \
   --entrypoint /opt/overpass/bin/download_clone.sh \
   overpass \
   --source="http://dev.overpass-api.de/api_drolbr/" \
-  --db-dir="/opt/overpass/db" \
   --meta="$OVERPASS_META_MODE"
 ```
 
