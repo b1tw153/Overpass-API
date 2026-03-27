@@ -214,6 +214,8 @@ docker run -d --rm \
 
 After you have downloaded a database clone or imported a planet file or extract, or if you have an existing database, Overpass is ready to run.
 
+The default configuration assumes minutely replication. If you're using an hourly or daily replication source, start by setting environment the environment variables to adapt to those intervals. The suggested configurations are in the `etc/overpass.env` file.
+
 If you built Overpass from the source code:
 
 ```bash
@@ -314,4 +316,4 @@ Alternatively, you may run the `backup.sh` script manually or in a cron job.
 
 ### Optional Settings
 
-All of the parameters for Overpass can be set using environment variables. See the `overpass.env` template or the usage for individual scripts for additional documentation.
+All of the parameters for Overpass can be set using environment variables. See the `etc/overpass.env` template or the usage for individual scripts for additional documentation.
