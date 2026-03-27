@@ -551,7 +551,7 @@ apply_batch()
 calculate_sleep_time()
 {
   if [[ -z "$LAST_UPDATE_TIME" ]]; then
-    echo 5
+    echo $((UPDATE_FREQUENCY / 12))
     return
   fi
 
@@ -672,6 +672,18 @@ WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/osm-3s_update_XXXXXX")
 if [[ ! -d "$WORK_DIR" ]]; then
   log_error "Unable to create working directory"
   die 1
+fi
+
+# Seed LAST_UPDATE_TIME from the database version if available, so the initial
+# sleep is based on when the database was last updated rather than a fixed interval
+if [[ -f "$DB_DIR/osm_base_version" ]]; then
+  BASE_VERSION=$(cat "$DB_DIR/osm_base_version" 2>/dev/null)
+  BASE_VERSION="${BASE_VERSION//\\:/:}"
+  BASE_EPOCH=$(date -d "$BASE_VERSION" +%s 2>/dev/null)
+  if [[ "$BASE_EPOCH" =~ ^[0-9]+$ ]]; then
+    LAST_UPDATE_TIME="$BASE_EPOCH"
+    log_message "Seeding update timer from database version: $BASE_VERSION"
+  fi
 fi
 
 START_TIME=$(date +%s)
