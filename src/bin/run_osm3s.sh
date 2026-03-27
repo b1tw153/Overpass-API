@@ -60,8 +60,8 @@ Environment variables (no argument equivalent):
   OVERPASS_SOCKET_DIR           Directory for dispatcher socket files (default: DB_DIR)
   OVERPASS_STALL_MULTIPLIER     Stall detection threshold as a multiple of update
                                 frequency
-  OVERPASS_CLEANUP_MULTIPLIER   Diff cleanup frequency as a multiple of update
-                                frequency (default: 1440)
+  OVERPASS_CLEANUP_INTERVAL     How often to run diff cleanup, in hours (default: 24)
+  OVERPASS_CLEANUP_KEEP_HOURS   How many hours of diff data to retain (default: 72)
   OVERPASS_BACKUP_DIR           Directory for database backups
   OVERPASS_BACKUP_TIME          Time of day to run backup (00:00-23:59)
   OVERPASS_BACKUP_DAY           Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
@@ -202,7 +202,8 @@ OVERPASS_DB_DIR="$(realpath "$OVERPASS_DB_DIR")"
 OVERPASS_UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
 OVERPASS_SOCKET_DIR=${OVERPASS_SOCKET_DIR:-"$OVERPASS_DB_DIR"}
 OVERPASS_STALL_MULTIPLIER=${OVERPASS_STALL_MULTIPLIER:-}
-OVERPASS_CLEANUP_MULTIPLIER=${OVERPASS_CLEANUP_MULTIPLIER:-1440}
+OVERPASS_CLEANUP_INTERVAL=${OVERPASS_CLEANUP_INTERVAL:-24}
+OVERPASS_CLEANUP_KEEP_HOURS=${OVERPASS_CLEANUP_KEEP_HOURS:-72}
 OVERPASS_BACKUP_DIR=${OVERPASS_BACKUP_DIR:-}
 OVERPASS_BACKUP_TIME=${OVERPASS_BACKUP_TIME:-}
 OVERPASS_BACKUP_DAY=${OVERPASS_BACKUP_DAY:-}
@@ -237,8 +238,14 @@ if [[ -n "$OVERPASS_STALL_MULTIPLIER" && ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9
   exit 1
 fi
 
-if [[ ! "$OVERPASS_CLEANUP_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_CLEANUP_MULTIPLIER must be a positive integer, got: '$OVERPASS_CLEANUP_MULTIPLIER'"
+if [[ ! "$OVERPASS_CLEANUP_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: OVERPASS_CLEANUP_INTERVAL must be a positive integer, got: '$OVERPASS_CLEANUP_INTERVAL'"
+  usage
+  exit 1
+fi
+
+if [[ ! "$OVERPASS_CLEANUP_KEEP_HOURS" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: OVERPASS_CLEANUP_KEEP_HOURS must be a positive integer, got: '$OVERPASS_CLEANUP_KEEP_HOURS'"
   usage
   exit 1
 fi
@@ -769,7 +776,8 @@ message "OVERPASS_AREAS                     $AREAS"
 message "OVERPASS_UPDATE_FREQUENCY          $OVERPASS_UPDATE_FREQUENCY seconds"
 message "OVERPASS_SOCKET_DIR                $OVERPASS_SOCKET_DIR"
 message "OVERPASS_STALL_MULTIPLIER          $OVERPASS_STALL_MULTIPLIER"
-message "OVERPASS_CLEANUP_MULTIPLIER        $OVERPASS_CLEANUP_MULTIPLIER"
+message "OVERPASS_CLEANUP_INTERVAL          $OVERPASS_CLEANUP_INTERVAL hours"
+message "OVERPASS_CLEANUP_KEEP_HOURS        $OVERPASS_CLEANUP_KEEP_HOURS hours"
 message "DISPATCHER_BASE_SPACE              ~$((DISPATCHER_BASE_SPACE / 1048576)) MiB"
 message "DISPATCHER_AREAS_SPACE             ~$((DISPATCHER_AREAS_SPACE / 1048576)) MiB"
 message "DISPATCHER_TIME                    $DISPATCHER_TIME seconds"
@@ -851,7 +859,8 @@ if [[ -n "$OVERPASS_STALL_MULTIPLIER" ]]; then
 else
   STALL_DETECTION="no"
 fi
-CLEANUP_THRESHOLD=$(( OVERPASS_UPDATE_FREQUENCY * OVERPASS_CLEANUP_MULTIPLIER ))
+CLEANUP_THRESHOLD=$(( OVERPASS_CLEANUP_INTERVAL * 3600 ))
+CLEANUP_KEEP_COUNT=$(( OVERPASS_CLEANUP_KEEP_HOURS * 3600 / OVERPASS_UPDATE_FREQUENCY ))
 SLEEP_TIME="$OVERPASS_UPDATE_FREQUENCY"
 
 while true; do
@@ -883,7 +892,7 @@ while true; do
 
   if (( NOW - LAST_CLEANUP > CLEANUP_THRESHOLD )); then
     message "Running periodic diff cleanup"
-    "$EXEC_DIR/clean_osc.sh" "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" \
+    "$EXEC_DIR/clean_osc.sh" "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" "$CLEANUP_KEEP_COUNT" \
       >> "$OVERPASS_DIFF_DIR/clean_osc.out" 2>&1
     LAST_CLEANUP=$NOW
   fi

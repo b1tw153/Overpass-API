@@ -24,14 +24,14 @@
 #          reclaim disk space while keeping files needed for apply process
 # ============================================================================
 
-if [[ -z $2 ]]; then
+usage()
 {
-  echo "Usage: $0 db_dir diff_dir [keep_count]"
+  echo "Usage: $0 db_dir diff_dir keep_count"
   echo "       $0 --all diff_dir"
   echo ""
   echo "  db_dir:      Database directory (contains replicate_id file)"
   echo "  diff_dir:    Directory containing downloaded OSC files"
-  echo "  keep_count:  Optional number of additional files to keep beyond database state (default: 360)"
+  echo "  keep_count:  Number of additional files to keep beyond database state"
   echo ""
   echo "  --all:       Delete ALL downloaded OSC files (for recovery scenarios)"
   echo ""
@@ -40,8 +40,7 @@ if [[ -z $2 ]]; then
   echo ""
   echo "The --all flag is used for recovery scenarios where you want to delete"
   echo "all downloaded files and start fresh."
-  exit 0
-}; fi
+}
 
 # ============================================================================
 # CONFIGURATION
@@ -57,13 +56,14 @@ else
   ALL_MODE=false
   DB_DIR="$1"
   LOCAL_DIR="$2"
-  KEEP_COUNT="${3:-360}"  # Default to keeping 360 files (6 hours) beyond current state
+  KEEP_COUNT="$3"
 fi
 
 # Validate DB_DIR (skip if in --all mode)
 if [[ "$ALL_MODE" == "false" ]]; then
   if [[ -z "$DB_DIR" ]]; then
     echo "ERROR: Database directory parameter is required"
+    usage
     exit 1
   fi
 
@@ -91,6 +91,7 @@ fi
 # Validate LOCAL_DIR
 if [[ -z "$LOCAL_DIR" ]]; then
   echo "ERROR: Local directory parameter is required"
+  usage
   exit 1
 fi
 
@@ -115,6 +116,13 @@ if [[ ! -w "$LOCAL_DIR" ]]; then
 fi
 
 LOCAL_DIR="$(realpath "$LOCAL_DIR")"
+
+# Validate KEEP_COUNT
+if [[ ! "$KEEP_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: keep_count must be a positive integer, got: '$KEEP_COUNT'"
+  usage
+  exit 1
+fi
 
 # ============================================================================
 # LOGGING
