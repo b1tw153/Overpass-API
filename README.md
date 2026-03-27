@@ -26,8 +26,13 @@ Improvements in this fork:
   * Automatically runs periodic backups
   * Performs periodic health checks on processes
   * Runs on bare metal or as a container entrypoint
+* NEW: Automated database initialization from planet and extract files in `import_osm_data.sh`
+  * Supports .osm/.bz2/.pbf data files
+  * Supports torrent downloads (when aria2c is available)
+  * Automatically sets the starting replicate_id from the replication source
 * NEW: Support for container image builds
   * Minimal base image using debian:bookworm-slim
+  * Preconfigured with nginx and fcgiwrap
   * External mounts for database, replication, and backup data
   * Control all runtime parameters using environment variables
 
@@ -83,12 +88,13 @@ If you're using the container image with bind-mounted host directories, create t
 
 ```bash
 OVERPASS_DB_DIR=      # path to your Overpass database directory on the host
-OVERPASS_DIFF_DIR=    # path to your Overpass diff directory on the host
 OVERPASS_BACKUP_DIR=  # path to your Overpass backup directory on the host (optional)
 
-mkdir -p "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" "$OVERPASS_BACKUP_DIR"
-chown -R 10001:10001 "$OVERPASS_DB_DIR" "$OVERPASS_DIFF_DIR" "$OVERPASS_BACKUP_DIR"
+mkdir -p "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
+chown -R 10001:10001 "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
 ```
+
+Mounting other host directories in the container is optional. See the *Directory Structure* section below.
 
 #### Use an Existing Database
 
@@ -153,15 +159,11 @@ The container image already has aria2c and osmium built in.
 PLANET_FILE_URL=    # URL of the planet file to import
 OVERPASS_DIFF_URL=  # URL of the chosen replication source associated with the planet file
 OVERPASS_DB_DIR=    # path to your Overpass database directory
-OVERPASS_DIFF_DIR=  # path to the directory that will be used to store diff files
 OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
 docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
   --entrypoint /opt/overpass/bin/import_osm_data.sh \
   overpass \
-  --db-dir=/opt/overpass/db \
-  --diff-dir=/opt/overpass/diff \
   --diff-url="$OVERPASS_DIFF_URL" \
   --data-source="$PLANET_FILE_URL" \
   --meta="$OVERPASS_META_MODE"
@@ -200,11 +202,8 @@ OVERPASS_DIFF_DIR=  # path to the directory that will be used to store diff file
 OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic data
 docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
   --entrypoint /opt/overpass/bin/import_osm_data.sh \
   overpass \
-  --db-dir=/opt/overpass/db \
-  --diff-dir=/opt/overpass/diff \
   --diff-url="$OVERPASS_DIFF_URL" \
   --data-source="$EXTRACT_FILE_URL" \
   --meta="$OVERPASS_META_MODE"
@@ -214,7 +213,7 @@ docker run -d --rm \
 
 After you have downloaded a database clone or imported a planet file or extract, or if you have an existing database, Overpass is ready to run.
 
-The default configuration assumes minutely replication. If you're using an hourly or daily replication source, start by setting environment the environment variables to adapt to those intervals. The suggested configurations are in the `etc/overpass.env` file.
+The default configuration assumes minutely replication. If you're using an hourly or daily replication source, start by setting environment the environment variables to adapt to those intervals. The suggested configurations are in the [`etc/overpass.env`](etc/overpass.env) file.
 
 If you built Overpass from the source code:
 
@@ -236,7 +235,6 @@ Or if you're using the container image, it comes preconfigured with nginx:
 
 ```bash
 OVERPASS_DB_DIR=                  # path to your Overpass database directory
-OVERPASS_DIFF_DIR=                # path to the directory that will be used to store diff files
 export OVERPASS_REPLICATE_ID=auto # use the replicate_id file from the database directory
 export OVERPASS_DIFF_URL=         # URL of the replication source that matches the database
 export OVERPASS_UPDATE_FREQUENCY= # update interval in seconds (should match replication source)
@@ -244,7 +242,6 @@ export OVERPASS_META_MODE=        # yes|no|attic - include meta data, base data 
 export OVERPASS_AREAS=            # yes|no - create or skip derived area data
 docker run -d \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
-  -v "$OVERPASS_DIFF_DIR":/opt/overpass/diff \
   -e OVERPASS_REPLICATE_ID \
   -e OVERPASS_DIFF_URL \
   -e OVERPASS_UPDATE_FREQUENCY \
@@ -321,9 +318,9 @@ The run_osm3s.sh script includes automatic log and output file rotation to ensur
 
 ### Database Backups
 
-Overpass database backups are optional but *strongly* recommended. Even under the best circumstances, the Overpass database can eventually become corrupted. When this happens, the easiest and fastest way to recover is to restore the database files from a recent backup.
+Overpass database backups are optional but *strongly* recommended. Even under the best circumstances, the Overpass database can eventually become corrupted. When this happens, the easiest and fastest way to recover is to restore the database files from a recent backup. To run periodic backups, either `OVERPASS_BACKUP_TIME` or `OVERPASS_BACKUP_DAY` must be set. If neither `OVERPASS_BACKUP_TIME` nor `OVERPASS_BACKUP_DAY` is set, `run_osm3s.sh` will not enable backups.
 
-To enable automatic backups if you compiled from source code, set the following environment variables:
+To enable periodic backups if you compiled from source code, set the following environment variables:
 
 ```bash
 export OVERPASS_BACKUP_DIR=  # Target directory for backup files
@@ -337,6 +334,10 @@ If you're using the container, mount the backup directory to `/opt/overpass/back
 
 ```bash
 OVERPASS_BACKUP_DIR=  # Target directory for backup files
+export OVERPASS_BACKUP_TIME= # Time of day to run backup (00:00-23:59)
+                             # Backup runs every day if OVERPASS_BACKUP_DAY is not set
+export OVERPASS_BACKUP_DAY=  # Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
+                             # Backup runs at 00:00 if OVERPASS_BACKUP_TIME is not set
 # docker run ....
   -v "$OVERPASS_BACKUP_DIR":/opt/overpass/backup
   #...
@@ -344,8 +345,8 @@ OVERPASS_BACKUP_DIR=  # Target directory for backup files
 
 The backup script will pause database updates while the files are being copied.
 
-Alternatively, you may run the `backup.sh` script manually or in a cron job.
+If you run `backup.sh` manually without setting `OVERPASS_BACKUP_TIME` or `OVERPASS_BACKUP_DAY`, it runs once immediately and exits (one-shot mode) which may be suitable for use with other schedulers like `cron`.
 
 ### Optional Settings
 
-All of the parameters for Overpass can be set using environment variables. See the `etc/overpass.env` template or the usage for individual scripts for additional documentation.
+All of the parameters for Overpass can be set using environment variables. See the [`etc/overpass.env`](etc/overpass.env) template or the usage for individual scripts for additional documentation.
