@@ -67,6 +67,7 @@ Environment variables (no argument equivalent):
   OVERPASS_BACKUP_DAY           Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
                                 implies OVERPASS_BACKUP_TIME 00:00 if OVERPASS_BACKUP_TIME
                                 is not specified
+  OVERPASS_LOG_DIR              Directory containing web server logs (if run_osm3s.sh should rotate them)
   DISPATCHER_BASE_SPACE         Base dispatcher shared memory in bytes (default: 12884901888)
   DISPATCHER_AREAS_SPACE        Areas dispatcher shared memory in bytes (default: 4294967296)
   DISPATCHER_TIME               Dispatcher time limit (default: 262144)
@@ -205,6 +206,7 @@ OVERPASS_CLEANUP_MULTIPLIER=${OVERPASS_CLEANUP_MULTIPLIER:-1440}
 OVERPASS_BACKUP_DIR=${OVERPASS_BACKUP_DIR:-}
 OVERPASS_BACKUP_TIME=${OVERPASS_BACKUP_TIME:-}
 OVERPASS_BACKUP_DAY=${OVERPASS_BACKUP_DAY:-}
+OVERPASS_LOG_DIR=${OVERPASS_LOG_DIR:-}
 DISPATCHER_BASE_SPACE=${DISPATCHER_BASE_SPACE:-12884901888}
 DISPATCHER_AREAS_SPACE=${DISPATCHER_AREAS_SPACE:-4294967296}
 DISPATCHER_TIME=${DISPATCHER_TIME:-262144}
@@ -225,9 +227,9 @@ if ! [[ -d "$OVERPASS_SOCKET_DIR" && -w "$OVERPASS_SOCKET_DIR" ]]; then
   message "ERROR: OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
   usage
   exit 1
-else
-  OVERPASS_SOCKET_DIR="$(realpath "$OVERPASS_SOCKET_DIR")"
 fi
+
+OVERPASS_SOCKET_DIR="$(realpath "$OVERPASS_SOCKET_DIR")"
 
 if [[ -n "$OVERPASS_STALL_MULTIPLIER" && ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
   message "ERROR: OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
@@ -256,6 +258,16 @@ if [[ -n "$OVERPASS_BACKUP_DIR" ]]; then
   else
     message "INFO: Specify OVERPASS_BACKUP_TIME or OVERPASS_BACKUP_DAY to enable backups"
   fi
+fi
+
+if [[ -n "$OVERPASS_LOG_DIR" ]]; then
+  if ! [[ -d "$OVERPASS_LOG_DIR" && -w "$OVERPASS_LOG_DIR" ]]; then
+    message "ERROR: OVERPASS_LOG_DIR '$OVERPASS_LOG_DIR' is not a writeable directory"
+    usage
+    exit 1
+  fi
+
+  OVERPASS_LOG_DIR="$(realpath "$OVERPASS_LOG_DIR")"
 fi
 
 if [[ ! "$DISPATCHER_BASE_SPACE" =~ ^[1-9][0-9]*$ ]]; then
@@ -706,6 +718,20 @@ $OVERPASS_DB_DIR/*.log $OVERPASS_DB_DIR/*.out $OVERPASS_DIFF_DIR/*.log $OVERPASS
     notifempty
 }
 EOF
+
+  if [[ -n "$OVERPASS_LOG_DIR" ]]; then
+    cat >> "$OVERPASS_DB_DIR/logrotate.conf" <<EOF
+$OVERPASS_LOG_DIR/*.log {
+    daily
+    missingok
+    copytruncate
+    rotate 3
+    compress
+    delaycompress
+    notifempty
+}
+EOF
+  fi
 }
 
 # ============================================================================
