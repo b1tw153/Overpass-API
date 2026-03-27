@@ -64,6 +64,21 @@ trap 'shutdown 130 "SIGINT received"'  SIGINT
 trap 'shutdown 129 "SIGHUP received"'  SIGHUP
 
 # ============================================================================
+# CONTAINER SETUP
+# ============================================================================
+
+# Copy default rules into the database directory, skipping files that already exist
+mkdir -p "$OVERPASS_DIR/rules" "$OVERPASS_DB_DIR/rules"
+for rule_file in "$OVERPASS_DIR/rules"/*; do
+  [[ -e "$rule_file" ]] || continue
+  dest="$OVERPASS_DB_DIR/rules/$(basename "$rule_file")"
+  if [[ ! -e "$dest" ]]; then
+    message "Installing default rule: $(basename "$rule_file")"
+    cp "$rule_file" "$dest"
+  fi
+done
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
