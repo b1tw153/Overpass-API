@@ -17,7 +17,7 @@ COPY src /build/src
 
 ENV OVERPASS_DIR=/opt/overpass
 
-RUN mkdir -p /build/src/m4 "$OVERPASS_DIR/db" "$OVERPASS_DIR/diff" "$OVERPASS_DIR/backup" && \
+RUN mkdir -p /build/src/m4 "$OVERPASS_DIR/db" "$OVERPASS_DIR/diff" "$OVERPASS_DIR/backup" "$OVERPASS_DIR/run" && \
     cd /build/src && \
     autoreconf -i && \
     CXXFLAGS='-O2' CFLAGS='-O2' ./configure --prefix="$OVERPASS_DIR" --enable-lz4 && \
@@ -53,6 +53,8 @@ ENV OVERPASS_DB_DIR="/opt/overpass/db"
 ENV OVERPASS_DIFF_DIR="/opt/overpass/diff"
 
 ENV OVERPASS_BACKUP_DIR="/opt/overpass/backup"
+
+ENV OVERPASS_LOG_DIR="/opt/overpass/log"
 
 USER overpass
 

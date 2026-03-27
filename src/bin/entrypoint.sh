@@ -69,7 +69,7 @@ trap 'shutdown 129 "SIGHUP received"'  SIGHUP
 
 # Start fcgiwrap for CGI script handling
 message "Starting fcgi"
-fcgiwrap -s unix:/var/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" &
+fcgiwrap -s unix:/opt/overpass/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" &
 FCGI_PID=$!
 
 # Start nginx
