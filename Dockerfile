@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     logrotate \
     nginx \
     osmium-tool \
+    rsync \
     tini \
     zlib1g \
     && rm -rf /var/lib/apt/lists/* \
