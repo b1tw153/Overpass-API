@@ -391,7 +391,7 @@ copy_files()
   local exit_code
   # shellcheck disable=SC2068
   printf '%s\n' $@ \
-    | timeout "$BACKUP_TIMEOUT" rsync -a --files-from=- "$DB_DIR/" "$BACKUP_DIR/"
+    | timeout "$BACKUP_TIMEOUT" rsync -a --ignore-missing-args --files-from=- "$DB_DIR/" "$BACKUP_DIR/"
   exit_code=$?
   if [[ $exit_code -eq 124 ]]; then
     log_error "rsync timed out after ${BACKUP_TIMEOUT}s"
@@ -446,14 +446,31 @@ sleep_with_interrupts() {
 }
 
 # ============================================================================
+# STARTUP
+# ============================================================================
+
+log_message "-----------------------------------"
+log_message "Starting backup.sh"
+log_message "-----------------------------------"
+log_message "BACKUP_DIR                         $BACKUP_DIR"
+log_message "BACKUP_TIME                        ${BACKUP_TIME:-(not set, one-shot mode)}"
+log_message "BACKUP_DAY                         ${BACKUP_DAY:-(not set)}"
+log_message "BACKUP_TIMEOUT                     $BACKUP_TIMEOUT seconds"
+log_message "UPDATE_FREQUENCY                   $UPDATE_FREQUENCY seconds"
+log_message "-----------------------------------"
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
 while true; do
 {
-  if [[ -n "$BACKUP_DAY" ]] && ! is_backup_day; then
+  if [[ -n "$BACKUP_TIME" ]]; then
     SLEEP_TIME=$(calculate_sleep_time)
     sleep_with_interrupts "$SLEEP_TIME"
+  fi
+
+  if [[ -n "$BACKUP_DAY" ]] && ! is_backup_day; then
     continue
   fi
 
