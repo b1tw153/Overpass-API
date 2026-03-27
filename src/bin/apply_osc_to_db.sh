@@ -559,9 +559,10 @@ calculate_sleep_time()
   NOW=$(date +%s)
   local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
+  local MIN_SLEEP=$((UPDATE_FREQUENCY / 60))
 
-  if [[ $SLEEP_TIME -lt 1 ]]; then
-    echo 1
+  if [[ $SLEEP_TIME -lt $MIN_SLEEP ]]; then
+    echo $MIN_SLEEP
   else
     echo $SLEEP_TIME
   fi
