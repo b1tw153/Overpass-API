@@ -28,8 +28,6 @@ FROM debian:bookworm-slim
 
 COPY --from=builder /opt/overpass /opt/overpass
 
-COPY etc/nginx.conf /etc/nginx/nginx.conf
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
     aria2 \
     bzip2 \
@@ -38,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fcgiwrap \
     libexpat1 \
     liblz4-1 \
+    logrotate \
     nginx \
     osmium-tool \
     tini \
@@ -47,6 +46,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && groupadd -g 10001 overpass \
     && useradd -u 10001 -g 10001 -m -s /bin/bash overpass \
     && chown -R overpass:overpass /opt/overpass
+
+COPY etc/nginx.conf /etc/nginx/nginx.conf
 
 ENV OVERPASS_DB_DIR="/opt/overpass/db"
 
