@@ -277,6 +277,29 @@ The safest way to shutdown Overpass is to send SIGTERM to run_osm3s.sh. On bare 
 
 **Use caution when shutting down Overpass.** There is no safe way to interrupt the process of writing to the database. Killing the `update_database` process while it is running will often result in a corrupted database that must be replaced by restoring the files from a backup, downloading a new clone, or importing a new extract or planet file.
 
+### Directory Structure
+
+The Overpass directory structure includes several directories that are populated during the build process, and additional optional or conventional directories.
+
+| Directory | Description | Notes |
+| -- | -- | -- |
+| `backup` | Contains the backup of the database; this should be mapped to a separate storage device on the host system | (Container Only) |
+| `bin` | Contains the main Overpass executables and scripts | |
+| `cgi-bin` | Contains executables for the CGI interface with the web server | |
+| `db` | Contains the database files | (Conventional) |
+| `diff` | Contains the diff files | (Conventional) |
+| `include` | Contains C++ header files for integration with Overpass executables | |
+| `log` | Contains the nginx web server log files | (Container Only) |
+| `rules` | Contains the default rules files for area creation | (Container Only) |
+| `run` | Contains runtime PID and lock files | (Container Only) |
+| `templates` | Contains templates for wiki pages | |
+| `test-bin` | Contains executables for testing the Overpass implementation | |
+| `tmp` | (Container Only) Contains temporary files used by nginx | |
+
+If you're building an running Overpass directly from source, most of the non-container directories could be wherever you've installed Overpass. However, the backup directory should be on a separate storage device. The "conventional" directories are typically placed in the same Overpass directory, but can be renamed or moved elsewhere with parameter changes.
+
+Inside the container, all these directories reside under `/opt/overpass`. The only directories that *must* be mounted from the host are `db` and `backup`, because the data in these directories should be retained. Mounting any of the other data directories from the host is *optional*. You could mount `/opt/overpass/diff` if you'd like easier access to the diff files or the `fetch_osc.log` file. And you could mount `/opt/overpass/log` to get easier access to the nginx logs. But there is little reason to mount `run` or `tmp` directories since this information is not meaningful outside of the container.
+
 ### Log Files
 
 Each of the executables produces log files and/or output files that have status information and may have an explanation if a component has failed:
