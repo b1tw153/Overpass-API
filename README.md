@@ -235,9 +235,9 @@ And if you built from the source code, you will need to run your own web server 
 Or if you're using the container image, it comes preconfigured with nginx:
 
 ```bash
+OVERPASS_DB_DIR=                  # path to your Overpass database directory
+OVERPASS_DIFF_DIR=                # path to the directory that will be used to store diff files
 export OVERPASS_REPLICATE_ID=auto # use the replicate_id file from the database directory
-export OVERPASS_DB_DIR=           # path to your Overpass database directory
-export OVERPASS_DIFF_DIR=         # path to the directory that will be used to store diff files
 export OVERPASS_DIFF_URL=         # URL of the replication source that matches the database
 export OVERPASS_UPDATE_FREQUENCY= # update interval in seconds (should match replication source)
 export OVERPASS_META_MODE=        # yes|no|attic - include meta data, base data only, or attic data (should match existing database or import)
@@ -254,7 +254,7 @@ docker run -d \
   overpass
 ```
 
-Alternatively, you can set the container parameters as environment variables using a .env script or your preferred container orchestration environment.
+Alternatively, you can set the container parameters as environment variables using a .env script or your preferred container orchestration environment. Mount the OVERPASS_DB_DIR and OVERPASS_DIFF_DIR directories to the predefined paths, keep the variables local and leave them unset in the container.
 
 ## Maintenance
 
@@ -300,7 +300,7 @@ The run_osm3s.sh script includes automatic log and output file rotation to ensur
 
 Overpass database backups are optional but *strongly* recommended. Even under the best circumstances, the Overpass database can eventually become corrupted. When this happens, the easiest and fastest way to recover is to restore the database files from a recent backup.
 
-To enable automatic backups, set the following environment variables:
+To enable automatic backups if you compiled from source code, set the following environment variables:
 
 ```bash
 export OVERPASS_BACKUP_DIR=  # Target directory for backup files
@@ -308,6 +308,15 @@ export OVERPASS_BACKUP_TIME= # Time of day to run backup (00:00-23:59)
                              # Backup runs every day if OVERPASS_BACKUP_DAY is not set
 export OVERPASS_BACKUP_DAY=  # Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
                              # Backup runs at 00:00 if OVERPASS_BACKUP_TIME is not set
+```
+
+If you're using the container, mount the backup directory to `/opt/overpass/backup` and keep OVERPASS_BACKUP_DIR local.
+
+```bash
+OVERPASS_BACKUP_DIR=  # Target directory for backup files
+# docker run ....
+  -v "$OVERPASS_BACKUP_DIR":/opt/overpass/backup
+  #...
 ```
 
 The backup script will pause database updates while the files are being copied.
