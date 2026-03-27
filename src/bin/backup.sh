@@ -389,9 +389,12 @@ stop_tickle()
 copy_files()
 {
   local exit_code
-  # shellcheck disable=SC2068
-  printf '%s\n' $@ \
-    | timeout "$BACKUP_TIMEOUT" rsync -a --ignore-missing-args --files-from=- "$DB_DIR/" "$BACKUP_DIR/"
+  local files=()
+  local f
+  for f in "$@"; do
+    files+=("$DB_DIR/$f")
+  done
+  timeout "$BACKUP_TIMEOUT" rsync -a --ignore-missing-args "${files[@]}" "$BACKUP_DIR/"
   exit_code=$?
   if [[ $exit_code -eq 124 ]]; then
     log_error "rsync timed out after ${BACKUP_TIMEOUT}s"
