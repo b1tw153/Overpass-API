@@ -22,7 +22,7 @@ RUN mkdir -p /build/src/m4 "$OVERPASS_DIR/db" "$OVERPASS_DIR/diff" "$OVERPASS_DI
     autoreconf -i && \
     CXXFLAGS='-O2' CFLAGS='-O2' ./configure --prefix="$OVERPASS_DIR" --enable-lz4 && \
     make -j$(nproc) install && \
-    cp -pr /build/src/rules "$OVERPASS_DIR/db/"
+    cp -pr /build/src/rules "$OVERPASS_DIR"
 
 FROM debian:bookworm-slim
 
