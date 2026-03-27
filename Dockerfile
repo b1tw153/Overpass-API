@@ -17,7 +17,7 @@ COPY src /build/src
 
 ENV OVERPASS_DIR=/opt/overpass
 
-RUN mkdir -p /build/src/m4 "$OVERPASS_DIR/db" "$OVERPASS_DIR/diff" "$OVERPASS_DIR/backup" "$OVERPASS_DIR/log" "$OVERPASS_DIR/run" && \
+RUN mkdir -p /build/src/m4 "$OVERPASS_DIR/db" "$OVERPASS_DIR/diff" "$OVERPASS_DIR/backup" "$OVERPASS_DIR/log" "$OVERPASS_DIR/run" "$OVERPASS_DIR/tmp" && \
     cd /build/src && \
     autoreconf -i && \
     CXXFLAGS='-O2' CFLAGS='-O2' ./configure --prefix="$OVERPASS_DIR" --enable-lz4 && \
@@ -28,7 +28,7 @@ FROM debian:bookworm-slim
 
 COPY --from=builder /opt/overpass /opt/overpass
 
-COPY etc/overpass.conf /etc/nginx/conf.d/
+COPY etc/nginx.conf /etc/nginx/nginx.conf
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     aria2 \
@@ -44,9 +44,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     zlib1g \
     && rm -rf /var/lib/apt/lists/* \
     && rm /etc/nginx/sites-enabled/default \
-    && sed -i '/^user /d' /etc/nginx/nginx.conf \
-    && sed -i 's|error_log /var/log/nginx/error.log;|error_log /opt/overpass/log/nginx_error.log;|' /etc/nginx/nginx.conf \
-    && sed -i 's|pid /run/nginx.pid;|pid /opt/overpass/run/nginx.pid;|' /etc/nginx/nginx.conf \
     && groupadd -g 10001 overpass \
     && useradd -u 10001 -g 10001 -m -s /bin/bash overpass \
     && chown -R overpass:overpass /opt/overpass
