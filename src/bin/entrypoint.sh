@@ -68,8 +68,8 @@ trap 'shutdown 129 "SIGHUP received"'  SIGHUP
 # ============================================================================
 
 # Copy default rules into the database directory, skipping files that already exist
-mkdir -p "$OVERPASS_DIR/rules" "$OVERPASS_DB_DIR/rules"
-for rule_file in "$OVERPASS_DIR/rules"/*; do
+mkdir -p "$OVERPASS_DB_DIR/rules"
+for rule_file in "/opt/overpass/rules"/*; do
   [[ -e "$rule_file" ]] || continue
   dest="$OVERPASS_DB_DIR/rules/$(basename "$rule_file")"
   if [[ ! -e "$dest" ]]; then
