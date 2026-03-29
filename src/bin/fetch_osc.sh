@@ -688,7 +688,27 @@ trap 'shutdown 129' SIGHUP
 
 verify_globals
 
-log_message "Starting fetch from $SOURCE_URL to $LOCAL_DIR"
+log_message "-----------------------------------"
+log_message "Starting Fetch Process ($0)"
+log_message "-----------------------------------"
+log_message "OVERPASS_REPLICATE_ID              $START_ID"
+log_message "OVERPASS_DIFF_URL                  $SOURCE_URL"
+log_message "OVERPASS_DIFF_DIR                  $LOCAL_DIR"
+log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
+log_message "FETCH_OSC_UPDATE_TRIM              $UPDATE_TRIM"
+log_message "FETCH_OSC_QUICK_RETRY_DELAY        $QUICK_RETRY_DELAY"
+log_message "FETCH_OSC_QUICK_RETRY_COUNT        $QUICK_RETRY_COUNT"
+log_message "FETCH_OSC_MAX_BATCH_SIZE           $MAX_BATCH_SIZE"
+log_message "FETCH_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
+log_message "FETCH_OSC_MAX_RETRIES              $MAX_RETRIES"
+log_message "FETCH_OSC_RETRY_DELAY              $RETRY_DELAY"
+log_message "FETCH_OSC_CONNECT_TIMEOUT          $CONNECT_TIMEOUT"
+log_message "FETCH_OSC_KEEPALIVE_TIME           $KEEPALIVE_TIME"
+log_message "FETCH_OSC_PARALLEL_MAX             $PARALLEL_MAX"
+log_message "FETCH_OSC_PARALLEL_MODE            $PARALLEL_MODE"
+log_message "FETCH_OSC_SPEED_LIMIT              $SPEED_LIMIT"
+log_message "FETCH_OSC_SPEED_TIME               $SPEED_TIME"
+log_message "-----------------------------------"
 
 if [[ "$START_ID" == "auto" ]]; then
   if [[ ! -f "$DB_STATE_FILE" || ! -s "$DB_STATE_FILE" ]]; then
