@@ -34,6 +34,10 @@ Environment variables:
 EOF
 }
 
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
 if [[ -n "$1" ]]; then
   echo "INFO: The DB_DIR argument is deprecated and is no longer used"
   usage
@@ -91,11 +95,19 @@ if [[ -n "$AREA_UPDATE_TIME" ]]; then
   fi
 fi
 
+# ============================================================================
+# LOGGING
+# ============================================================================
+
 LOG_FILE="$DB_DIR/rules_loop.log"
 
 log_message() {
   echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
 }
+
+# ============================================================================
+# TIMING
+# ============================================================================
 
 calculate_sleep_time() {
   local NOW
@@ -136,6 +148,10 @@ sleep_with_interrupts() {
   wait $!
 }
 
+# ============================================================================
+# SIGNAL HANDLERS
+# ============================================================================
+
 QUERY_PID=""
 
 shutdown() {
@@ -147,6 +163,19 @@ shutdown() {
 trap 'shutdown 143' SIGTERM
 trap 'shutdown 130' SIGINT
 trap 'shutdown 129' SIGHUP
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+log_message "-----------------------------------"
+log_message "Starting Area Generation ($0)"
+log_message "-----------------------------------"
+log_message "OVERPASS_DB_DIR                    $DB_DIR"
+log_message "OVERPASS_UPDATE_FREQUENCY          $OVERPASS_UPDATE_FREQUENCY seconds"
+log_message "AREA_UPDATE_TIME                   ${AREA_UPDATE_TIME:-(continuous, on database update)}"
+log_message "AREA_RULES_FILE                    $AREA_RULES_FILE"
+log_message "-----------------------------------"
 
 LAST_REPLICATE_ID="none"
 LAST_DB_UPDATE_TIME=""
@@ -177,5 +206,6 @@ while true; do
   fi
 
   SLEEP_TIME=$(calculate_sleep_time)
+  (( SLEEP_TIME > POLL_INTERVAL)) && log_message "Sleeping for $SLEEP_TIME seconds"
   sleep_with_interrupts "$SLEEP_TIME"
 done
