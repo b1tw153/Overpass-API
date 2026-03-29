@@ -84,6 +84,7 @@ done
 
 # Start fcgiwrap for CGI script handling
 message "Starting fcgi"
+rm -f /opt/overpass/run/fcgiwrap.socket
 fcgiwrap -s unix:/opt/overpass/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" &
 FCGI_PID=$!
 
