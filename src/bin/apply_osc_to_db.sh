@@ -615,7 +615,17 @@ trap 'shutdown 129' SIGHUP
 # MAIN EXECUTION
 # ============================================================================
 
-log_message "Starting apply process from $REPLICATE_DIR with $META_ARG"
+log_message "-----------------------------------"
+log_message "Starting Apply Process ($0)"
+log_message "-----------------------------------"
+log_message "OVERPASS_DIFF_DIR                  $REPLICATE_DIR"
+log_message "OVERPASS_REPLICATE_ID              $START_ID"
+log_message "OVERPASS_META_MODE                 ${META_ARG#--meta=}"
+log_message "APPLY_OSC_MAX_BATCH_MB             $MAX_BATCH_MB"
+log_message "APPLY_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
+log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
+log_message "APPLY_OSC_UPDATE_TRIM              $UPDATE_TRIM"
+log_message "-----------------------------------"
 
 if [[ "$START_ID" == "auto" ]]; then
   CURRENT_ID=$(read_current_state)
