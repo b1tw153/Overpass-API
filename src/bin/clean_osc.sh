@@ -324,25 +324,26 @@ cleanup_old_files()
 # ============================================================================
 
 if [[ "$ALL_MODE" == "true" ]]; then
-  log_message "=========================================="
-  log_message "Starting cleanup process (ALL MODE)"
-  log_message "Local directory: $LOCAL_DIR"
-  log_message "=========================================="
+  log_message "-----------------------------------"
+  log_message "Starting Cleanup Process ($0)"
+  log_message "-----------------------------------"
+  log_message "OVERPASS_DIFF_DIR                  $LOCAL_DIR"
+  log_message "-----------------------------------"
 
   cleanup_all_files
 
   log_message "Cleanup complete"
-  log_message "=========================================="
   exit 0
 fi
 
 # Normal mode - clean based on database state
-log_message "=========================================="
-log_message "Starting cleanup process"
-log_message "Database directory: $DB_DIR"
-log_message "Local directory: $LOCAL_DIR"
-log_message "Keep count: $KEEP_COUNT"
-log_message "=========================================="
+log_message "-----------------------------------"
+log_message "Starting Cleanup Process ($0)"
+log_message "-----------------------------------"
+log_message "OVERPASS_DB_DIR                    $DB_DIR"
+log_message "OVERPASS_DIFF_DIR                  $LOCAL_DIR"
+log_message "keep_count                         $KEEP_COUNT"
+log_message "-----------------------------------"
 
 CURRENT_STATE=$(read_current_state)
 READ_EXIT=$?
@@ -362,4 +363,3 @@ log_message "Current database state: $CURRENT_STATE"
 cleanup_old_files "$CURRENT_STATE"
 
 log_message "Cleanup complete"
-log_message "=========================================="
