@@ -212,8 +212,9 @@ cleanup()
   if [[ $INTERRUPTED -eq 1 ]]; then
   {
     echo
-    # Remove incomplete .tmp files
+    # Remove incomplete .tmp files and aria2c control files
     find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
+    find "$CLONE_DIR" -name "*.aria2" -type f -delete 2>/dev/null
   }; fi
 
   # Only remove lock file if it contains our PID
@@ -508,9 +509,110 @@ download_files_parallel()
   exit 1
 }
 
+# ============================================================================
+# ARIA2C DOWNLOAD
+# ============================================================================
+
+download_files_with_aria2c()
+{
+  local files="$1"
+  local ARIA2C_INPUT
+  ARIA2C_INPUT="$CLONE_DIR/aria2c_batch_$$.txt"
+  rm -f "$ARIA2C_INPUT"
+
+  for file in $files; do
+  {
+    local data_url="$REMOTE_DIR/$file"
+    local idx_url="$REMOTE_DIR/$file.idx"
+
+    if ! is_file_complete "$data_url" "$CLONE_DIR/$file"; then
+      log_message "Fetching $file"
+      printf '%s\n  out=%s\n' "$data_url" "$file.tmp" >> "$ARIA2C_INPUT"
+    fi
+
+    if ! is_file_complete "$idx_url" "$CLONE_DIR/$file.idx"; then
+      log_message "Fetching $file.idx"
+      printf '%s\n  out=%s\n' "$idx_url" "$file.idx.tmp" >> "$ARIA2C_INPUT"
+    fi
+  }; done
+
+  if [[ ! -s "$ARIA2C_INPUT" ]]; then
+  {
+    rm -f "$ARIA2C_INPUT"
+    return 0
+  }; fi
+
+  echo
+  aria2c \
+    --input-file="$ARIA2C_INPUT" \
+    --dir="$CLONE_DIR" \
+    --max-concurrent-downloads="$PARALLEL_JOBS" \
+    --max-connection-per-server="$PARALLEL_JOBS" \
+    --split="$PARALLEL_JOBS" \
+    --connect-timeout="$CONNECT_TIMEOUT" \
+    --max-tries="$RETRY_COUNT" \
+    --retry-wait="$RETRY_DELAY" \
+    --lowest-speed-limit="$SPEED_LIMIT" \
+    --continue=true \
+    --file-allocation=none \
+    --no-conf
+
+  local ARIA2C_EXIT=$?
+  rm -f "$ARIA2C_INPUT"
+
+  if [[ $ARIA2C_EXIT -ne 0 ]]; then
+  {
+    log_warning "Batch download failed (aria2c exit code: $ARIA2C_EXIT)"
+    case $ARIA2C_EXIT in
+      2)  log_error "Exit 2: Timeout" ;;
+      3)  log_error "Exit 3: Resource not found" ;;
+      4)  log_error "Exit 4: Max tries exceeded" ;;
+      5)  log_error "Exit 5: Download aborted (too slow)" ;;
+      6)  log_error "Exit 6: Network problem" ;;
+      9)  log_error "Exit 9: Not enough disk space" ;;
+      *)  log_error "Exit $ARIA2C_EXIT: Download failed" ;;
+    esac
+    exit 1
+  }; fi
+
+  echo "aria2c command completed"
+
+  for file in $files; do
+  {
+    local data_tmp="$CLONE_DIR/$file.tmp"
+    local idx_tmp="$CLONE_DIR/$file.idx.tmp"
+    local data_url="$REMOTE_DIR/$file"
+    local idx_url="$REMOTE_DIR/$file.idx"
+
+    if [[ -f "$data_tmp" ]] && is_file_complete "$data_url" "$data_tmp"; then
+      mv "$data_tmp" "$CLONE_DIR/$file" || exit 1
+    fi
+
+    if [[ -f "$idx_tmp" ]] && is_file_complete "$idx_url" "$idx_tmp"; then
+      mv "$idx_tmp" "$CLONE_DIR/$file.idx" || exit 1
+    fi
+  }; done
+}
+
+download_files()
+{
+  local files="$1"
+  if [[ "$USE_ARIA2C" == "true" ]]; then
+    download_files_with_aria2c "$files"
+  else
+    download_files_parallel "$files"
+  fi
+}
+
 # Main function
 main()
 {
+  if command -v aria2c > /dev/null 2>&1; then
+    USE_ARIA2C=true
+  else
+    USE_ARIA2C=false
+  fi
+
   log_message "-----------------------------------"
   log_message "Starting Clone Download ($0)"
   log_message "-----------------------------------"
@@ -525,6 +627,11 @@ main()
   log_message "DOWNLOAD_CLONE_SPEED_LIMIT         $SPEED_LIMIT"
   log_message "DOWNLOAD_CLONE_SPEED_TIME          $SPEED_TIME"
   log_message "-----------------------------------"
+  if [[ "$USE_ARIA2C" == "true" ]]; then
+    log_message "aria2c detected, using for parallel segment downloads"
+  else
+    log_message "aria2c not found, using curl"
+  fi
 
   if ! mkdir -p "$CLONE_DIR"; then
   {
@@ -564,16 +671,16 @@ main()
   }; fi
 
   # Download files
-  download_files_parallel "$FILES_BASE"
+  download_files "$FILES_BASE"
 
   if [[ $META == "yes" || $META == "attic" ]]; then
   {
-    download_files_parallel "$FILES_META"
+    download_files "$FILES_META"
   }; fi
 
   if [[ $META == "attic" ]]; then
   {
-    download_files_parallel "$FILES_ATTIC"
+    download_files "$FILES_ATTIC"
   }; fi
 
   log_message "Database ready"
