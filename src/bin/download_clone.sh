@@ -511,6 +511,21 @@ download_files_parallel()
 # Main function
 main()
 {
+  log_message "-----------------------------------"
+  log_message "Starting Clone Download ($0)"
+  log_message "-----------------------------------"
+  log_message "OVERPASS_DB_DIR                    $CLONE_DIR"
+  log_message "DOWNLOAD_CLONE_SOURCE              $SOURCE"
+  log_message "OVERPASS_META_MODE                 $META"
+  log_message "DOWNLOAD_CLONE_PARALLEL_JOBS       $PARALLEL_JOBS"
+  log_message "DOWNLOAD_CLONE_MAX_TIME            $MAX_TIME"
+  log_message "DOWNLOAD_CLONE_CONNECT_TIMEOUT     $CONNECT_TIMEOUT"
+  log_message "DOWNLOAD_CLONE_RETRY_COUNT         $RETRY_COUNT"
+  log_message "DOWNLOAD_CLONE_RETRY_DELAY         $RETRY_DELAY"
+  log_message "DOWNLOAD_CLONE_SPEED_LIMIT         $SPEED_LIMIT"
+  log_message "DOWNLOAD_CLONE_SPEED_TIME          $SPEED_TIME"
+  log_message "-----------------------------------"
+
   if ! mkdir -p "$CLONE_DIR"; then
   {
     log_error "Failed to create or access database directory: $CLONE_DIR"
