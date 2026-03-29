@@ -551,7 +551,9 @@ apply_batch()
 calculate_sleep_time()
 {
   if [[ -z "$LAST_UPDATE_TIME" ]]; then
-    echo $((UPDATE_FREQUENCY / 12))
+    local STARTING_SLEEP=$((UPDATE_FREQUENCY / 12))
+    (( STARTING_SLEEP < 1 )) && STARTING_SLEEP=1
+    echo $STARTING_SLEEP
     return
   fi
 
@@ -560,6 +562,7 @@ calculate_sleep_time()
   local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
   local MIN_SLEEP=$((UPDATE_FREQUENCY / 60))
+  (( MIN_SLEEP < 1 )) && MIN_SLEEP=1
 
   if [[ $SLEEP_TIME -lt $MIN_SLEEP ]]; then
     echo $MIN_SLEEP
