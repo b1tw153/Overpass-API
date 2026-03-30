@@ -697,6 +697,7 @@ while true; do
     exit 1
   fi
   MAX_AVAILABLE=$LATEST_AVAILABLE_ID
+  LAST_SCHEDULED=$LATEST_ROOT_LM
   
   # Mark source as verified after first successful fetch
   if [[ "$SOURCE_VERIFIED" != "true" ]]; then
@@ -727,8 +728,6 @@ while true; do
       fi
     done
   fi
-
-  LAST_SCHEDULED=$LATEST_ROOT_LM
 
   BATCH_END=$MAX_AVAILABLE
   (( CURRENT_ID + MAX_BATCH_SIZE < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_SIZE))
