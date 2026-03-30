@@ -34,14 +34,7 @@ Usage: $0 replicate_id diff_url diff_dir [sleep]
   sleep          (Optional, ignored - kept for compatibility)
 
 Environment variables:
-  OVERPASS_UPDATE_FREQUENCY     Update interval in seconds (default: 60)
-  FETCH_OSC_UPDATE_TRIM         Offset added to the update interval when scheduling the
-                                next check; use a negative value to compensate for
-                                processing overhead (default: -6)
-  FETCH_OSC_QUICK_RETRY_DELAY   Seconds between quick retries after the expected update
-                                time has passed (default: 1)
-  FETCH_OSC_QUICK_RETRY_COUNT   Number of quick retries before falling back to the full
-                                update interval (default: 10)
+  OVERPASS_UPDATE_FREQUENCY     Update interval in seconds: 60, 3600, or 86400 (default: 60)
   FETCH_OSC_MAX_BATCH_SIZE      Maximum number of OSC files per batch download (default: 360)
   FETCH_OSC_MAX_BATCH_TIME      Maximum time span of a batch in seconds (default: 86400)
   FETCH_OSC_MAX_RETRIES         Maximum download attempts per file before giving up (default: 20)
@@ -54,7 +47,6 @@ Environment variables:
   FETCH_OSC_SPEED_LIMIT         Minimum download speed in bytes/sec; 0 to disable (default: 1024)
   FETCH_OSC_SPEED_TIME          Time in seconds over which to check minimum speed (default: 30)
 
-Comments in the script have suggested environment variable values for hourly and daily replication.
 EOF
   exit 1
 fi
@@ -97,10 +89,21 @@ if ! command -v curl > /dev/null 2>&1; then
 fi
 
 # Update timing configuration
-UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds
-UPDATE_TRIM=${FETCH_OSC_UPDATE_TRIM:--6}                # Seconds to adjust expected update time
-QUICK_RETRY_DELAY=${FETCH_OSC_QUICK_RETRY_DELAY:-1}     # Seconds between quick retries
-QUICK_RETRY_COUNT=${FETCH_OSC_QUICK_RETRY_COUNT:-10}    # Number of quick retries before slow retry
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds (60, 3600, or 86400)
+TRIM=$(( (UPDATE_FREQUENCY + 23) / 24 ))                # Start polling this many seconds before expected update
+PHASE3_DELAY=1200                                        # Seconds between polls after backoff is exhausted
+
+case $UPDATE_FREQUENCY in
+  60)
+    DELAYS=(0 0 0 0 0 0 2 2 3 5 8 11 17 26 38 58 86 130 195 291 438 657 985 1478)
+    ;;
+  3600)
+    DELAYS=(12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 18 27 41 61 91 137 205 308 461 692 1038 1557)
+    ;;
+  86400)
+    DELAYS=(288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 432 648 972 1458)
+    ;;
+esac
 
 # Batch configuration
 MAX_BATCH_SIZE=${FETCH_OSC_MAX_BATCH_SIZE:-360}         # Maximum OSC files per batch download
@@ -116,35 +119,11 @@ PARALLEL_MODE=${FETCH_OSC_PARALLEL_MODE:-"multiplexed"} # Either "immediate" or 
 SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}              # Minimum download speed in bytes/sec
 SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}                  # Time in seconds to check for speed limit
 
-# Suggested environment variables for hourly replication
-# OVERPASS_UPDATE_FREQUENCY=3600
-# FETCH_OSC_UPDATE_TRIM=-60
-# FETCH_OSC_QUICK_RETRY_DELAY=60
-# FETCH_OSC_QUICK_RETRY_COUNT=10
-# FETCH_OSC_MAX_BATCH_SIZE=24
-# FETCH_OSC_RETRY_DELAY=60
-# FETCH_OSC_CONNECT_TIMEOUT=60
-# FETCH_OSC_KEEPALIVE_TIME=120
-# FETCH_OSC_SPEED_LIMIT=10240
-# FETCH_OSC_SPEED_TIME=60
-
-# Suggested environment variables for daily replication
-# OVERPASS_UPDATE_FREQUENCY=86400
-# FETCH_OSC_UPDATE_TRIM=-600
-# FETCH_OSC_QUICK_RETRY_DELAY=600
-# FETCH_OSC_QUICK_RETRY_COUNT=6
-# FETCH_OSC_MAX_BATCH_SIZE=1
-# FETCH_OSC_RETRY_DELAY=300
-# FETCH_OSC_CONNECT_TIMEOUT=120
-# FETCH_OSC_KEEPALIVE_TIME=300
-# FETCH_OSC_PARALLEL_MAX=1
-# FETCH_OSC_SPEED_LIMIT=102400
-# FETCH_OSC_SPEED_TIME=120
-
 SOURCE_VERIFIED=false  # Flag to track if source URL has been verified
 
-LAST_UPDATE_TIME=      # Time when last update was downloaded
+LAST_SCHEDULED=        # Last-Modified epoch of root state.txt when last new sequence was found
 LATEST_AVAILABLE_ID=   # Result of get_latest_available_id
+LATEST_ROOT_LM=        # Last-Modified epoch of root state.txt from last get_latest_available_id
 
 # Get execution directory
 EXEC_DIR="$(realpath "$(dirname "$0")")"
@@ -205,35 +184,7 @@ verify_globals()
   fi
 
   if [[ UPDATE_FREQUENCY -ne 60 && UPDATE_FREQUENCY -ne 3600 && UPDATE_FREQUENCY -ne 86400 ]]; then
-    MESSAGE="WARNING: Unexpected UPDATE_FREQUENCY: $UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
-    log_message "$MESSAGE"
-  fi
-
-  if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
-    MESSAGE="Invalid UPDATE_TRIM: $UPDATE_TRIM"
-    log_error "$MESSAGE"
-    exit 1
-  fi
-
-  local ABS_TRIM=${UPDATE_TRIM#-}
-  if [[ $ABS_TRIM -gt $((UPDATE_FREQUENCY / 10)) ]]; then
-    MESSAGE="WARNING: UPDATE_TRIM ($UPDATE_TRIM) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
-    log_message "$MESSAGE"
-  fi
-
-  if [[ ! "$QUICK_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid QUICK_RETRY_DELAY: $QUICK_RETRY_DELAY"
-    log_error "$MESSAGE"
-    exit 1
-  fi
-
-  if [[ $QUICK_RETRY_DELAY -gt $((UPDATE_FREQUENCY / 10)) ]]; then
-    MESSAGE="WARNING: QUICK_RETRY_DELAY ($QUICK_RETRY_DELAY) is large relative to UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
-    log_message "$MESSAGE"
-  fi
-
-  if [[ ! "$QUICK_RETRY_COUNT" =~ ^[0-9]+$ ]]; then
-    MESSAGE="Invalid QUICK_RETRY_COUNT: $QUICK_RETRY_COUNT"
+    MESSAGE="Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY (must be 60, 3600, or 86400)"
     log_error "$MESSAGE"
     exit 1
   fi
@@ -323,22 +274,17 @@ verify_globals()
 # TIMING
 # ============================================================================
 
-calculate_sleep_time()
+sleep_until_check_time()
 {
-  if [[ -z "$LAST_UPDATE_TIME" ]]; then
-    echo $((UPDATE_FREQUENCY / 4))
-    return
-  fi
-  
-  local NOW
+  [[ -z "$LAST_SCHEDULED" ]] && return
+
+  local NOW T_START SLEEP_TIME
   NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
-  local SLEEP_TIME=$((NEXT_CHECK - NOW))
-  
-  if [[ $SLEEP_TIME -lt 0 ]]; then
-    echo 0
-  else
-    echo $SLEEP_TIME
+  T_START=$(( LAST_SCHEDULED + UPDATE_FREQUENCY - TRIM ))
+  SLEEP_TIME=$(( T_START - NOW ))
+
+  if [[ $SLEEP_TIME -gt 0 ]]; then
+    sleep_with_interrupts "$SLEEP_TIME"
   fi
 }
 
@@ -388,11 +334,13 @@ verify_file()
 get_latest_available_id()
 {
   LATEST_AVAILABLE_ID=
+  LATEST_ROOT_LM=
   local REMOTE_STATE="$LOCAL_DIR/state.txt"
   local REMOTE_STATE_TMP="$REMOTE_STATE.tmp"
+  local REMOTE_HEADERS_TMP="$REMOTE_STATE.hdr.tmp"
 
   while true; do
-    rm -f "$REMOTE_STATE_TMP"
+    rm -f "$REMOTE_STATE_TMP" "$REMOTE_HEADERS_TMP"
 
     curl -fsSL \
       --keepalive-time "$KEEPALIVE_TIME" \
@@ -400,6 +348,7 @@ get_latest_available_id()
       --retry 3 \
       --retry-delay 5 \
       --retry-all-errors \
+      -D "$REMOTE_HEADERS_TMP" \
       -o "$REMOTE_STATE_TMP" \
       "$SOURCE_URL/state.txt" \
       2>/dev/null
@@ -408,16 +357,25 @@ get_latest_available_id()
 
     if [[ $TOOL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
       if verify_file "$REMOTE_STATE_TMP" "text"; then
-        local SEQ_LINE
+        local SEQ_LINE LM_LINE LM_EPOCH
         SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE_TMP")
         if [[ -n "$SEQ_LINE" ]]; then
-          mv "$REMOTE_STATE_TMP" "$REMOTE_STATE" || log_error "Unable to update $REMOTE_STATE"
-          LATEST_AVAILABLE_ID=$((${SEQ_LINE#*=} + 0))
-          return 0
+          LM_LINE=$(grep -i '^last-modified:' "$REMOTE_HEADERS_TMP" | tail -1 | tr -d '\r' | sed 's/^[^:]*: //')
+          LM_EPOCH=$(date -d "$LM_LINE" +%s 2>/dev/null)
+          rm -f "$REMOTE_HEADERS_TMP"
+          if [[ -z "$LM_EPOCH" ]]; then
+            log_error "Last-Modified header missing or malformed in HTTP response for state.txt"
+            rm -f "$REMOTE_STATE_TMP"
+          else
+            mv "$REMOTE_STATE_TMP" "$REMOTE_STATE" || log_error "Unable to update $REMOTE_STATE"
+            LATEST_AVAILABLE_ID=$((${SEQ_LINE#*=} + 0))
+            LATEST_ROOT_LM=$LM_EPOCH
+            return 0
+          fi
         fi
       else
         log_error "Downloaded state.txt failed validation (may be HTML error page or corrupted data)"
-        rm -f "$REMOTE_STATE_TMP"
+        rm -f "$REMOTE_STATE_TMP" "$REMOTE_HEADERS_TMP"
       fi
     fi
 
@@ -696,9 +654,6 @@ log_message "OVERPASS_REPLICATE_ID              $START_ID"
 log_message "OVERPASS_DIFF_URL                  $SOURCE_URL"
 log_message "OVERPASS_DIFF_DIR                  $LOCAL_DIR"
 log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
-log_message "FETCH_OSC_UPDATE_TRIM              $UPDATE_TRIM"
-log_message "FETCH_OSC_QUICK_RETRY_DELAY        $QUICK_RETRY_DELAY"
-log_message "FETCH_OSC_QUICK_RETRY_COUNT        $QUICK_RETRY_COUNT"
 log_message "FETCH_OSC_MAX_BATCH_SIZE           $MAX_BATCH_SIZE"
 log_message "FETCH_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
 log_message "FETCH_OSC_MAX_RETRIES              $MAX_RETRIES"
@@ -750,52 +705,43 @@ while true; do
   fi
   
   if [[ $MAX_AVAILABLE -le $CURRENT_ID ]]; then
-    SLEEP_TIME=$(calculate_sleep_time)
-    
-    if [[ $SLEEP_TIME -gt 0 ]]; then
-      log_message "No new files available (current: $CURRENT_ID), sleeping ${SLEEP_TIME}s"
-      sleep_with_interrupts "$SLEEP_TIME"
-      continue
-    fi
-    
-    RETRY_COUNT=0
-    while [[ $RETRY_COUNT -lt $QUICK_RETRY_COUNT ]]; do
-      sleep_with_interrupts "$QUICK_RETRY_DELAY"
-      ((++RETRY_COUNT))
-      
+    sleep_until_check_time
+
+    DELAY_INDEX=0
+    while [[ $MAX_AVAILABLE -le $CURRENT_ID ]]; do
       get_latest_available_id
       MAX_AVAILABLE=$LATEST_AVAILABLE_ID
 
-      if [[ -n "$MAX_AVAILABLE" && $MAX_AVAILABLE -gt $CURRENT_ID ]]; then
+      if [[ $MAX_AVAILABLE -gt $CURRENT_ID ]]; then
         break
       fi
-      
-      if [[ $RETRY_COUNT -lt $QUICK_RETRY_COUNT ]]; then
-        log_message "Waiting for file $((CURRENT_ID + 1)) (quick retry $RETRY_COUNT/$QUICK_RETRY_COUNT)"
+
+      if [[ $DELAY_INDEX -lt ${#DELAYS[@]} ]]; then
+        DELAY=${DELAYS[$DELAY_INDEX]}
+        (( ++DELAY_INDEX ))
+        log_message "Waiting for file $((CURRENT_ID + 1)) (${DELAY}s)"
+        [[ $DELAY -gt 0 ]] && sleep_with_interrupts "$DELAY"
+      else
+        log_message "Waiting for file $((CURRENT_ID + 1)) (${PHASE3_DELAY}s)"
+        sleep_with_interrupts "$PHASE3_DELAY"
       fi
     done
-    
-    # If still no new data after quick retries, fall back to slow retry
-    if [[ -z "$MAX_AVAILABLE" || $MAX_AVAILABLE -le $CURRENT_ID ]]; then
-      log_message "File $((CURRENT_ID + 1)) not available, falling back to ${UPDATE_FREQUENCY}s delays"
-      sleep_with_interrupts "$UPDATE_FREQUENCY"
-      continue
-    fi
   fi
-  
+
+  LAST_SCHEDULED=$LATEST_ROOT_LM
+
   BATCH_END=$MAX_AVAILABLE
   (( CURRENT_ID + MAX_BATCH_SIZE < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_SIZE))
   (( CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY))
-  
+
   BATCH_COUNT=$((BATCH_END - CURRENT_ID))
   if [[ $BATCH_COUNT -eq 1 ]]; then
     log_message "Fetching $BATCH_END"
   else
     log_message "Fetching $BATCH_COUNT files ($((CURRENT_ID + 1)) to $BATCH_END)"
   fi
-  
+
   if download_batch "$CURRENT_ID" "$BATCH_END"; then
-    LAST_UPDATE_TIME=$(date +%s)
     update_fetch_state "$BATCH_END"
     CURRENT_ID=$BATCH_END
   else
