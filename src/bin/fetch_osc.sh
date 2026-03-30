@@ -95,13 +95,13 @@ PHASE3_DELAY=1200                                        # Seconds between polls
 
 case $UPDATE_FREQUENCY in
   60)
-    DELAYS=(0 0 0 0 0 0 2 2 3 5 8 11 17 26 38 58 86 130 195 291 438 657 985 1478)
+    DELAYS=(0 0 0 0 0 0 2 2 3 5 8 11 17 26 38 58 86 130 195 291 438 657 985)
     ;;
   3600)
-    DELAYS=(12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 18 27 41 61 91 137 205 308 461 692 1038 1557)
+    DELAYS=(12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 12 18 27 41 61 91 137 205 308 461 692 1038)
     ;;
   86400)
-    DELAYS=(288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 432 648 972 1458)
+    DELAYS=(288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 288 432 648 972)
     ;;
 esac
 
@@ -276,14 +276,13 @@ verify_globals()
 
 sleep_until_check_time()
 {
-  [[ -z "$LAST_SCHEDULED" ]] && return
-
   local NOW T_START SLEEP_TIME
   NOW=$(date +%s)
   T_START=$(( LAST_SCHEDULED + UPDATE_FREQUENCY - TRIM ))
   SLEEP_TIME=$(( T_START - NOW ))
 
   if [[ $SLEEP_TIME -gt 0 ]]; then
+    log_message "Sleeping until next file should be available (${SLEEP_TIME}s)"
     sleep_with_interrupts "$SLEEP_TIME"
   fi
 }
