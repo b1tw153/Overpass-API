@@ -248,9 +248,7 @@ get_remote_file_size()
   local size
 
   # Use HEAD request to get file metadata without downloading
-  headers=$(curl -s -I -L --max-time "$CONNECT_TIMEOUT" "$url" 2>/dev/null)
-
-  if [[ $? -ne 0 ]]; then
+  if ! headers=$(curl -s -I -L --max-time "$CONNECT_TIMEOUT" "$url" 2>/dev/null); then
     log_warning "HEAD request failed for $url"
     return 1
   fi
