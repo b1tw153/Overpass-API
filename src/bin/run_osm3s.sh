@@ -353,7 +353,7 @@ validate_meta_mode()
   if [[ $? -ne 0 ]]; then
     message "ERROR: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
     message "The database may not be properly initialized"
-    message "Run ... TBD ... to initialize the database"
+    message "See README.md for initialization instructions"
     exit 1
   fi
 
@@ -899,7 +899,7 @@ while true; do
   
   if [[ "$LOGROTATE_AVAILABLE" == "true" ]]; then
     logrotate --state "$OVERPASS_DB_DIR/logrotate.status" \
-      -f "$OVERPASS_DB_DIR/logrotate.conf" \
+      "$OVERPASS_DB_DIR/logrotate.conf" \
       >> "$OVERPASS_DB_DIR/logrotate.out" 2>&1
   fi
 
