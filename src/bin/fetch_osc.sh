@@ -484,7 +484,8 @@ download_batch_with_curl()
   PARALLEL_IMMEDIATE=
   [[ $PARALLEL_MODE = "immediate" ]] && PARALLEL_IMMEDIATE="--parallel-immediate"
 
-  curl -fsSL \
+  curl -fSL \
+    --no-progress-meter \
     --keepalive-time "$KEEPALIVE_TIME" \
     --connect-timeout "$CONNECT_TIMEOUT" \
     --retry "$MAX_RETRIES" \
