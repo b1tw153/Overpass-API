@@ -212,7 +212,7 @@ docker run -d --rm \
 
 After you have downloaded a database clone or imported a planet file or extract, or if you have an existing database, Overpass is ready to run.
 
-The default configuration assumes minutely replication. If you're using an hourly or daily replication source, start by setting environment the environment variables to adapt to those intervals. The suggested configurations are in the [`etc/overpass.env`](etc/overpass.env) file.
+If you're using the `run_osm3s.sh` script, it automatically detects the update interval for your replication source, and the scripts adapt to that interval with pre-configured timing.
 
 If you built Overpass from the source code:
 
