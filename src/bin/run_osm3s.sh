@@ -56,7 +56,6 @@ Environment variables (overridden by arguments):
   OVERPASS_AREAS                Same as --areas
 
 Environment variables (no argument equivalent):
-  OVERPASS_UPDATE_FREQUENCY     Update interval in seconds (default: 60)
   OVERPASS_SOCKET_DIR           Directory for dispatcher socket files (default: DB_DIR)
   OVERPASS_STALL_MULTIPLIER     Stall detection threshold as a multiple of update
                                 frequency
@@ -199,7 +198,6 @@ OVERPASS_DB_DIR="$(realpath "$OVERPASS_DB_DIR")"
 # ENVIRONMENT VARIABLE PARAMETERS
 # ============================================================================
 
-OVERPASS_UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
 OVERPASS_SOCKET_DIR=${OVERPASS_SOCKET_DIR:-"$OVERPASS_DB_DIR"}
 OVERPASS_STALL_MULTIPLIER=${OVERPASS_STALL_MULTIPLIER:-}
 OVERPASS_CLEANUP_INTERVAL=${OVERPASS_CLEANUP_INTERVAL:-24}
@@ -213,16 +211,6 @@ DISPATCHER_AREAS_SPACE=${DISPATCHER_AREAS_SPACE:-4294967296}
 DISPATCHER_TIME=${DISPATCHER_TIME:-262144}
 DISPATCHER_RATE_LIMIT=${DISPATCHER_RATE_LIMIT:-0}
 DISPATCHER_ALLOW_DUPLICATE_QUERIES=${DISPATCHER_ALLOW_DUPLICATE_QUERIES:-yes}
-
-if [[ ! "$OVERPASS_UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$OVERPASS_UPDATE_FREQUENCY'"
-  usage
-  exit 1
-fi
-
-if [[ "$OVERPASS_UPDATE_FREQUENCY" -ne 60 && "$OVERPASS_UPDATE_FREQUENCY" -ne 3600 && "$OVERPASS_UPDATE_FREQUENCY" -ne 86400 ]]; then
-  message "WARNING: Unexpected OVERPASS_UPDATE_FREQUENCY: $OVERPASS_UPDATE_FREQUENCY (expected: 60, 3600, 86400)"
-fi
 
 if ! [[ -d "$OVERPASS_SOCKET_DIR" && -w "$OVERPASS_SOCKET_DIR" ]]; then
   message "ERROR: OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
@@ -349,8 +337,7 @@ validate_meta_mode()
 {
   # Detect actual database state
   local DB_STATE
-  DB_STATE=$(detect_database_meta_state)
-  if [[ $? -ne 0 ]]; then
+  if ! DB_STATE=$(detect_database_meta_state); then
     message "ERROR: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
     message "The database may not be properly initialized"
     message "See README.md for initialization instructions"
@@ -362,6 +349,59 @@ validate_meta_mode()
     message "ERROR: Meta mode mismatch. Argument: --meta=$OVERPASS_META_MODE; Database: --meta=$DB_STATE"
     exit 1
   fi
+}
+
+# ============================================================================
+# UPDATE FREQUENCY DETECTION
+# ============================================================================
+
+get_path() {
+  printf '%03d/%03d/%03d' \
+    $(( $1 / 1000000 )) \
+    $(( ($1 / 1000) % 1000 )) \
+    $(( $1 % 1000 ))
+}
+
+get_last_modified() {
+  local LAST_MODIFIED
+  LAST_MODIFIED=$(curl -sIL "$1" \
+    | grep -i '^last-modified:' | tail -1 | tr -d '\r' | sed 's/^[^:]*: //')
+  [[ -n "$LAST_MODIFIED" ]] || return 1
+  date -d "$LAST_MODIFIED" +%s
+}
+
+# Detect the update frequency of the replication source by checking the mean
+# interval of Last-Modified times for three state files
+# Returns: "60", "3600", or "86400" via stdout
+# Returns 1 if the update frequency could not be determined
+detect_update_frequency()
+{
+  local CURRENT_SEQ LAST_MODIFIED_0 LAST_MODIFIED_1 LAST_MODIFIED_2 INTERVAL_1 INTERVAL_2 MEAN_INTERVAL
+
+  CURRENT_SEQ=$(curl -sL "${OVERPASS_DIFF_URL%/}/state.txt" \
+    | grep '^sequenceNumber=' | cut -d= -f2 | tr -d '\r')
+  if [[ ! "$CURRENT_SEQ" =~ ^[1-9][0-9]*$ ]]; then
+    message "ERROR: Failed to read sequence number from ${OVERPASS_DIFF_URL%/}/state.txt"
+    return 1
+  fi
+
+  LAST_MODIFIED_0=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$CURRENT_SEQ").state.txt") \
+    || { message "ERROR: Failed to get Last-Modified time for $(get_path "$CURRENT_SEQ").state.txt"; return 1; }
+  LAST_MODIFIED_1=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$((CURRENT_SEQ - 1))").state.txt") \
+    || { message "ERROR: Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 1))").state.txt"; return 1; }
+  LAST_MODIFIED_2=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$((CURRENT_SEQ - 2))").state.txt") \
+    || { message "ERROR: Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 2))").state.txt"; return 1; }
+
+  INTERVAL_1=$(( LAST_MODIFIED_0 - LAST_MODIFIED_1 ))
+  INTERVAL_2=$(( LAST_MODIFIED_1 - LAST_MODIFIED_2 ))
+  MEAN_INTERVAL=$(( (INTERVAL_1 + INTERVAL_2) / 2 ))
+
+  if   [[ "$MEAN_INTERVAL" -lt 1800  ]]; then printf '%d' 60
+  elif [[ "$MEAN_INTERVAL" -lt 43200 ]]; then printf '%d' 3600
+  else                                        printf '%d' 86400
+  fi
+
+  return 0
 }
 
 # ============================================================================
@@ -773,7 +813,6 @@ message "OVERPASS_DIFF_DIR                  $OVERPASS_DIFF_DIR"
 message "OVERPASS_DIFF_URL                  $OVERPASS_DIFF_URL"
 message "OVERPASS_META_MODE                 $OVERPASS_META_MODE"
 message "OVERPASS_AREAS                     $AREAS"
-message "OVERPASS_UPDATE_FREQUENCY          $OVERPASS_UPDATE_FREQUENCY seconds"
 message "OVERPASS_SOCKET_DIR                $OVERPASS_SOCKET_DIR"
 message "OVERPASS_STALL_MULTIPLIER          $OVERPASS_STALL_MULTIPLIER"
 message "OVERPASS_CLEANUP_INTERVAL          $OVERPASS_CLEANUP_INTERVAL hours"
@@ -786,6 +825,14 @@ message "DISPATCHER_ALLOW_DUPLICATE_QUERIES $DISPATCHER_ALLOW_DUPLICATE_QUERIES"
 message "-----------------------------------"
 
 validate_meta_mode
+
+if ! OVERPASS_UPDATE_FREQUENCY=$(detect_update_frequency); then
+  message "ERROR: Unable to detect update frequency from $OVERPASS_DIFF_URL"
+  exit 1
+else
+  message "Detected update frequency: ${OVERPASS_UPDATE_FREQUENCY}s"
+  export OVERPASS_UPDATE_FREQUENCY
+fi
 
 generate_logrotate_config
 
