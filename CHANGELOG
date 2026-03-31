@@ -1,3 +1,14 @@
+=v0.7.62.3 (2024-11-20)=
+
+* Version bump to 0.7.62.3
+* Add <code>--limit-client-zero</code> dispatcher option to exempt localhost requests from resource control
+* Implement <code>exempt_client_zero</code> flag in Global_Resource_Planner for conditional resource limit enforcement
+* Update Global_Resource_Planner constructor and probe logic to respect localhost exemption setting
+* Fix dispatcher_client error handling to properly classify zero acknowledgment codes as query rejections
+* Remove trailing whitespace from dispatcher code
+
+Summarized by Claude Haiku.
+
 =v0.7.62.2 (2024-04-06)=
 
 * Version bump to 0.7.62.2
