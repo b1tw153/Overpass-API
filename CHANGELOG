@@ -1,3 +1,14 @@
+=v0.7.62.8 (2025-08-13)=
+
+* Version bump to 0.7.62.8
+* Enhanced resource planner rate limiting and timeout management in dispatcher
+  * Added socket ratio parameter to probe() method for adaptive timeout tuning
+  * Introduced dynamic timeout_pending calculation based on socket availability
+  * Improved request queue enforcement for rate-limited clients considering socket pressure
+  * Added get_open_socket_limit() accessor to Socket class
+
+Summarized by Claude Haiku.
+
 =v0.7.62.7 (2025-06-08)=
 
 * Version bump to 0.7.62.7
