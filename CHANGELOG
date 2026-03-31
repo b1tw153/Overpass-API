@@ -1,3 +1,13 @@
+=v0.7.62.1 (2024-03-22)=
+
+* Version bump to 0.7.62.1
+* Updated source hash for distribution tracking
+* Fixed health_guard memory check calls in collect_items.h (added runtime threshold parameter)
+* Disabled test-bin build configuration
+* Removed legacy shell scripts, CGI utilities, HTML documentation, and test suite files
+
+Summarized by Claude Haiku.
+
 =[http://www.overpass-api.de/misc/osm-3s_v0.6.91.tar.gz OSM3S v0.6.91]=
 
 Released: 2011-07-05
