@@ -1,3 +1,13 @@
+=v0.7.62.9 (2026-01-22)=
+
+* Version bump from 0.7.62.8 to 0.7.62.9
+* Add hash blacklist checking to dispatcher: queries with hashes matching entries in anon_hash_blacklist file are now rejected with rate-limit error
+* Add decode_hex utility function to dispatcher_stub.cc for parsing blacklist hex values
+* Refactor decode_hex in user_interface.cc: move to anonymous namespace for internal use only
+* Code cleanup: fix indentation (tabs to spaces) in area_level dispatcher code
+
+Summarized by Claude Haiku.
+
 =v0.7.62.8 (2025-08-13)=
 
 * Version bump to 0.7.62.8
