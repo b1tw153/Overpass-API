@@ -282,7 +282,7 @@ sleep_until_check_time()
   SLEEP_TIME=$(( T_START - NOW ))
 
   if [[ $SLEEP_TIME -gt 0 ]]; then
-    log_message "Sleeping until next file should be available (${SLEEP_TIME}s)"
+    log_message "Sleeping until next file should be available ($(date -d @$T_START -u '+%F %T'))"
     sleep_with_interrupts "$SLEEP_TIME"
   fi
 }
