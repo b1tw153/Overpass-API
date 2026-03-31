@@ -20,7 +20,7 @@ ENV OVERPASS_DIR=/opt/overpass
 RUN mkdir -p /build/src/m4 "$OVERPASS_DIR/db" "$OVERPASS_DIR/diff" "$OVERPASS_DIR/backup" "$OVERPASS_DIR/log" "$OVERPASS_DIR/run" "$OVERPASS_DIR/tmp" && \
     cd /build/src && \
     autoreconf -i && \
-    CXXFLAGS='-O2' CFLAGS='-O2' ./configure --prefix="$OVERPASS_DIR" --enable-lz4 && \
+    CXXFLAGS='-O3' CFLAGS='-O3' ./configure --prefix="$OVERPASS_DIR" --enable-lz4 && \
     make -j$(nproc) install && \
     cp -pr /build/src/rules "$OVERPASS_DIR"
 
