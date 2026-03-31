@@ -1,3 +1,9 @@
+=v0.7.62.5 (2025-02-14)=
+* Version bump to 0.7.62.5
+* Truncate long query strings in client logger to prevent excessively large log entries; queries exceeding 8192 bytes are logged with first and last 4096 bytes preserved
+
+Summarized by Claude Haiku.
+
 =v0.7.62.4 (2024-11-21)=
 
 * Fixed floating-point precision issues in bounding box containment and intersection checks
