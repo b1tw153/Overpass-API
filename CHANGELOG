@@ -1,3 +1,12 @@
+=v0.7.62.6 (2025-06-08)=
+
+* Version bumped to 0.7.62.6
+* Added origin blacklist filtering: server now reads from <code>origin_blacklist</code> file and rejects requests from blacklisted origins with 403 status
+* Refactored CGI input handling: introduced <code>Input_From_CGI</code> struct to encapsulate HTTP method, headers, origin, and CGI parameters, simplifying parameter passing in <code>get_xml_cgi()</code>
+* Code cleanup: removed trailing whitespace across template database backend files
+
+Summarized by Claude Haiku.
+
 =v0.7.62.5 (2025-02-14)=
 * Version bump to 0.7.62.5
 * Truncate long query strings in client logger to prevent excessively large log entries; queries exceeding 8192 bytes are logged with first and last 4096 bytes preserved
