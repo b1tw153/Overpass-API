@@ -1,3 +1,21 @@
+=v0.7.62.10 (2026-01-22)=
+
+* Bump version to 0.7.62.10
+* Update Makefile and configure.ac with version 0.7.62.10
+* Update source hash in settings.cc
+* Change protocol from HTTPS to HTTP in installation guide links (wiki, downloads, API endpoints)
+* Add CXXFLAGS="-O3" optimization flag to build instructions
+* Terminology change: rename "museum data" to "attic data"
+* Update version path references from v0.7.55 to v0.7.52 in installation guides
+* Update apply_osc_to_db.sh command signature with proper parameters
+* Add cleanup_xapi_tmp.sh daemon documentation
+* Redesign index.html with CSS grid layout for better content organization and navigation
+* Reorganize dispatcher_stub.cc: move hash_is_blacklisted check before try block for proper error handling
+* Reduce element-limit in areas.osm3s from 4294967296 to 1073741824
+* Add comprehensive way-based area queries to areas.osm3s (building, natural, landuse, waterway, amenity, leisure, barrier, railway, boundary, man_made, power, place, shop, aeroway, tourism, historic, public_transport, office, building:part, military, craft)
+
+Summarized by Claude Haiku.
+
 =v0.7.62.9 (2026-01-22)=
 
 * Version bump from 0.7.62.8 to 0.7.62.9
