@@ -335,6 +335,7 @@ If you're using the container, mount the backup directory to `/opt/overpass/back
 OVERPASS_BACKUP_DIR=  # Target directory for backup files
 export OVERPASS_BACKUP_TIME= # Time of day to run backup (00:00-23:59)
                              # Backup runs every day if OVERPASS_BACKUP_DAY is not set
+                             # NOTE: Container time zone is UTC
 export OVERPASS_BACKUP_DAY=  # Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or 1-31
                              # Backup runs at 00:00 if OVERPASS_BACKUP_TIME is not set
 # docker run ....
