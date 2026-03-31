@@ -1,3 +1,11 @@
+=v0.7.62.7 (2025-06-08)=
+
+* Version bump to 0.7.62.7
+* Updated source hash identifier in build configuration
+* Fixed error handling in web_query to ensure proper return on HTTP 403 authorization failure
+
+Summarized by Claude Haiku.
+
 =v0.7.62.6 (2025-06-08)=
 
 * Version bumped to 0.7.62.6
