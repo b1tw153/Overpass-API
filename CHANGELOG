@@ -1,3 +1,12 @@
+=v0.7.62.2 (2024-04-06)=
+
+* Version bump to 0.7.62.2
+* Remove unused Health_Checker class from resource_manager.h
+* Fix Unix socket handling for macOS: adjust sun_len calculation (experimental)
+* Suppress chmod error in Unix socket initialization
+
+Summarized by Claude Haiku.
+
 =v0.7.62.1 (2024-03-22)=
 
 * Version bump to 0.7.62.1
