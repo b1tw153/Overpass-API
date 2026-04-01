@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     fcgiwrap \
+    inotify-tools \
     libexpat1 \
     liblz4-1 \
     logrotate \
