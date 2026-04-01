@@ -561,7 +561,7 @@ sleep_with_interrupts()
 
 wait_for_batch()
 {
-  local NOW FETCH_MTIME SLEEP_TARGET SLEEP_TIME LOG_INTERVAL ELAPSED INOTIFY_EXIT
+  local NOW FETCH_MTIME SLEEP_TARGET SLEEP_TIME LOG_INTERVAL ELAPSED INOTIFY_EXIT CURRENT_MTIME
 
   LOG_INTERVAL=$(( UPDATE_FREQUENCY / 6 ))
   (( LOG_INTERVAL < 1 )) && LOG_INTERVAL=1
@@ -579,12 +579,20 @@ wait_for_batch()
         --timeout "$SLEEP_TIME" \
         "$REPLICATE_DIR" > /dev/null &
       INOTIFY_PID=$!
-      wait "$INOTIFY_PID"
-      INOTIFY_EXIT=$?
-      INOTIFY_PID=
-      if [[ $INOTIFY_EXIT -eq 1 ]]; then
-        log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
-        USE_INOTIFYWAIT=false
+      sleep 0.1
+      CURRENT_MTIME=$(stat -c %Y "$REPLICATE_DIR/replicate_id" 2>/dev/null) || CURRENT_MTIME=0
+      if [[ "$CURRENT_MTIME" != "$FETCH_MTIME" ]]; then
+        kill "$INOTIFY_PID" 2>/dev/null || true
+        wait "$INOTIFY_PID" 2>/dev/null || true
+        INOTIFY_PID=
+      else
+        wait "$INOTIFY_PID"
+        INOTIFY_EXIT=$?
+        INOTIFY_PID=
+        if [[ $INOTIFY_EXIT -eq 1 ]]; then
+          log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
+          USE_INOTIFYWAIT=false
+        fi
       fi
     else
       sleep_with_interrupts "$SLEEP_TIME"
@@ -611,15 +619,23 @@ wait_for_batch()
       --timeout "$LOG_INTERVAL" \
       "$REPLICATE_DIR" > /dev/null &
     INOTIFY_PID=$!
-    wait "$INOTIFY_PID"
-    INOTIFY_EXIT=$?
-    INOTIFY_PID=
-    if [[ $INOTIFY_EXIT -eq 1 ]]; then
-      log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
-      USE_INOTIFYWAIT=false
+    sleep 0.1
+    CURRENT_MTIME=$(stat -c %Y "$REPLICATE_DIR/replicate_id" 2>/dev/null) || CURRENT_MTIME=0
+    if [[ "$CURRENT_MTIME" != "$FETCH_MTIME" ]]; then
+      kill "$INOTIFY_PID" 2>/dev/null || true
+      wait "$INOTIFY_PID" 2>/dev/null || true
+      INOTIFY_PID=
+    else
+      wait "$INOTIFY_PID"
+      INOTIFY_EXIT=$?
+      INOTIFY_PID=
+      if [[ $INOTIFY_EXIT -eq 1 ]]; then
+        log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
+        USE_INOTIFYWAIT=false
+      fi
     fi
   else
-    local POLL_INTERVAL PHASE2_START CURRENT_MTIME
+    local POLL_INTERVAL PHASE2_START
     POLL_INTERVAL=$(( UPDATE_FREQUENCY / 600 ))
     (( POLL_INTERVAL < 1 )) && POLL_INTERVAL=1
     PHASE2_START=$(date +%s)
