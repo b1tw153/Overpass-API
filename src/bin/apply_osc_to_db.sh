@@ -36,9 +36,6 @@ Environment variables:
   APPLY_OSC_MAX_BATCH_MB      Maximum uncompressed size per batch in MB (default: 512)
   APPLY_OSC_MAX_BATCH_TIME    Maximum time span per batch in seconds (default: 86400)
   OVERPASS_UPDATE_FREQUENCY   Update interval in seconds (default: 60)
-  APPLY_OSC_UPDATE_TRIM       Offset added to the update interval when scheduling the next
-                              check; use a negative value to compensate for processing
-                              overhead (default: -3)
 EOF
   exit 1
 fi
@@ -69,14 +66,12 @@ MAX_BATCH_MB=${APPLY_OSC_MAX_BATCH_MB:-512}       # Maximum uncompressed size pe
 MAX_BATCH_TIME=${APPLY_OSC_MAX_BATCH_TIME:-86400} # Maximum time span per batch (1 day = 86400 seconds)
 
 # Update configuration
-UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60} # Frequency of updates in seconds
-UPDATE_TRIM=${APPLY_OSC_UPDATE_TRIM:--3}          # Seconds to adjust expected update time
-
-# Timestamp tracking
-LAST_UPDATE_TIME=                                 # Wall clock time when last update was collected
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}        # Frequency of updates in seconds
+TRIM=$(( (UPDATE_FREQUENCY + 23) / 24 ))                 # Start polling this many seconds before expected update
 
 # Child process tracking
 CHILD_PID=                                        # PID of running migrate_database or update_from_dir processes
+INOTIFY_PID=                                      # PID of running inotifywait process
 
 # Get execution directory
 EXEC_DIR="$(realpath "$(dirname "$0")")"
@@ -113,6 +108,12 @@ echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE"; 
 
 # Working directory for decompressed files (created in main execution section)
 WORK_DIR=
+
+# Detect inotifywait for efficient batch waiting
+USE_INOTIFYWAIT=false
+if command -v inotifywait > /dev/null 2>&1; then
+  USE_INOTIFYWAIT=true
+fi
 
 # ============================================================================
 # CLEANUP
@@ -545,33 +546,6 @@ apply_batch()
 }
 
 # ============================================================================
-# TIMING
-# ============================================================================
-
-calculate_sleep_time()
-{
-  if [[ -z "$LAST_UPDATE_TIME" ]]; then
-    local STARTING_SLEEP=$((UPDATE_FREQUENCY / 12))
-    (( STARTING_SLEEP < 1 )) && STARTING_SLEEP=1
-    echo $STARTING_SLEEP
-    return
-  fi
-
-  local NOW
-  NOW=$(date +%s)
-  local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
-  local SLEEP_TIME=$((NEXT_CHECK - NOW))
-  local MIN_SLEEP=$((UPDATE_FREQUENCY / 60))
-  (( MIN_SLEEP < 1 )) && MIN_SLEEP=1
-
-  if [[ $SLEEP_TIME -lt $MIN_SLEEP ]]; then
-    echo $MIN_SLEEP
-  else
-    echo $SLEEP_TIME
-  fi
-}
-
-# ============================================================================
 # SLEEPING
 # ============================================================================
 
@@ -579,6 +553,87 @@ sleep_with_interrupts()
 {
   sleep "$1" &
   wait $!
+}
+
+# ============================================================================
+# BATCH WAITING
+# ============================================================================
+
+wait_for_batch()
+{
+  local NOW FETCH_MTIME SLEEP_TARGET SLEEP_TIME LOG_INTERVAL ELAPSED INOTIFY_EXIT
+
+  LOG_INTERVAL=$(( UPDATE_FREQUENCY / 6 ))
+  (( LOG_INTERVAL < 1 )) && LOG_INTERVAL=1
+
+  NOW=$(date +%s)
+  FETCH_MTIME=$(stat -c %Y "$REPLICATE_DIR/replicate_id" 2>/dev/null) || FETCH_MTIME=0
+  SLEEP_TARGET=$(( FETCH_MTIME + UPDATE_FREQUENCY - TRIM ))
+  SLEEP_TIME=$(( SLEEP_TARGET - NOW ))
+
+  # Phase 1: initial sleep before update window opens
+  if [[ $SLEEP_TIME -gt 0 ]]; then
+    log_message "Next batch expected at $(date -d "@$SLEEP_TARGET" -u '+%F %T')"
+    if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
+      inotifywait -q -e moved_to --include '^replicate_id$' \
+        --timeout "$SLEEP_TIME" \
+        "$REPLICATE_DIR" > /dev/null &
+      INOTIFY_PID=$!
+      wait "$INOTIFY_PID"
+      INOTIFY_EXIT=$?
+      INOTIFY_PID=
+      if [[ $INOTIFY_EXIT -eq 1 ]]; then
+        log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
+        USE_INOTIFYWAIT=false
+      fi
+    else
+      sleep_with_interrupts "$SLEEP_TIME"
+    fi
+    return 0
+  fi
+
+  # Phase 2: polling window
+  [[ -z "$POLL_START" ]] && POLL_START=$NOW
+  ELAPSED=$(( NOW - POLL_START ))
+
+  if [[ $ELAPSED -ge $((UPDATE_FREQUENCY * 2)) ]]; then
+    log_message "No new batch after ${ELAPSED}s, is fetch_osc.sh running?"
+  elif [[ $ELAPSED -ge $UPDATE_FREQUENCY ]]; then
+    log_message "Next batch is overdue (${ELAPSED}s)"
+  elif [[ $ELAPSED -eq 0 ]]; then
+    log_message "Waiting for next batch"
+  else
+    log_message "Still waiting for next batch (${ELAPSED}s)"
+  fi
+
+  if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
+    inotifywait -q -e moved_to --include '^replicate_id$' \
+      --timeout "$LOG_INTERVAL" \
+      "$REPLICATE_DIR" > /dev/null &
+    INOTIFY_PID=$!
+    wait "$INOTIFY_PID"
+    INOTIFY_EXIT=$?
+    INOTIFY_PID=
+    if [[ $INOTIFY_EXIT -eq 1 ]]; then
+      log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
+      USE_INOTIFYWAIT=false
+    fi
+  else
+    local POLL_INTERVAL PHASE2_START CURRENT_MTIME
+    POLL_INTERVAL=$(( UPDATE_FREQUENCY / 600 ))
+    (( POLL_INTERVAL < 1 )) && POLL_INTERVAL=1
+    PHASE2_START=$(date +%s)
+    while true; do
+      CURRENT_MTIME=$(stat -c %Y "$REPLICATE_DIR/replicate_id" 2>/dev/null) || CURRENT_MTIME=0
+      if [[ "$CURRENT_MTIME" != "$FETCH_MTIME" ]]; then
+        break
+      fi
+      if [[ $(( $(date +%s) - PHASE2_START )) -ge $LOG_INTERVAL ]]; then
+        break
+      fi
+      sleep_with_interrupts "$POLL_INTERVAL"
+    done
+  fi
 }
 
 # ============================================================================
@@ -592,6 +647,13 @@ shutdown()
 
   # Temporarily ignore signals to prevent recursion
   trap '' SIGTERM SIGINT SIGHUP
+
+  # Kill inotifywait if running
+  if [[ -n "$INOTIFY_PID" ]]; then
+    kill "$INOTIFY_PID" 2>/dev/null || true
+    wait "$INOTIFY_PID" 2>/dev/null || true
+    INOTIFY_PID=
+  fi
 
   # Wait for migrate_database or update_from_dir to complete
   if [[ -n "$CHILD_PID" ]]; then
@@ -624,8 +686,12 @@ log_message "OVERPASS_META_MODE                 ${META_ARG#--meta=}"
 log_message "APPLY_OSC_MAX_BATCH_MB             $MAX_BATCH_MB"
 log_message "APPLY_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
 log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
-log_message "APPLY_OSC_UPDATE_TRIM              $UPDATE_TRIM"
 log_message "-----------------------------------"
+if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
+  log_message "Batch wait mode: tracking file updates using inotifywait"
+else
+  log_message "Batch wait mode: timed polling (inotifywait not available)"
+fi
 
 if [[ "$START_ID" == "auto" ]]; then
   CURRENT_ID=$(read_current_state)
@@ -688,19 +754,8 @@ if [[ ! -d "$WORK_DIR" ]]; then
   die 1
 fi
 
-# Seed LAST_UPDATE_TIME from the database version if available, so the initial
-# sleep is based on when the database was last updated rather than a fixed interval
-if [[ -f "$DB_DIR/osm_base_version" ]]; then
-  BASE_VERSION=$(cat "$DB_DIR/osm_base_version" 2>/dev/null)
-  BASE_VERSION="${BASE_VERSION//\\:/:}"
-  BASE_EPOCH=$(date -d "$BASE_VERSION" +%s 2>/dev/null)
-  if [[ "$BASE_EPOCH" =~ ^[0-9]+$ ]]; then
-    LAST_UPDATE_TIME="$BASE_EPOCH"
-    log_message "Seeding update timer from database version: $BASE_VERSION"
-  fi
-fi
-
 START_TIME=$(date +%s)
+POLL_START=
 
 while true; do
   # Try to collect a batch
@@ -709,14 +764,12 @@ while true; do
       log_error "No new files to process after two update cycles. Is fetch_osc.sh running?"
       die 1
     fi
-    SLEEP_TIME=$(calculate_sleep_time)
-    log_message "No new files available, waiting $SLEEP_TIME s"
-    sleep_with_interrupts "$SLEEP_TIME"
+    wait_for_batch
     continue
   fi
 
   START_TIME=
-  LAST_UPDATE_TIME=$(date +%s)
+  POLL_START=
 
   # Prepare processing directory
   PROCESS_DIR="$WORK_DIR/process_$BATCH_END"
