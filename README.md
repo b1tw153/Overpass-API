@@ -122,6 +122,7 @@ OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic
 docker run -d \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint /opt/overpass/bin/download_clone.sh \
+  --no-healthcheck \
   overpass \
   --source="http://dev.overpass-api.de/api_drolbr/" \
   --meta="$OVERPASS_META_MODE"
@@ -162,6 +163,7 @@ OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic
 docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint /opt/overpass/bin/import_osm_data.sh \
+  --no-healthcheck \
   overpass \
   --diff-url="$OVERPASS_DIFF_URL" \
   --data-source="$PLANET_FILE_URL" \
@@ -202,6 +204,7 @@ OVERPASS_META_MODE= # yes|no|attic - include meta data, base data only, or attic
 docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint /opt/overpass/bin/import_osm_data.sh \
+  --no-healthcheck \
   overpass \
   --diff-url="$OVERPASS_DIFF_URL" \
   --data-source="$EXTRACT_FILE_URL" \

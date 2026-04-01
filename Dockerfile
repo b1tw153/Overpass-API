@@ -62,3 +62,6 @@ ENV OVERPASS_LOG_DIR="/opt/overpass/log"
 USER overpass
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/overpass/bin/entrypoint.sh"]
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8080/api/status
