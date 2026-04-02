@@ -710,6 +710,16 @@ check_overpass()
   return 1
 }
 
+is_overpass_process()
+{
+  local pid="$1"
+  local cmdline
+  [[ "$(readlink "/proc/$pid/exe" 2>/dev/null)" == "$EXEC_DIR/"* ]] && return 0
+  cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
+  [[ "$cmdline" == *"$EXEC_DIR/"* ]] && return 0
+  return 1
+}
+
 check_lock_files()
 {
   local LOCK_FILES=("$OVERPASS_DB_DIR/osm_base_shadow.lock")
@@ -723,9 +733,7 @@ check_lock_files()
 
     PID=$(< "$LOCK_FILE")
     if [[ "$PID" =~ ^[1-9][0-9]*$ ]] && kill -0 "$PID" 2>/dev/null; then
-      if [[ "$(readlink "/proc/$PID/exe" 2>/dev/null)" == "$EXEC_DIR/"* ]]; then
-        continue
-      fi
+      is_overpass_process "$PID" && continue
     fi
 
     # PID is absent, dead, or not an Overpass process - wait and recheck
@@ -736,9 +744,7 @@ check_lock_files()
 
     PID=$(< "$LOCK_FILE")
     if [[ "$PID" =~ ^[1-9][0-9]*$ ]] && kill -0 "$PID" 2>/dev/null; then
-      if [[ "$(readlink "/proc/$PID/exe" 2>/dev/null)" == "$EXEC_DIR/"* ]]; then
-        continue
-      fi
+      is_overpass_process "$PID" && continue
     fi
 
     message "ERROR: Orphaned lock file detected: $LOCK_FILE (PID: $PID)"
@@ -757,6 +763,7 @@ generate_logrotate_config()
   cat > "$OVERPASS_DB_DIR/logrotate.conf" <<EOF
 $OVERPASS_DB_DIR/*.log $OVERPASS_DB_DIR/*.out $OVERPASS_DIFF_DIR/*.log $OVERPASS_DIFF_DIR/*.out {
     daily
+    minsize 512k
     missingok
     copytruncate
     rotate 3
@@ -770,6 +777,7 @@ EOF
     cat >> "$OVERPASS_DB_DIR/logrotate.conf" <<EOF
 $OVERPASS_LOG_DIR/*.log {
     daily
+    minsize 512k
     missingok
     copytruncate
     rotate 3
