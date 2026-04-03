@@ -296,7 +296,7 @@ int main(int argc, char* argv[])
           (((std::string)argv[argpos]).substr(26) == "yes" ? 0x1 : 0));
     else if (!(strncmp(argv[argpos], "--limit-client-zero=", 20)))
       bit_limits = ((bit_limits & 0xfffffff3) | 0x8 |
-          (((std::string)argv[argpos]).substr(26) == "yes" ? 0 : 0x1));
+          (((std::string)argv[argpos]).substr(20) == "yes" ? 0 : 0x4));
     else if (!(strncmp(argv[argpos], "--server-name=", 14)))
       server_name = ((std::string)argv[argpos]).substr(14);
     else
