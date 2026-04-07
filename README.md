@@ -42,14 +42,13 @@ This fork improves the project shell scripts to improve performance, resilience,
 
 There are several useful branches in this repo:
 
+* `main`: Main branch for the contiainer build and source code for local builds
 * `master`: Tracks the latest release in the upstream drolbr/Overpass-API repo
-* `drolbr/v0.*`: Track the latest revision/hotfix from [dev.overpass-api.de](https://dev.overpass-api.de/releases/) (not available in the upstream repo)
-* `b1tw153/improve-shell-scripts`: Feature branch with improved scripts
-* `b1tw153/docker`: Feature branch with Docker assets (based on improve-shell-scripts)
+* `release/v0.*`: Track the latest revision/hotfix from [dev.overpass-api.de](https://dev.overpass-api.de/releases/) (not available in the upstream repo)
 
-If you plan to run Overpass directly in the OS, use the `b1tw153/improve-shell-scripts` branch. If you plan to build a container image, use the `b1tw153/docker` branch.
+If you plan to run Overpass directly in the OS or build a container image, use the `main` branch.
 
-If you prefer to build Overpass from the original source, use either the [tarballs from the Overpass release web site](https://dev.overpass-api.de/releases/?C=M;O=D) or the `drolbr/v0.*` branches in this fork.
+If you prefer to build Overpass from the original source, use either the [tarballs from the Overpass release web site](https://dev.overpass-api.de/releases/?C=M;O=D) or the `release/v0.*` branches in this fork.
 
 ## Prerequisites / Requirements
 

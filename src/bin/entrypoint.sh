@@ -10,7 +10,7 @@ message()
   echo "$(date -u '+%F %T'): $1"
 }
 
-FCGIWRAP_WORKERS=${FCGIWRAP_WORKERS:-12}
+FCGIWRAP_WORKERS=${FCGIWRAP_WORKERS:-$(nproc)}
 
 if [[ ! "$FCGIWRAP_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
   message "ERROR: FCGIWRAP_WORKERS must be a positive integer, got: '$FCGIWRAP_WORKERS'"
