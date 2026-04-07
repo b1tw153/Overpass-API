@@ -73,6 +73,7 @@ Environment variables (no argument equivalent):
   DISPATCHER_RATE_LIMIT         Dispatcher rate limit; 0 means unlimited (default: 0)
   DISPATCHER_ALLOW_DUPLICATE_QUERIES
                                 Allow duplicate queries: yes|no (default: yes)
+  DISPATCHER_LIMIT_CLIENT_ZERO  Apply rate limit to local queries: yes|no (default: no)
   
 See usage for fetch_osc.sh, apply_osc_to_db.sh, rules_loop.sh, and backup.sh for
 additional environment variable parameters.
@@ -211,6 +212,7 @@ DISPATCHER_AREAS_SPACE=${DISPATCHER_AREAS_SPACE:-4294967296}
 DISPATCHER_TIME=${DISPATCHER_TIME:-262144}
 DISPATCHER_RATE_LIMIT=${DISPATCHER_RATE_LIMIT:-0}
 DISPATCHER_ALLOW_DUPLICATE_QUERIES=${DISPATCHER_ALLOW_DUPLICATE_QUERIES:-yes}
+DISPATCHER_LIMIT_CLIENT_ZERO=${DISPATCHER_LIMIT_CLIENT_ZERO:-no}
 
 if ! [[ -d "$OVERPASS_SOCKET_DIR" && -w "$OVERPASS_SOCKET_DIR" ]]; then
   message "ERROR: OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
@@ -291,6 +293,12 @@ fi
 
 if [[ "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "yes" && "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "no" ]]; then
   message "ERROR: DISPATCHER_ALLOW_DUPLICATE_QUERIES must be 'yes' or 'no', got: '$DISPATCHER_ALLOW_DUPLICATE_QUERIES'"
+  usage
+  exit 1
+fi
+
+if [[ "$DISPATCHER_LIMIT_CLIENT_ZERO" != "yes" && "$DISPATCHER_LIMIT_CLIENT_ZERO" != "no" ]]; then
+  message "ERROR: DISPATCHER_LIMIT_CLIENT_ZERO must be 'yes' or 'no', got: '$DISPATCHER_LIMIT_CLIENT_ZERO'"
   usage
   exit 1
 fi
@@ -426,6 +434,7 @@ start_base_dispatcher()
     --time="$DISPATCHER_TIME" \
     --rate-limit="$DISPATCHER_RATE_LIMIT" \
     --allow-duplicate-queries="$DISPATCHER_ALLOW_DUPLICATE_QUERIES" \
+    --limit-client-zero="$DISPATCHER_LIMIT_CLIENT_ZERO" \
     >> "$OVERPASS_DB_DIR/base_dispatcher.out" 2>&1 \
     &
   DISPATCHER_BASE_PID=$!
