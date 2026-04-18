@@ -267,7 +267,7 @@ acquire_lock()
     fi
     sleep 0.5
   done
-  log_message "$type lock acquired"
+  log_message "Acquired $type lock"
 }
 
 release_lock()
@@ -290,7 +290,7 @@ release_lock()
     return 1
   fi
   rm -f "$lock_file" || { log_error "release_lock: failed to remove $type lock file '$lock_file'"; return 1; }
-  log_message "$type lock released"
+  log_message "Released $type lock"
 }
 
 # ============================================================================
@@ -506,8 +506,8 @@ while true; do
   release_lock base || shutdown 1
 
   if [[ "$AREAS" == "yes" ]]; then
-    log_message "Backing up area files"
     acquire_lock areas || shutdown 1
+    log_message "Backing up area files"
     # shellcheck disable=SC2086
     copy_files $FILES_AREAS || shutdown 1
     release_lock areas || shutdown 1
