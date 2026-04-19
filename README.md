@@ -7,7 +7,7 @@ This project is a fork of drolbr/Overpass-API which is an API to perform queries
 * [Overpass API Documentation](https://dev.overpass-api.de/)
 * [Overpass Releases](https://dev.overpass-api.de/releases/?C=M;O=D)
 
-Improvements in this fork:
+## Improvements
 
 * More resilient replication downloads using `fetch_osc.sh` or `fetch_osc_and_apply.sh`
 * Safer recovery from uncontrolled shutdowns in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
@@ -35,6 +35,7 @@ Improvements in this fork:
   * Preconfigured with nginx and fcgiwrap
   * External mounts for database, replication, and backup data
   * Control all runtime parameters using environment variables
+* NEW: Container image automatically published to Docker Hub as `b1tw153/overpass-api`
 
 ## Overview
 
