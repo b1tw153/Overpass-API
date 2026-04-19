@@ -42,7 +42,7 @@ This fork improves the project shell scripts to improve performance, resilience,
 
 There are several useful branches in this repo:
 
-* `main`: Main branch for the contiainer build and source code for local builds
+* `main`: Main branch for the container build and source code for local builds
 * `master`: Tracks the latest release in the upstream drolbr/Overpass-API repo
 * `release/v0.*`: Track the latest revision/hotfix from [dev.overpass-api.de](https://dev.overpass-api.de/releases/) (not available in the upstream repo)
 
@@ -58,6 +58,14 @@ The container build in this fork includes all of the necessary software. A conta
 
 ## Installation
 
+### Using the Container Image from Docker Hub
+
+The `main` branch is automatically built and published to Docker Hub as `b1tw153/overpass-api:latest`. You can pull the latest image or a specific version and use the image directly with these instructions:
+
+```bash
+docker pull b1tw153/overpass-api:latest
+```
+
 ### Building Overpass from Source
 
 If you plan to build the Overpass components directly from the source code, there are instructions and guides from several sources:
@@ -71,10 +79,10 @@ If you plan to build the Overpass components directly from the source code, ther
 
 ### Building the Container Image
 
-Start with the `b1tw153/docker` branch. In the repo directory, run:
+Start with the `main` branch. In the repo directory, run:
 
 ```bash
-docker build -t overpass .
+docker build -t b1tw153/overpass-api .
 ```
 
 The build process will compile the source code. This may take 10-20 minutes.
@@ -122,7 +130,7 @@ docker run -d \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint /opt/overpass/bin/download_clone.sh \
   --no-healthcheck \
-  overpass \
+  b1tw153/overpass-api \
   --source="http://dev.overpass-api.de/api_drolbr/" \
   --meta="$OVERPASS_META_MODE"
 ```
@@ -163,7 +171,7 @@ docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint /opt/overpass/bin/import_osm_data.sh \
   --no-healthcheck \
-  overpass \
+  b1tw153/overpass-api \
   --diff-url="$OVERPASS_DIFF_URL" \
   --data-source="$PLANET_FILE_URL" \
   --meta="$OVERPASS_META_MODE"
@@ -204,7 +212,7 @@ docker run -d --rm \
   -v "$OVERPASS_DB_DIR":/opt/overpass/db \
   --entrypoint /opt/overpass/bin/import_osm_data.sh \
   --no-healthcheck \
-  overpass \
+  b1tw153/overpass-api \
   --diff-url="$OVERPASS_DIFF_URL" \
   --data-source="$EXTRACT_FILE_URL" \
   --meta="$OVERPASS_META_MODE"
@@ -249,7 +257,7 @@ docker run -d \
   -e OVERPASS_META_MODE \
   -e OVERPASS_AREAS \
   -p 80:8080 \
-  overpass
+  b1tw153/overpass-api
 ```
 
 Alternatively, you can set the container parameters as environment variables using a .env script or your preferred container orchestration environment. Mount the OVERPASS_DB_DIR and OVERPASS_DIFF_DIR directories to the predefined paths, keep the variables local and leave them unset in the container.
@@ -294,7 +302,7 @@ The Overpass directory structure includes several directories that are populated
 | `test-bin` | Contains executables for testing the Overpass implementation | |
 | `tmp` | (Container Only) Contains temporary files used by nginx | |
 
-If you're building an running Overpass directly from source, most of the non-container directories could be wherever you've installed Overpass. However, the backup directory should be on a separate storage device. The "conventional" directories are typically placed in the same Overpass directory, but can be renamed or moved elsewhere with parameter changes.
+If you're building and running Overpass directly from source, most of the non-container directories could be wherever you've installed Overpass. However, the backup directory should be on a separate storage device. The "conventional" directories are typically placed in the same Overpass directory, but can be renamed or moved elsewhere with parameter changes.
 
 Inside the container, all these directories reside under `/opt/overpass`. The only directories that *must* be mounted from the host are `db` and `backup`, because the data in these directories should be retained. Mounting any of the other data directories from the host is *optional*. You could mount `/opt/overpass/diff` if you'd like easier access to the diff files or the `fetch_osc.log` file. And you could mount `/opt/overpass/log` to get easier access to the nginx logs. But there is little reason to mount `run` or `tmp` directories since this information is not meaningful outside of the container.
 
