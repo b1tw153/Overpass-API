@@ -28,15 +28,15 @@ This project is a fork of drolbr/Overpass-API which is an API to perform queries
   * Performs periodic health checks on processes
   * Runs on bare metal or as a container entrypoint
 * NEW: Automated database initialization from planet and extract files in `import_osm_data.sh`
-  * Supports .osm/.bz2/.pbf data files
-  * Supports torrent downloads (when aria2c is available)
+  * Supports `.osm`/`.bz2`/`.pbf` data files
+  * Supports torrent downloads (when `aria2c` is available)
   * Automatically sets the starting replicate_id from the replication source
 * NEW: Support for container image builds
-  * Minimal base image using debian:bookworm-slim
-  * Preconfigured with nginx and fcgiwrap
+  * Minimal base image using `debian:bookworm-slim`
+  * Preconfigured with `nginx` and `fcgiwrap`
   * External mounts for database, replication, and backup data
   * Control all runtime parameters using environment variables
-* NEW: Container image automatically published to Docker Hub as `b1tw153/overpass-api`
+* NEW: Container image automatically published to Docker Hub as [b1tw153/overpass-api](https://hub.docker.com/repository/docker/b1tw153/overpass-api)
 
 ## Overview
 
@@ -62,7 +62,7 @@ The container build in this fork includes all of the necessary software. A conta
 
 ### Using the Container Image from Docker Hub
 
-The `main` branch is automatically built and published to Docker Hub as `b1tw153/overpass-api:latest`. You can pull the latest image or a specific version and use the image directly with these instructions:
+The `main` branch is automatically built and published to Docker Hub as [`b1tw153/overpass-api:latest`](https://hub.docker.com/r/b1tw153/overpass-api). You can pull the latest image or a specific version and use the image directly with the instructions in this README:
 
 ```bash
 docker pull b1tw153/overpass-api:latest
@@ -143,7 +143,7 @@ The database files are large and the download may take some time, so it's best t
 
 Importing a planet file gives you complete control over the Overpass database and ensures that it starts from a clean data set. The full planet file is very large. Check the current `planet-latest.osm.bz2` file size on [planet.openstreetmap.org](https://planet.openstreetmap.org/planet/) and make sure you have plenty of disk space for *both* the planet file and the Overpass database files. Downloading and importing a full planet file can take a couple of days. Make sure your system can run this task in the background.
 
-The import_osm_data.sh script takes care of downloading the planet file, verifying the MD5 checksum, importing the data, and setting the initial `replicate_id` file based on a chosen replication source. The script supports both HTTP and BitTorrent downloads (if you have aria2c installed), and will import either .osm.bz2 or .pbf files (if you have osmium installed).
+The `import_osm_data.sh` script takes care of downloading the planet file, verifying the MD5 checksum, importing the data, and setting the initial `replicate_id` file based on a chosen replication source. The script supports both HTTP and BitTorrent downloads (if you have aria2c installed), and will import either .osm.bz2 or .pbf files (if you have osmium installed).
 
 If you built Overpass directly from the source code:
 
@@ -268,20 +268,20 @@ Alternatively, you can set the container parameters as environment variables usi
 
 ### Monitoring Overpass
 
-The output from run_osm3s.sh will give you the status of the Overpass executables. There are several executables to watch for:
+The output from `run_osm3s.sh` will give you the status of the Overpass executables. There are several executables to watch for:
 
-* The base dispatcher (dispatcher --osm-base), which controls access to the base, meta, and attic database files
-* The areas dispatcher (dispatcher --areas), which controls access to the area database files
-* fetch_osc.sh, which downloads diff files from the replication source
-* apply_osc_to_db.sh, which unzips the .osc files from the replication source and sends them to update_database
-* update_database, which writes the changes from .osc files to the database (runs only during database updates)
-* rules_loop.sh, which periodically invokes the query to regenerate area data (optional)
-* osm3s_query, which uses a rules file in the database directory to regenerate area data (runs only during area updates)
-* backup.sh, which periodically copies the database files to a backup directory (optional)
+* The base dispatcher (`dispatcher --osm-base`), which controls access to the base, meta, and attic database files
+* The areas dispatcher (`dispatcher --areas`), which controls access to the area database files
+* `fetch_osc.sh`, which downloads diff files from the replication source
+* `apply_osc_to_db.sh`, which unzips the .osc files from the replication source and sends them to update_database
+* `update_database`, which writes the changes from .osc files to the database (runs only during database updates)
+* `rules_loop.sh`, which periodically invokes the query to regenerate area data (optional)
+* `osm3s_query`, which uses a rules file in the database directory to regenerate area data (runs only during area updates)
+* `backup.sh`, which periodically copies the database files to a backup directory (optional)
 
-If any of the core executables stops running, run_osm3s.sh will attempt to cleanly shut down the rest of the system.
+If any of the core executables stops running, `run_osm3s.sh` will attempt to cleanly shut down the rest of the system.
 
-The safest way to shutdown Overpass is to send SIGTERM to run_osm3s.sh. On bare metal, that's `kill "$RUN_OSM3S_PID"`. With the container image, that's `docker stop`. In either case, the run_osm3s.sh script will attempt to stop the components without interrupting the `update_database` process.
+The safest way to shutdown Overpass is to send SIGTERM to `run_osm3s.sh`. On bare metal, that's `kill "$RUN_OSM3S_PID"`. With the container image, that's `docker stop`. In either case, the `run_osm3s.sh` script will attempt to stop the components without interrupting the `update_database` process.
 
 **Use caution when shutting down Overpass.** There is no safe way to interrupt the process of writing to the database. Killing the `update_database` process while it is running will often result in a corrupted database that must be replaced by restoring the files from a backup, downloading a new clone, or importing a new extract or planet file.
 
@@ -325,11 +325,11 @@ Each of the executables produces log files and/or output files that have status 
 
 You can also tail these files to confirm the health of the Overpass system. A healthy Overpass instance will have periodic updates in the `fetch_osc.log` and `apply_osc_to_db.log` files. And the results of the latest area generation and backup will be in the `rules_loop.log` and `backup.log` files.
 
-The run_osm3s.sh script includes automatic log and output file rotation to ensure that the files don't fill the file system.
+The `run_osm3s.sh` script includes automatic log and output file rotation to ensure that the files don't fill the file system.
 
 ### Database Backups
 
-Overpass database backups are optional but *strongly* recommended. Even under the best circumstances, the Overpass database can eventually become corrupted. When this happens, the easiest and fastest way to recover is to restore the database files from a recent backup. To run periodic backups, either `OVERPASS_BACKUP_TIME` or `OVERPASS_BACKUP_DAY` must be set. If neither `OVERPASS_BACKUP_TIME` nor `OVERPASS_BACKUP_DAY` is set, `run_osm3s.sh` will not enable backups.
+Overpass database backups are optional but ***strongly*** recommended. Even under the best circumstances, the Overpass database can eventually become corrupted. When this happens, the easiest and fastest way to recover is to restore the database files from a recent backup. To run periodic backups, either `OVERPASS_BACKUP_TIME` or `OVERPASS_BACKUP_DAY` must be set. If neither `OVERPASS_BACKUP_TIME` nor `OVERPASS_BACKUP_DAY` is set, `run_osm3s.sh` will not enable backups.
 
 To enable periodic backups if you compiled from source code, set the following environment variables:
 
@@ -355,7 +355,7 @@ export OVERPASS_BACKUP_DAY=  # Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or
   #...
 ```
 
-The backup script will pause database updates while the files are being copied.
+The backup script will pause database updates while the database files are being copied.
 
 If you run `backup.sh` manually without setting `OVERPASS_BACKUP_TIME` or `OVERPASS_BACKUP_DAY`, it runs once immediately and exits (one-shot mode) which may be suitable for use with other schedulers like `cron`.
 
