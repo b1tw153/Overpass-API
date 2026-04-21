@@ -114,6 +114,7 @@ USE_INOTIFYWAIT=false
 if command -v inotifywait > /dev/null 2>&1; then
   USE_INOTIFYWAIT=true
 fi
+INOTIFY_WATCHDOG_SLACK=30  # seconds beyond --timeout before declaring inotifywait unreliable
 
 # ============================================================================
 # CLEANUP
@@ -575,9 +576,10 @@ wait_for_batch()
   if [[ $SLEEP_TIME -gt 0 ]]; then
     log_message "Next batch expected at $(date -d "@$SLEEP_TARGET" -u '+%F %T')"
     if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
-      inotifywait -q -e moved_to --include '^replicate_id$' \
-        --timeout "$SLEEP_TIME" \
-        "$REPLICATE_DIR" > /dev/null &
+      timeout "$((SLEEP_TIME + INOTIFY_WATCHDOG_SLACK))" \
+        inotifywait -q -e moved_to --include '^replicate_id$' \
+          --timeout "$SLEEP_TIME" \
+          "$REPLICATE_DIR" > /dev/null &
       INOTIFY_PID=$!
       sleep 0.1
       CURRENT_MTIME=$(stat -c %Y "$REPLICATE_DIR/replicate_id" 2>/dev/null) || CURRENT_MTIME=0
@@ -591,6 +593,9 @@ wait_for_batch()
         INOTIFY_PID=
         if [[ $INOTIFY_EXIT -eq 1 ]]; then
           log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
+          USE_INOTIFYWAIT=false
+        elif [[ $INOTIFY_EXIT -eq 124 ]]; then
+          log_error "inotifywait --timeout is not working, falling back to timed polling"
           USE_INOTIFYWAIT=false
         fi
       fi
@@ -615,9 +620,10 @@ wait_for_batch()
   fi
 
   if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
-    inotifywait -q -e moved_to --include '^replicate_id$' \
-      --timeout "$LOG_INTERVAL" \
-      "$REPLICATE_DIR" > /dev/null &
+    timeout "$((LOG_INTERVAL + INOTIFY_WATCHDOG_SLACK))" \
+      inotifywait -q -e moved_to --include '^replicate_id$' \
+        --timeout "$LOG_INTERVAL" \
+        "$REPLICATE_DIR" > /dev/null &
     INOTIFY_PID=$!
     sleep 0.1
     CURRENT_MTIME=$(stat -c %Y "$REPLICATE_DIR/replicate_id" 2>/dev/null) || CURRENT_MTIME=0
@@ -631,6 +637,9 @@ wait_for_batch()
       INOTIFY_PID=
       if [[ $INOTIFY_EXIT -eq 1 ]]; then
         log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
+        USE_INOTIFYWAIT=false
+      elif [[ $INOTIFY_EXIT -eq 124 ]]; then
+        log_error "inotifywait --timeout is not working, falling back to timed polling"
         USE_INOTIFYWAIT=false
       fi
     fi
