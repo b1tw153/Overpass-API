@@ -574,10 +574,11 @@ wait_for_batch()
 
   # Phase 1: initial sleep before update window opens
   if [[ $SLEEP_TIME -gt 0 ]]; then
-    log_message "Next batch expected at $(date -d "@$SLEEP_TARGET" -u '+%F %T')"
+    log_message "Next batch expected in $SLEEP_TIME seconds at $(date -d "@$SLEEP_TARGET" -u '+%F %T')"
     if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
       timeout "$((SLEEP_TIME + INOTIFY_WATCHDOG_SLACK))" \
-        inotifywait -q -e moved_to --include '^replicate_id$' \
+        inotifywait -q -e moved_to \
+          --include "$REPLICATE_DIR/replicate_id" \
           --timeout "$SLEEP_TIME" \
           "$REPLICATE_DIR" > /dev/null &
       INOTIFY_PID=$!
@@ -595,8 +596,8 @@ wait_for_batch()
           log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
           USE_INOTIFYWAIT=false
         elif [[ $INOTIFY_EXIT -eq 124 ]]; then
-          log_error "inotifywait --timeout is not working, falling back to timed polling"
-          USE_INOTIFYWAIT=false
+          # See https://github.com/inotify-tools/inotify-tools/issues/243
+          log_message "WARNING: Watchdog ended wait period because inotifywait --timeout did not work"
         fi
       fi
     else
@@ -621,7 +622,8 @@ wait_for_batch()
 
   if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
     timeout "$((LOG_INTERVAL + INOTIFY_WATCHDOG_SLACK))" \
-      inotifywait -q -e moved_to --include '^replicate_id$' \
+      inotifywait -q -e moved_to \
+        --include "$REPLICATE_DIR/replicate_id" \
         --timeout "$LOG_INTERVAL" \
         "$REPLICATE_DIR" > /dev/null &
     INOTIFY_PID=$!
@@ -639,8 +641,8 @@ wait_for_batch()
         log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
         USE_INOTIFYWAIT=false
       elif [[ $INOTIFY_EXIT -eq 124 ]]; then
-        log_error "inotifywait --timeout is not working, falling back to timed polling"
-        USE_INOTIFYWAIT=false
+        # See https://github.com/inotify-tools/inotify-tools/issues/243
+        log_message "WARNING: Watchdog ended wait period because inotifywait --timeout did not work"
       fi
     fi
   else
