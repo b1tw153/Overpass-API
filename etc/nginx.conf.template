@@ -25,6 +25,9 @@ http {
 
     gzip on;
 
+    limit_conn_zone $server_name zone=overpass:10m;
+    limit_conn_status 429;
+
     server {
         listen 8080;
 
@@ -32,9 +35,11 @@ http {
         error_log  /opt/overpass/log/nginx_error.log;
 
         location ~ ^/api/(.*)$ {
+            limit_conn overpass ${FCGIWRAP_WORKERS};
+
             fastcgi_pass unix:/opt/overpass/run/fcgiwrap.socket;
             fastcgi_param SCRIPT_FILENAME /opt/overpass/cgi-bin/$1;
-            fastcgi_read_timeout 600s;
+            fastcgi_read_timeout ${NGINX_FASTCGI_TIMEOUT}s;
             send_timeout 60s;
             include fastcgi_params;
         }

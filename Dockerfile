@@ -34,6 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     fcgiwrap \
+    gettext-base \
     inotify-tools \
     libexpat1 \
     liblz4-1 \
@@ -49,7 +50,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && useradd -u 10001 -g 10001 -m -s /bin/bash overpass \
     && chown -R overpass:overpass /opt/overpass
 
-COPY etc/nginx.conf /etc/nginx/nginx.conf
+COPY etc/nginx.conf.template /etc/nginx/nginx.conf.template
+RUN chown overpass:overpass /etc/nginx/nginx.conf.template \
+    && chown overpass:overpass /etc/nginx/nginx.conf
 
 ENV OVERPASS_DB_DIR="/opt/overpass/db"
 
