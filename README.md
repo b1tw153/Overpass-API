@@ -58,6 +58,47 @@ See the [basic system requirements](https://wiki.openstreetmap.org/wiki/Overpass
 
 The container build in this fork includes all of the necessary software. A container management or orchestration system such as Docker Compose or Kubernetes is recommended.
 
+## Resource Sizing
+
+### Disk
+
+The Overpass database is significantly larger than the source file. For a full planet import, expect roughly 4-5× expansion from the compressed `.osm.bz` file to the database. Check the current planet file size on [planet.openstreetmap.org](https://planet.openstreetmap.org/planet/) before provisioning storage.
+
+Approximate full planet database sizes by metadata mode as of Q2 2026:
+
+| Mode | Database Size |
+| -- | -- |
+| `attic` (full history) | ~750 GiB |
+| `meta` (latest metadata) | ~365 GiB |
+| `no` (base data only) | ~270 GiB |
+
+Note: the OpenStreetMap planet has grown significantly over time. Figures from older documentation will be substantially lower than current reality.
+
+For extracts, the database will be proportionally smaller, but the expansion ratio from source to database is similar. Check the size of your chosen extract file and apply a 4-5× multiplier as a planning estimate. Note that most extract sources do not include full history, so `attic` mode is generally not available for extracts; `meta` mode is typical.
+
+If you enable backups, the backup directory will mirror the database size. Account for this in your storage planning — ideally on a separate storage device.
+
+The diff directory is small and transient. Under normal operation with replication keeping up, it stays well under 1 GiB.
+
+**Use fast SSDs.** Overpass query performance is heavily dependent on random I/O. Slow disks will significantly degrade query response times under any meaningful load.
+
+### CPU
+
+The container runs one fcgiwrap worker per CPU core by default (`FCGIWRAP_WORKERS` defaults to `nproc`). Each worker handles one concurrent query. Provision CPU cores based on your expected concurrent query load. A single core is sufficient for light personal use; a public-facing instance benefits from more cores to handle concurrent requests without queuing or rate limiting.
+
+### Memory
+
+Baseline memory usage at idle is negligible — under 50 MiB regardless of database size. Memory pressure comes from query load: each running query allocates memory for result sets and database buffer caches, and complex queries against a full planet database can consume several GiB.
+
+The container automatically sets the dispatcher memory limit to 80% of the container memory limit, leaving headroom for OS overhead and the gap between the dispatcher's logical accounting and actual physical memory usage. (You can override this by setting `DISPATCHER_BASE_SPACE`.) Set your container memory limit based on your expected query workload and monitor actual usage under load to tune it. As a starting point:
+
+* A minimal development instance with a small extract can run with 1-2 GiB
+* A lightly loaded personal instance can run with 4-8 GiB
+* A moderately loaded instance with complex queries benefits from 16-32 GiB
+* A heavily loaded public instance may need 64 GiB or more
+
+Set the container memory limit explicitly — for example, with `docker run --memory=16g`. Without a memory limit, the container can consume all available host memory under heavy query load.
+
 ## Installation
 
 ### Using the Container Image from Docker Hub

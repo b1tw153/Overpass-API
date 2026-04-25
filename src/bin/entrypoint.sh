@@ -17,6 +17,25 @@ if [[ ! "$FCGIWRAP_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
+export FCGIWRAP_WORKERS
+
+NGINX_FASTCGI_TIMEOUT=${NGINX_FASTCGI_TIMEOUT:-300}
+
+if [[ ! "$NGINX_FASTCGI_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: NGINX_FASTCGI_TIMEOUT must be a positive integer, got: '$NGINX_FASTCGI_TIMEOUT'"
+  exit 1
+fi
+
+export NGINX_FASTCGI_TIMEOUT
+
+if [[ -z "${DISPATCHER_BASE_SPACE:-}" ]]; then
+  CGROUP_MEMORY_MAX=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)
+  if [[ "$CGROUP_MEMORY_MAX" =~ ^[0-9]+$ ]]; then
+    DISPATCHER_BASE_SPACE=$(( CGROUP_MEMORY_MAX * 4 / 5 ))
+    export DISPATCHER_BASE_SPACE
+  fi
+fi
+
 # ============================================================================
 # SIGNAL HANDLER
 # ============================================================================
@@ -87,6 +106,9 @@ message "Starting fcgi"
 rm -f /opt/overpass/run/fcgiwrap.socket
 fcgiwrap -s unix:/opt/overpass/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" &
 FCGI_PID=$!
+
+# Render nginx config from template
+envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # Start nginx
 message "Starting nginx"
