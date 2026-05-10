@@ -297,10 +297,22 @@ release_lock()
 # SIGNAL HANDLING
 # ============================================================================
 
+RSYNC_PID=
+
+stop_rsync()
+{
+  if [[ -n "$RSYNC_PID" ]]; then
+    kill "$RSYNC_PID" 2>/dev/null || true
+    wait "$RSYNC_PID" 2>/dev/null || true
+    RSYNC_PID=
+  fi
+}
+
 shutdown()
 {
   local EXIT_CODE=$1
   trap '' SIGTERM SIGINT SIGHUP
+  stop_rsync
   stop_tickle
   for lock_file in "$DB_DIR/osm_base_shadow.lock" "$DB_DIR/areas_shadow.lock"; do
     local pid_in_file
@@ -394,8 +406,11 @@ copy_files()
   for f in "$@"; do
     files+=("$DB_DIR/$f")
   done
-  timeout "$BACKUP_TIMEOUT" rsync -a --ignore-missing-args "${files[@]}" "$BACKUP_DIR/"
+  timeout "$BACKUP_TIMEOUT" rsync -a --ignore-missing-args "${files[@]}" "$BACKUP_DIR/" &
+  RSYNC_PID=$!
+  wait "$RSYNC_PID"
   exit_code=$?
+  RSYNC_PID=
   if [[ $exit_code -eq 124 ]]; then
     log_error "rsync timed out after ${BACKUP_TIMEOUT}s"
     return 1
