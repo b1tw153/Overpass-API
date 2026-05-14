@@ -106,6 +106,7 @@ message "Starting fcgi"
 rm -f /opt/overpass/run/fcgiwrap.socket
 fcgiwrap -s unix:/opt/overpass/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" &
 FCGI_PID=$!
+echo "$FCGI_PID" > /opt/overpass/run/fcgiwrap.pid
 
 # Render nginx config from template
 envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
