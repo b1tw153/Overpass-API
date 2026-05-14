@@ -278,7 +278,7 @@ if [[ -n "$DB_DIR" ]]; then
 
     APPLY_LOG="$DB_DIR/apply_osc_to_db.log"
     if [[ -f "$APPLY_LOG" ]]; then
-        LAST_APPLY=$(read_log "$APPLY_LOG" | grep \1 | tail -1 || true)
+        LAST_APPLY=$(read_log "$APPLY_LOG" | grep "Successfully applied batch up to" | tail -1 || true)
         if [[ -n "$LAST_APPLY" ]]; then
             LAST_APPLY_TIME=$(echo "$LAST_APPLY" | awk '{print $1, substr($2, 1, length($2)-1)}')
             LAST_APPLY_ID=$(echo "$LAST_APPLY" | grep -o '[0-9]*$')
