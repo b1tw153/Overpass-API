@@ -260,7 +260,7 @@ cleanup_old_files()
     DIGIT1=$(basename "$DIR1")
 
     # Skip if this top-level directory is beyond our threshold
-    if [[ $DIGIT1 -gt $THRESHOLD_DIGIT1 ]]; then
+    if [[ "$DIGIT1" > "$THRESHOLD_DIGIT1" ]]; then
       continue
     fi
 
@@ -274,7 +274,7 @@ cleanup_old_files()
       DIGIT2=$(basename "$DIR2")
 
       # Skip if this directory path is beyond our threshold
-      if [[ $DIGIT1 -eq $THRESHOLD_DIGIT1 && $DIGIT2 -gt $THRESHOLD_DIGIT2 ]]; then
+      if [[ "$DIGIT1" == "$THRESHOLD_DIGIT1" && "$DIGIT2" > "$THRESHOLD_DIGIT2" ]]; then
         continue
       fi
 
