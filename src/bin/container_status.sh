@@ -18,11 +18,13 @@
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
 # ============================================================================
-# Script: container-status.sh
+# Script: container_status.sh
 # Purpose: Reports on the operational status of the Overpass API container.
 #          Outputs plain text. Designed to be served via nginx at
-#          /container-status using fcgiwrap.
+#          /container_status using fcgiwrap.
 # ============================================================================
+
+# TODO: Sort status messages in each section so replicate_id, timestamps, phase, and child process status are in consistent order
 
 set -euo pipefail
 
@@ -39,6 +41,7 @@ printf 'Status report: %s UTC\n' "$(date -u '+%Y-%m-%d %H:%M:%S')"
 
 SEPARATOR="-----------------------------------"
 
+# TODO: Rename to begin_section and add end_section
 section() {
     printf '\n%s\n%s\n%s\n' "$SEPARATOR" "$1" "$SEPARATOR"
 }
@@ -46,6 +49,8 @@ section() {
 kv() {
     printf '%-35s %s\n' "$1" "$2"
 }
+
+# TODO: Add variants of kv() to handle list values and object values
 
 pid_status() {
     local pid="$1"
@@ -214,7 +219,6 @@ fi
 
 if [[ -n "$DB_DIR" ]]; then
     kv "osm_base lock" "$(lock_status "$DB_DIR/osm_base_shadow.lock")"
-    kv "areas lock" "$(lock_status "$DB_DIR/areas_shadow.lock")"
 
     if [[ -f "$DB_DIR/nodes_attic.bin" || -f "$DB_DIR/node_changelog.bin" || -f "$DB_DIR/ways_attic.bin" ]]; then
         kv "database type" "attic"
@@ -230,6 +234,8 @@ if [[ -n "$DB_DIR" ]]; then
     kv "replicate_id" "${REPLICATE_ID:-unknown}"
 fi
 
+# TODO: Check base dispatcher socket in /opt/overpass/db/osm3s_osm_base
+
 # ============================================================================
 # AREAS DISPATCHER
 # ============================================================================
@@ -243,6 +249,8 @@ else
 fi
 
 if [[ -n "$DB_DIR" ]]; then
+    kv "areas lock" "$(lock_status "$DB_DIR/areas_shadow.lock")"
+
     area_files=(
         areas.bin areas.bin.idx
         area_blocks.bin area_blocks.bin.idx
@@ -265,6 +273,8 @@ if [[ -n "$DB_DIR" ]]; then
     fi
     [[ -n "$AREA_VERSION" ]] && kv "area version" "$AREA_VERSION" || true
 fi
+
+# TODO: Check areas dispatcher socket in /opt/overpass/db/osm3s_areas
 
 # ============================================================================
 # APPLY_OSC_TO_DB
@@ -316,6 +326,8 @@ if [[ -n "$DB_DIR" ]]; then
     UPDATE_PID=$(find_proc_pid "update_from_dir")
     kv "update_from_dir" "$(pid_status "${UPDATE_PID:-}")"
 fi
+
+# TODO: Add update frequency and standard deviation
 
 # ============================================================================
 # FETCH_OSC
@@ -374,6 +386,8 @@ elif [[ -n "$WGET_PID" ]]; then
 else
     kv "download" "not running"
 fi
+
+# TODO: Add download frequency and standard deviation
 
 # ============================================================================
 # BACKUP
@@ -448,6 +462,18 @@ if [[ -n "$DB_DIR" ]]; then
 fi
 
 # ============================================================================
+# LOG ROTATION
+# ============================================================================
+
+# TODO: Report last log rotation and total sizes of .log* and .out* files
+
+# ============================================================================
+# clean_osc.sh
+# ============================================================================
+
+# TODO: Report last clean_osc.sh run time and results; report diff directory size
+
+# ============================================================================
 # INTERPRETER
 # ============================================================================
 
@@ -477,3 +503,5 @@ kv "memory" "$(awk '/^MemTotal:/ {total=$2} /^MemAvailable:/ {avail=$2} END {
     printf "%.1fG used / %.1fG total\n", used/1048576, total/1048576
 }' /proc/meminfo)"
 kv "load average" "$(awk '{printf "1m: %s  5m: %s  15m: %s\n", $1, $2, $3}' /proc/loadavg)"
+
+# TODO: Report directory sizes in addition to file system usage

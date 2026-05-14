@@ -44,6 +44,7 @@ bin_convenience =
 bin_script_convenience = \
   bin/backup.sh \
   bin/clean_osc.sh \
+  bin/container_status.sh \
   bin/fetch_osc_and_apply.sh \
   bin/import_osm_data.sh \
   bin/init_osm3s.sh \
