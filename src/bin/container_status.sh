@@ -24,7 +24,7 @@
 #          /container_status using fcgiwrap.
 # ============================================================================
 
-# TODO: Sort status messages in each section so replicate_id, timestamps, phase, and child process status are in consistent order
+# TODO: refactor output so that it uses kv and variants in ways that permit json output
 
 set -euo pipefail
 
@@ -35,6 +35,8 @@ EXEC_DIR="$(realpath "$(dirname "$0")")"
 
 printf 'Status report: %s UTC\n' "$(date -u '+%Y-%m-%d %H:%M:%S')"
 
+# TODO: Parse command line options and/or CGI params to determine text/json output mode
+
 # ============================================================================
 # HELPERS
 # ============================================================================
@@ -42,15 +44,18 @@ printf 'Status report: %s UTC\n' "$(date -u '+%Y-%m-%d %H:%M:%S')"
 SEPARATOR="-----------------------------------"
 
 # TODO: Rename to begin_section and add end_section
+# TODO: Switch section output based on text/json output mode
 section() {
     printf '\n%s\n%s\n%s\n' "$SEPARATOR" "$1" "$SEPARATOR"
 }
 
+# TODO: Switch kv output based on text/json output mode
 kv() {
     printf '%-35s %s\n' "$1" "$2"
 }
 
 # TODO: Add variants of kv() to handle list values and object values
+# TODO: Switch kv variant output based on text/json output mode
 
 pid_status() {
     local pid="$1"
@@ -61,6 +66,24 @@ pid_status() {
     else
         echo "dead (stale pid $pid)"
     fi
+}
+
+socket_status() {
+    local path="$1"
+    if [[ ! -S "$path" ]]; then
+        echo "missing"
+        return
+    fi
+    local norm_path
+    norm_path=$(realpath "$path")
+    local ss_path
+    while IFS= read -r ss_path; do
+        if [[ "$(realpath "$ss_path" 2>/dev/null)" == "$norm_path" ]]; then
+            echo "live"
+            return
+        fi
+    done < <(ss -lx 2>/dev/null | awk '{print $5}' | grep -v '^*$')
+    echo "stale"
 }
 
 read_log() {
@@ -232,9 +255,8 @@ if [[ -n "$DB_DIR" ]]; then
 
     REPLICATE_ID=$(cat "$DB_DIR/replicate_id" 2>/dev/null || true)
     kv "replicate_id" "${REPLICATE_ID:-unknown}"
+    kv "socket" "$(socket_status "$DB_DIR/osm3s_osm_base")"
 fi
-
-# TODO: Check base dispatcher socket in /opt/overpass/db/osm3s_osm_base
 
 # ============================================================================
 # AREAS DISPATCHER
@@ -261,7 +283,7 @@ if [[ -n "$DB_DIR" ]]; then
     area_present=0
     area_total=${#area_files[@]}
     for f in "${area_files[@]}"; do
-        [[ -f "$DB_DIR/$f" ]] && (( area_present++ )) || true
+        if [[ -f "$DB_DIR/$f" ]]; then (( area_present++ )) || true; fi
     done
     AREA_VERSION=$(cat "$DB_DIR/area_version" 2>/dev/null || true)
     if (( area_present == area_total )); then
@@ -271,10 +293,9 @@ if [[ -n "$DB_DIR" ]]; then
     else
         kv "area files" "partial ($area_present/$area_total)"
     fi
-    [[ -n "$AREA_VERSION" ]] && kv "area version" "$AREA_VERSION" || true
+    if [[ -n "$AREA_VERSION" ]]; then kv "area version" "$AREA_VERSION"; fi
+    kv "socket" "$(socket_status "$DB_DIR/osm3s_areas")"
 fi
-
-# TODO: Check areas dispatcher socket in /opt/overpass/db/osm3s_areas
 
 # ============================================================================
 # APPLY_OSC_TO_DB
@@ -292,8 +313,8 @@ if [[ -n "$DB_DIR" ]]; then
         if [[ -n "$LAST_APPLY" ]]; then
             LAST_APPLY_TIME=$(echo "$LAST_APPLY" | awk '{print $1, substr($2, 1, length($2)-1)}')
             LAST_APPLY_ID=$(echo "$LAST_APPLY" | grep -o '[0-9]*$')
-            kv "last update" "$LAST_APPLY_TIME"
             kv "last replicate_id" "$LAST_APPLY_ID"
+            kv "last update" "$LAST_APPLY_TIME"
         else
             kv "last update" "not found in log"
         fi
@@ -319,6 +340,44 @@ if [[ -n "$DB_DIR" ]]; then
             fi
             kv "phase" "$PHASE"
         fi
+        INTERVAL_STATS=$(read_log "$APPLY_LOG" | awk '
+            function to_epoch(date, time,    d, t, y, mo, dy, hr, mn, sc, days, i, mdays) {
+                split(date, d, "-"); split(time, t, ":")
+                y = d[1]+0; mo = d[2]+0; dy = d[3]+0
+                hr = t[1]+0; mn = t[2]+0; sc = t[3]+0
+                split("31 28 31 30 31 30 31 31 30 31 30 31", mdays, " ")
+                if ((y%4==0 && y%100!=0) || y%400==0) mdays[2] = 29
+                days = (y-1970)*365
+                for (i=1970; i<y; i++)
+                    if ((i%4==0 && i%100!=0) || i%400==0) days++
+                for (i=1; i<mo; i++) days += mdays[i]
+                return (days + dy - 1) * 86400 + hr*3600 + mn*60 + sc
+            }
+            /Successfully applied batch up to/ {
+                gsub(/:$/, "", $2)
+                e = to_epoch($1, $2)
+                if (prev > 0) {
+                    interval = e - prev
+                    sum += interval
+                    sumsq += interval * interval
+                    n++
+                }
+                prev = e
+            }
+            END {
+                if (n < 2) { print "insufficient data"; exit }
+                mean = sum / n
+                variance = sumsq/n - mean*mean
+                stddev = variance > 0 ? sqrt(variance) : 0
+                if (mean >= 3600)
+                    printf "%.1fh avg  +/-%.1fm  (%d samples)\n", mean/3600, stddev/60, n
+                else if (mean >= 60)
+                    printf "%.1fm avg  +/-%ds  (%d samples)\n", mean/60, int(stddev), n
+                else
+                    printf "%ds avg  +/-%ds  (%d samples)\n", int(mean), int(stddev), n
+            }
+        ' || true)
+        [[ -n "$INTERVAL_STATS" ]] && kv "update interval" "$INTERVAL_STATS"
     else
         kv "log" "not found"
     fi
@@ -326,8 +385,6 @@ if [[ -n "$DB_DIR" ]]; then
     UPDATE_PID=$(find_proc_pid "update_from_dir")
     kv "update_from_dir" "$(pid_status "${UPDATE_PID:-}")"
 fi
-
-# TODO: Add update frequency and standard deviation
 
 # ============================================================================
 # FETCH_OSC
@@ -369,13 +426,48 @@ if [[ -f "$FETCH_LOG" ]]; then
         fi
         kv "phase" "$PHASE"
     fi
+
+    INTERVAL_STATS=$(read_log "$FETCH_LOG" | awk '
+        function to_epoch(date, time,    d, t, y, mo, dy, hr, mn, sc, days, i, mdays) {
+            split(date, d, "-"); split(time, t, ":")
+            y = d[1]+0; mo = d[2]+0; dy = d[3]+0
+            hr = t[1]+0; mn = t[2]+0; sc = t[3]+0
+            split("31 28 31 30 31 30 31 31 30 31 30 31", mdays, " ")
+            if ((y%4==0 && y%100!=0) || y%400==0) mdays[2] = 29
+            days = (y-1970)*365
+            for (i=1970; i<y; i++)
+                if ((i%4==0 && i%100!=0) || i%400==0) days++
+            for (i=1; i<mo; i++) days += mdays[i]
+            return (days + dy - 1) * 86400 + hr*3600 + mn*60 + sc
+        }
+        /Downloaded/ {
+            gsub(/:$/, "", $2)
+            e = to_epoch($1, $2)
+            if (prev > 0) {
+                interval = e - prev
+                sum += interval
+                sumsq += interval * interval
+                n++
+            }
+            prev = e
+        }
+        END {
+            if (n < 2) { print "insufficient data"; exit }
+            mean = sum / n
+            variance = sumsq/n - mean*mean
+            stddev = variance > 0 ? sqrt(variance) : 0
+            if (mean >= 3600)
+                printf "%.1fh avg  +/-%.1fm  (%d samples)\n", mean/3600, stddev/60, n
+            else if (mean >= 60)
+                printf "%.1fm avg  +/-%ds  (%d samples)\n", mean/60, int(stddev), n
+            else
+                printf "%ds avg  +/-%ds  (%d samples)\n", int(mean), int(stddev), n
+        }
+    ' || true)
+    [[ -n "$INTERVAL_STATS" ]] && kv "download interval" "$INTERVAL_STATS"
 else
     kv "log" "not found"
 fi
-
-OSC_COUNT=$(find "$DIFF_DIR" -name "*.osc.gz" 2>/dev/null | wc -l)
-OSC_SIZE=$(du -sh "$DIFF_DIR" 2>/dev/null | awk '{print $1}')
-kv "diff cache" "$OSC_COUNT files  ($OSC_SIZE)"
 
 CURL_PID=$(find_proc_pid "curl")
 WGET_PID=$(find_proc_pid "wget")
@@ -386,8 +478,6 @@ elif [[ -n "$WGET_PID" ]]; then
 else
     kv "download" "not running"
 fi
-
-# TODO: Add download frequency and standard deviation
 
 # ============================================================================
 # BACKUP
@@ -431,9 +521,6 @@ section "rules_loop.sh"
 RULES_PID=$(find_proc_pid "rules_loop.sh")
 kv "status" "$(pid_status "${RULES_PID:-}")"
 
-QUERY_PID=$(find_proc_pid "osm3s_query")
-kv "osm3s_query" "$(pid_status "${QUERY_PID:-}")"
-
 if [[ -n "$DB_DIR" ]]; then
     RULES_LOG="$DB_DIR/rules_loop.log"
     if [[ -f "$RULES_LOG" ]]; then
@@ -461,17 +548,63 @@ if [[ -n "$DB_DIR" ]]; then
     fi
 fi
 
+QUERY_PID=$(find_proc_pid "osm3s_query")
+kv "osm3s_query" "$(pid_status "${QUERY_PID:-}")"
+
 # ============================================================================
 # LOG ROTATION
 # ============================================================================
 
-# TODO: Report last log rotation and total sizes of .log* and .out* files
+section "Log Rotation"
+
+LAST_ROTATION_EPOCH=0
+LAST_ROTATION="unknown"
+while IFS= read -r f; do
+    ctime=$(stat -c %Z "$f" 2>/dev/null) || continue
+    if (( ctime > LAST_ROTATION_EPOCH )); then
+        LAST_ROTATION_EPOCH=$ctime
+        LAST_ROTATION=$(date -d "@$ctime" -u '+%Y-%m-%d %H:%M:%S')
+    fi
+done < <(find /opt/overpass -maxdepth 2 \( -name "*.log.1" -o -name "*.out.1" \) -type f 2>/dev/null)
+kv "last rotation" "$LAST_ROTATION"
+
+LOG_SIZE=$(find /opt/overpass -maxdepth 2 -name "*.log*" -type f -print0 2>/dev/null \
+    | xargs -r -0 stat -c %s 2>/dev/null \
+    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}')
+kv "log files (.log*)" "${LOG_SIZE:-0}"
+
+OUT_SIZE=$(find /opt/overpass -maxdepth 2 -name "*.out*" -type f -print0 2>/dev/null \
+    | xargs -r -0 stat -c %s 2>/dev/null \
+    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}')
+kv "out files (.out*)" "${OUT_SIZE:-0}"
 
 # ============================================================================
 # clean_osc.sh
 # ============================================================================
 
-# TODO: Report last clean_osc.sh run time and results; report diff directory size
+section "clean_osc.sh"
+
+CLEAN_PID=$(find_proc_pid "clean_osc.sh")
+kv "status" "$(pid_status "${CLEAN_PID:-}")"
+
+CLEAN_LOG="$DIFF_DIR/clean_osc.out"
+if [[ -f "$CLEAN_LOG" ]]; then
+    LAST_RUN=$(read_log "$CLEAN_LOG" | grep "Starting Cleanup Process" | tail -1 || true)
+    if [[ -n "$LAST_RUN" ]]; then
+        kv "last run" "$(echo "$LAST_RUN" | awk '{print $1, substr($2, 1, length($2)-1)}')"
+    fi
+
+    LAST_RESULT=$(read_log "$CLEAN_LOG" | grep -E "Cleaned up|No files needed cleaning|nothing to clean" | tail -1 || true)
+    if [[ -n "$LAST_RESULT" ]]; then
+        kv "last result" "${LAST_RESULT##*: }"
+    fi
+else
+    kv "log" "not found"
+fi
+
+OSC_COUNT=$(find "$DIFF_DIR" -name "*.osc.gz" 2>/dev/null | wc -l)
+OSC_SIZE=$(du -sh "$DIFF_DIR" 2>/dev/null | awk '{print $1}')
+kv "diff cache" "$OSC_COUNT files  ($OSC_SIZE)"
 
 # ============================================================================
 # INTERPRETER
@@ -495,13 +628,20 @@ done
 
 section "Host"
 
+printf 'file systems\n'
 while IFS= read -r mountpoint; do
     kv "$mountpoint" "$(df -h "$mountpoint" 2>/dev/null | awk 'NR==2 {print $3 " used / " $2 " total (" $5 " full)"}')"
 done < <(awk '$2 ~ /^\/opt\/overpass\// {print $2}' /proc/mounts | sort)
+
+printf '\ndirectories\n'
+for dir in /opt/overpass/backup /opt/overpass/db /opt/overpass/diff /opt/overpass/log /opt/overpass/run; do
+    [[ -d "$dir" ]] || continue
+    kv "$dir" "$(du -sh "$dir" 2>/dev/null | awk '{print $1}')"
+done
+
+printf '\n'
 kv "memory" "$(awk '/^MemTotal:/ {total=$2} /^MemAvailable:/ {avail=$2} END {
     used = total - avail
     printf "%.1fG used / %.1fG total\n", used/1048576, total/1048576
 }' /proc/meminfo)"
 kv "load average" "$(awk '{printf "1m: %s  5m: %s  15m: %s\n", $1, $2, $3}' /proc/loadavg)"
-
-# TODO: Report directory sizes in addition to file system usage
