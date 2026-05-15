@@ -24,38 +24,107 @@
 #          /container_status using fcgiwrap.
 # ============================================================================
 
-# TODO: refactor output so that it uses kv and variants in ways that permit json output
-
 set -euo pipefail
 
 EXEC_DIR="$(realpath "$(dirname "$0")")"
 
+# ============================================================================
+# ARGUMENT PARSING
+# ============================================================================
+
+FORMAT=$(printf '%s' "${QUERY_STRING:-}" | tr '[:upper:]' '[:lower:]' | tr '&' '\n' \
+    | grep '^format=' | cut -d= -f2 | head -1 || true)
+FORMAT="${FORMAT:-text}"
+
+PARSED=$(getopt --options '' --longoptions 'format:' --name "$0" -- "$@") \
+    || { printf 'Usage: %s [--format=text|json]\n' "$0" >&2; exit 1; }
+eval set -- "$PARSED"
+
+while true; do
+    case "$1" in
+        --format) FORMAT=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]'); shift 2 ;;
+        --) shift; break ;;
+    esac
+done
+
+if [[ "$FORMAT" != "text" && "$FORMAT" != "json" ]]; then
+    printf 'Error: unknown format %q (expected text or json)\n' "$FORMAT" >&2
+    exit 1
+fi
+
 # CGI header (omit when running interactively)
-[[ -t 1 ]] || printf 'Content-Type: text/plain\r\n\r\n'
+if [[ ! -t 1 ]]; then
+    if [[ "$FORMAT" == "json" ]]; then
+        printf 'Content-Type: application/json\r\n\r\n'
+    else
+        printf 'Content-Type: text/plain\r\n\r\n'
+    fi
+fi
 
-printf 'Status report: %s UTC\n' "$(date -u '+%Y-%m-%d %H:%M:%S')"
-
-# TODO: Parse command line options and/or CGI params to determine text/json output mode
+REPORT_TIME="$(date -u '+%Y-%m-%d %H:%M:%S') UTC"
 
 # ============================================================================
 # HELPERS
 # ============================================================================
 
 SEPARATOR="-----------------------------------"
+DEPTH=0
+declare -a _JSON_COMMA=()
 
-# TODO: Rename to begin_section and add end_section
-# TODO: Switch section output based on text/json output mode
-section() {
-    printf '\n%s\n%s\n%s\n' "$SEPARATOR" "$1" "$SEPARATOR"
+json_escape() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    s="${s//$'\n'/\\n}"
+    s="${s//$'\r'/\\r}"
+    s="${s//$'\t'/\\t}"
+    printf '%s' "$s"
 }
 
-# TODO: Switch kv output based on text/json output mode
+begin_section() {
+    local name="$1"
+    if [[ "$FORMAT" == "json" ]]; then
+        if [[ "${_JSON_COMMA[$DEPTH]:-0}" == "1" ]]; then printf ','; fi
+        printf '\n%*s"%s":\n%*s{' $(( DEPTH * 2 )) '' "$(json_escape "$name")" $(( DEPTH * 2 )) ''
+        _JSON_COMMA[$DEPTH]=1
+        DEPTH=$(( DEPTH + 1 ))
+        _JSON_COMMA[$DEPTH]=0
+    else
+        if (( DEPTH == 0 )); then
+            printf '\n%s\n%s\n%s\n' "$SEPARATOR" "$name" "$SEPARATOR"
+        else
+            printf '\n%s\n' "$name"
+        fi
+        DEPTH=$(( DEPTH + 1 ))
+    fi
+}
+
+end_section() {
+    if [[ "$FORMAT" == "json" ]]; then
+        printf '\n'
+        DEPTH=$(( DEPTH - 1 ))
+        printf '%*s}' $(( DEPTH * 2 )) ''
+        _JSON_COMMA[$DEPTH]=1
+    else
+        DEPTH=$(( DEPTH - 1 ))
+    fi
+}
+
 kv() {
-    printf '%-35s %s\n' "$1" "$2"
+    local key="$1" val="$2"
+    if [[ "$FORMAT" == "json" ]]; then
+        if [[ "${_JSON_COMMA[$DEPTH]:-0}" == "1" ]]; then printf ','; fi
+        printf '\n%*s"%s": "%s"' $(( DEPTH * 2 )) '' "$(json_escape "$key")" "$(json_escape "$val")"
+        _JSON_COMMA[$DEPTH]=1
+    else
+        local indent=$(( (DEPTH - 1) * 2 ))
+        if (( indent > 0 )); then
+            printf '%*s%-*s %s\n' "$indent" '' $(( 34 - indent )) "$key" "$val"
+        else
+            printf '%-34s %s\n' "$key" "$val"
+        fi
+    fi
 }
-
-# TODO: Add variants of kv() to handle list values and object values
-# TODO: Switch kv variant output based on text/json output mode
 
 pid_status() {
     local pid="$1"
@@ -149,10 +218,23 @@ proc_stats() {
 }
 
 # ============================================================================
+# DOCUMENT
+# ============================================================================
+
+if [[ "$FORMAT" == "json" ]]; then
+    printf '{'
+    DEPTH=1
+    _JSON_COMMA[1]=0
+    kv "Status report" "$REPORT_TIME"
+else
+    printf 'Status report: %s\n' "$REPORT_TIME"
+fi
+
+# ============================================================================
 # NGINX / FCGIWRAP
 # ============================================================================
 
-section "nginx / fcgiwrap"
+begin_section "nginx / fcgiwrap"
 
 NGINX_PID_FILE=/opt/overpass/run/nginx.pid
 FCGI_PID_FILE=/opt/overpass/run/fcgiwrap.pid
@@ -181,38 +263,51 @@ else
 fi
 
 if [[ -f "$ACCESS_LOG" ]]; then
-    kv "requests" "$(awk '
+    begin_section "requests"
+    while IFS=$'\t' read -r key val; do
+        kv "$key" "$val"
+    done < <(awk '
+        function clf_to_iso(d,    parts, months, m) {
+            gsub(/^\[/, "", d)
+            split(d, parts, /[\/:]/)
+            split("Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec", months)
+            for (m = 1; m <= 12; m++)
+                if (months[m] == parts[2]) break
+            return parts[3] "-" sprintf("%02d", m) "-" sprintf("%02d", parts[1]+0) \
+                   " " parts[4] ":" parts[5] ":" parts[6]
+        }
         NF >= 9 {
             total++
+            counts[$9]++
             if (total == 1) first = $4
             last = $4
         }
         END {
-            if (total == 0) {
-                print "0"
-            } else {
-                gsub(/^\[/, "", first)
-                gsub(/^\[/, "", last)
-                printf "%d  (%s to %s)\n", total, first, last
+            n = 0
+            for (code in counts) codes[++n] = code
+            for (i = 2; i <= n; i++) {
+                c = codes[i]; j = i - 1
+                while (j >= 1 && codes[j] > c) { codes[j+1] = codes[j]; j-- }
+                codes[j+1] = c
             }
+            for (i = 1; i <= n; i++)
+                print "HTTP " codes[i] "\t" counts[codes[i]]
+            print "total\t" total
+            print "interval\t" clf_to_iso(first) " to " clf_to_iso(last)
         }
-    ' "$ACCESS_LOG")"
-    awk '
-        NF >= 9 { counts[$9]++ }
-        END {
-            for (code in counts)
-                printf "%-35s %d\n", "  HTTP " code, counts[code]
-        }
-    ' "$ACCESS_LOG" | sort
+    ' "$ACCESS_LOG")
+    end_section
 else
     kv "access log" "not found"
 fi
+
+end_section
 
 # ============================================================================
 # BASE DISPATCHER / DATABASE
 # ============================================================================
 
-section "Base Dispatcher"
+begin_section "Base Dispatcher"
 
 lock_status() {
     local lock_file="$1"
@@ -258,11 +353,13 @@ if [[ -n "$DB_DIR" ]]; then
     kv "socket" "$(socket_status "$DB_DIR/osm3s_osm_base")"
 fi
 
+end_section
+
 # ============================================================================
 # AREAS DISPATCHER
 # ============================================================================
 
-section "Areas Dispatcher"
+begin_section "Areas Dispatcher"
 
 if "$EXEC_DIR/dispatcher" --areas --show-dir > /dev/null 2>&1; then
     kv "status" "running"
@@ -297,11 +394,13 @@ if [[ -n "$DB_DIR" ]]; then
     kv "socket" "$(socket_status "$DB_DIR/osm3s_areas")"
 fi
 
+end_section
+
 # ============================================================================
 # APPLY_OSC_TO_DB
 # ============================================================================
 
-section "apply_osc_to_db.sh"
+begin_section "apply_osc_to_db.sh"
 
 if [[ -n "$DB_DIR" ]]; then
     APPLY_PID=$(cat "$DB_DIR/apply_osc.pid" 2>/dev/null || true)
@@ -386,11 +485,13 @@ if [[ -n "$DB_DIR" ]]; then
     kv "update_from_dir" "$(pid_status "${UPDATE_PID:-}")"
 fi
 
+end_section
+
 # ============================================================================
 # FETCH_OSC
 # ============================================================================
 
-section "fetch_osc.sh"
+begin_section "fetch_osc.sh"
 
 FETCH_PID=$(find_proc_pid "fetch_osc.sh")
 kv "status" "$(pid_status "${FETCH_PID:-}")"
@@ -479,11 +580,13 @@ else
     kv "download" "not running"
 fi
 
+end_section
+
 # ============================================================================
 # BACKUP
 # ============================================================================
 
-section "backup.sh"
+begin_section "backup.sh"
 
 BACKUP_PID=$(find_proc_pid "backup.sh")
 kv "status" "$(pid_status "${BACKUP_PID:-}")"
@@ -512,11 +615,13 @@ if [[ -n "$DB_DIR" ]]; then
     fi
 fi
 
+end_section
+
 # ============================================================================
 # RULES LOOP
 # ============================================================================
 
-section "rules_loop.sh"
+begin_section "rules_loop.sh"
 
 RULES_PID=$(find_proc_pid "rules_loop.sh")
 kv "status" "$(pid_status "${RULES_PID:-}")"
@@ -551,11 +656,13 @@ fi
 QUERY_PID=$(find_proc_pid "osm3s_query")
 kv "osm3s_query" "$(pid_status "${QUERY_PID:-}")"
 
+end_section
+
 # ============================================================================
 # LOG ROTATION
 # ============================================================================
 
-section "Log Rotation"
+begin_section "Log Rotation"
 
 LAST_ROTATION_EPOCH=0
 LAST_ROTATION="unknown"
@@ -578,11 +685,13 @@ OUT_SIZE=$(find /opt/overpass -maxdepth 2 -name "*.out*" -type f -print0 2>/dev/
     | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}')
 kv "out files (.out*)" "${OUT_SIZE:-0}"
 
+end_section
+
 # ============================================================================
 # clean_osc.sh
 # ============================================================================
 
-section "clean_osc.sh"
+begin_section "clean_osc.sh"
 
 CLEAN_PID=$(find_proc_pid "clean_osc.sh")
 kv "status" "$(pid_status "${CLEAN_PID:-}")"
@@ -606,11 +715,13 @@ OSC_COUNT=$(find "$DIFF_DIR" -name "*.osc.gz" 2>/dev/null | wc -l)
 OSC_SIZE=$(du -sh "$DIFF_DIR" 2>/dev/null | awk '{print $1}')
 kv "diff cache" "$OSC_COUNT files  ($OSC_SIZE)"
 
+end_section
+
 # ============================================================================
 # INTERPRETER
 # ============================================================================
 
-section "interpreter"
+begin_section "interpreter"
 
 RATE_LIMIT=$(curl -sf http://127.0.0.1:8080/api/status 2>/dev/null | awk '/^Rate limit:/ {print $3}' || true)
 kv "rate limit" "${RATE_LIMIT:-unavailable}"
@@ -618,30 +729,39 @@ kv "rate limit" "${RATE_LIMIT:-unavailable}"
 mapfile -t QUERY_PIDS < <(find_all_proc_pids "osm3s_query")
 kv "running queries" "${#QUERY_PIDS[@]}"
 for pid in "${QUERY_PIDS[@]}"; do
-    printf '  %s\n' "$(proc_stats "$pid")"
+    kv "query $pid" "$(proc_stats "$pid")"
 done
+
+end_section
 
 
 # ============================================================================
 # HOST
 # ============================================================================
 
-section "Host"
+begin_section "Host"
 
-printf 'file systems\n'
+begin_section "file systems"
 while IFS= read -r mountpoint; do
     kv "$mountpoint" "$(df -h "$mountpoint" 2>/dev/null | awk 'NR==2 {print $3 " used / " $2 " total (" $5 " full)"}')"
 done < <(awk '$2 ~ /^\/opt\/overpass\// {print $2}' /proc/mounts | sort)
+end_section
 
-printf '\ndirectories\n'
+begin_section "directories"
 for dir in /opt/overpass/backup /opt/overpass/db /opt/overpass/diff /opt/overpass/log /opt/overpass/run; do
     [[ -d "$dir" ]] || continue
     kv "$dir" "$(du -sh "$dir" 2>/dev/null | awk '{print $1}')"
 done
+end_section
 
-printf '\n'
 kv "memory" "$(awk '/^MemTotal:/ {total=$2} /^MemAvailable:/ {avail=$2} END {
     used = total - avail
     printf "%.1fG used / %.1fG total\n", used/1048576, total/1048576
 }' /proc/meminfo)"
 kv "load average" "$(awk '{printf "1m: %s  5m: %s  15m: %s\n", $1, $2, $3}' /proc/loadavg)"
+
+end_section
+
+if [[ "$FORMAT" == "json" ]]; then
+    printf '\n}\n'
+fi
