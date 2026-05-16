@@ -591,17 +591,6 @@ begin_section "backup.sh"
 BACKUP_PID=$(find_proc_pid "backup.sh")
 kv "status" "$(pid_status "${BACKUP_PID:-}")"
 
-RSYNC_PID=$(find_proc_pid "rsync")
-kv "rsync" "$(pid_status "${RSYNC_PID:-}")"
-
-if [[ -n "$BACKUP_PID" ]]; then
-    if [[ -n "$RSYNC_PID" ]]; then
-        kv "phase" "backing up"
-    else
-        kv "phase" "sleeping"
-    fi
-fi
-
 if [[ -n "$DB_DIR" ]]; then
     BACKUP_LOG="$DB_DIR/backup.log"
     if [[ -f "$BACKUP_LOG" ]]; then
@@ -614,6 +603,17 @@ if [[ -n "$DB_DIR" ]]; then
         kv "log" "not found"
     fi
 fi
+
+if [[ -n "$BACKUP_PID" ]]; then
+    if [[ -n "$RSYNC_PID" ]]; then
+        kv "phase" "backing up"
+    else
+        kv "phase" "sleeping"
+    fi
+fi
+
+RSYNC_PID=$(find_proc_pid "rsync")
+kv "rsync" "$(pid_status "${RSYNC_PID:-}")"
 
 end_section
 
