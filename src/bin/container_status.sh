@@ -604,6 +604,8 @@ if [[ -n "$DB_DIR" ]]; then
     fi
 fi
 
+RSYNC_PID=$(find_proc_pid "rsync")
+
 if [[ -n "$BACKUP_PID" ]]; then
     if [[ -n "$RSYNC_PID" ]]; then
         kv "phase" "backing up"
@@ -612,7 +614,6 @@ if [[ -n "$BACKUP_PID" ]]; then
     fi
 fi
 
-RSYNC_PID=$(find_proc_pid "rsync")
 kv "rsync" "$(pid_status "${RSYNC_PID:-}")"
 
 end_section
