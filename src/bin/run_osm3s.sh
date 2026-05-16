@@ -74,7 +74,10 @@ Environment variables (no argument equivalent):
   DISPATCHER_ALLOW_DUPLICATE_QUERIES
                                 Allow duplicate queries: yes|no (default: yes)
   DISPATCHER_LIMIT_CLIENT_ZERO  Apply rate limit to local queries: yes|no (default: no)
-  
+  OVERPASS_MIN_FREE_DISK_PERCENT
+                                Minimum free disk space on the log filesystem as a percentage;
+                                Overpass shuts down if the threshold is not met (default: 5)
+
 See usage for fetch_osc.sh, apply_osc_to_db.sh, rules_loop.sh, and backup.sh for
 additional environment variable parameters.
 EOF
@@ -299,6 +302,13 @@ fi
 
 if [[ "$DISPATCHER_LIMIT_CLIENT_ZERO" != "yes" && "$DISPATCHER_LIMIT_CLIENT_ZERO" != "no" ]]; then
   message "ERROR: DISPATCHER_LIMIT_CLIENT_ZERO must be 'yes' or 'no', got: '$DISPATCHER_LIMIT_CLIENT_ZERO'"
+  usage
+  exit 1
+fi
+
+MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+  message "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
   usage
   exit 1
 fi
@@ -763,6 +773,20 @@ check_lock_files()
   return 0
 }
 
+check_disk_space()
+{
+  [[ -z "$OVERPASS_LOG_DIR" ]] && return 0
+
+  local USED_PCT FREE_PCT
+  USED_PCT=$(df --output=pcent "$OVERPASS_LOG_DIR" | tail -1 | tr -d ' %')
+  FREE_PCT=$(( 100 - USED_PCT ))
+  if [[ $FREE_PCT -lt $MIN_FREE_DISK_PERCENT ]]; then
+    message "ERROR: Insufficient free disk space on log filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
+    return 1
+  fi
+  return 0
+}
+
 # ============================================================================
 # LOG ROTATION
 # ============================================================================
@@ -839,6 +863,7 @@ message "DISPATCHER_AREAS_SPACE             ~$((DISPATCHER_AREAS_SPACE / 1048576
 message "DISPATCHER_TIME                    $DISPATCHER_TIME seconds"
 message "DISPATCHER_RATE_LIMIT              $DISPATCHER_RATE_LIMIT"
 message "DISPATCHER_ALLOW_DUPLICATE_QUERIES $DISPATCHER_ALLOW_DUPLICATE_QUERIES"
+message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 message "-----------------------------------"
 
 validate_meta_mode
@@ -934,6 +959,12 @@ while true; do
 
   if ! check_overpass; then
     message "ERROR: Health check failed, shutting down"
+    stop_overpass
+    exit 1
+  fi
+
+  if ! check_disk_space; then
+    message "ERROR: Disk space check failed, shutting down"
     stop_overpass
     exit 1
   fi

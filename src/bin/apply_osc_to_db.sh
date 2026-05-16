@@ -33,9 +33,11 @@ Usage: $0 diff_dir replicate_id --meta=(attic|yes|no)
   --meta          Metadata handling mode (attic=full history, yes=metadata, no=current only)
 
 Environment variables:
-  APPLY_OSC_MAX_BATCH_MB      Maximum uncompressed size per batch in MB (default: 512)
-  APPLY_OSC_MAX_BATCH_TIME    Maximum time span per batch in seconds (default: 86400)
-  OVERPASS_UPDATE_FREQUENCY   Update interval in seconds (default: 60)
+  APPLY_OSC_MAX_BATCH_MB             Maximum uncompressed size per batch in MB (default: 512)
+  APPLY_OSC_MAX_BATCH_TIME           Maximum time span per batch in seconds (default: 86400)
+  OVERPASS_UPDATE_FREQUENCY          Update interval in seconds (default: 60)
+  OVERPASS_MIN_FREE_DISK_PERCENT     Minimum free disk space on the database filesystem as a
+                                     percentage; updates halt if the threshold is not met (default: 5)
 EOF
   exit 1
 fi
@@ -64,6 +66,13 @@ fi
 # Batch configuration
 MAX_BATCH_MB=${APPLY_OSC_MAX_BATCH_MB:-512}       # Maximum uncompressed size per batch (MB)
 MAX_BATCH_TIME=${APPLY_OSC_MAX_BATCH_TIME:-86400} # Maximum time span per batch (1 day = 86400 seconds)
+
+# Disk space configuration
+MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+  echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
+  exit 1
+fi
 
 # Update configuration
 UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}        # Frequency of updates in seconds
@@ -664,6 +673,21 @@ wait_for_batch()
 }
 
 # ============================================================================
+# DISK SPACE CHECK
+# ============================================================================
+
+check_db_disk_space()
+{
+  local USED_PCT FREE_PCT
+  USED_PCT=$(df --output=pcent "$DB_DIR" | tail -1 | tr -d ' %')
+  FREE_PCT=$(( 100 - USED_PCT ))
+  if [[ $FREE_PCT -lt $MIN_FREE_DISK_PERCENT ]]; then
+    log_error "Insufficient free disk space on database filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
+    die 1
+  fi
+}
+
+# ============================================================================
 # SIGNAL HANDLERS
 # ============================================================================
 
@@ -713,6 +737,7 @@ log_message "OVERPASS_META_MODE                 ${META_ARG#--meta=}"
 log_message "APPLY_OSC_MAX_BATCH_MB             $MAX_BATCH_MB"
 log_message "APPLY_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
 log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
+log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 log_message "-----------------------------------"
 if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
   log_message "Batch wait mode: tracking file updates using inotifywait"
@@ -785,6 +810,8 @@ START_TIME=$(date +%s)
 POLL_START=
 
 while true; do
+  check_db_disk_space
+
   # Try to collect a batch
   if ! collect_batch "$CURRENT_ID"; then
     if [[ -n "$START_TIME" && $(date +%s) -gt $((START_TIME + UPDATE_FREQUENCY * 2)) ]]; then

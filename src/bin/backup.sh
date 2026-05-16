@@ -39,6 +39,9 @@ Environment variables (overridden by arguments):
   OVERPASS_BACKUP_TIMEOUT     Rsync timeout in seconds (default: 7200)
   OVERPASS_UPDATE_FREQUENCY   Update interval in seconds; used to tickle replicate_id
                               while the lock is held (default: 60)
+  OVERPASS_MIN_FREE_DISK_PERCENT
+                              Headroom added to the estimated space needed for backup,
+                              as a percentage; backup is skipped if not met (default: 5)
 EOF
 }
 
@@ -112,6 +115,7 @@ LOG_FILE="$DB_DIR/backup.log"
 # Backup timeout (seconds)
 BACKUP_TIMEOUT=${OVERPASS_BACKUP_TIMEOUT:-7200}      # 2 hours
 UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
+MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 BACKUP_TIME=${ARG_TIME:-${OVERPASS_BACKUP_TIME:-}}
 BACKUP_DAY=${ARG_DAY:-${OVERPASS_BACKUP_DAY:-}}
 BACKUP_DAY="${BACKUP_DAY^^}"
@@ -139,6 +143,11 @@ fi
 
 if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'"
+  exit 1
+fi
+
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+  echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
   exit 1
 fi
 
@@ -421,6 +430,33 @@ copy_files()
 }
 
 # ============================================================================
+# DISK SPACE CHECK
+# ============================================================================
+
+check_backup_disk_space()
+{
+  local DB_SIZE BACKUP_SIZE LARGEST_FILE DELTA THRESHOLD FREE_BYTES
+
+  DB_SIZE=$(du -sb "$DB_DIR" | cut -f1)
+  BACKUP_SIZE=$(du -sb "$BACKUP_DIR" | cut -f1)
+  LARGEST_FILE=$(find "$DB_DIR" -maxdepth 1 -type f -printf '%s\n' 2>/dev/null | sort -n | tail -1)
+  LARGEST_FILE=${LARGEST_FILE:-0}
+
+  DELTA=$(( DB_SIZE - BACKUP_SIZE ))
+  (( DELTA < 0 )) && DELTA=0
+
+  THRESHOLD=$(( (DELTA + LARGEST_FILE) * (100 + MIN_FREE_DISK_PERCENT) / 100 ))
+
+  FREE_BYTES=$(df --output=avail -B1 "$BACKUP_DIR" | tail -1 | tr -d ' ')
+
+  if [[ $FREE_BYTES -lt $THRESHOLD ]]; then
+    log_error "Insufficient free disk space on backup filesystem: ${FREE_BYTES} bytes free (minimum: ${THRESHOLD} bytes)"
+    return 1
+  fi
+  return 0
+}
+
+# ============================================================================
 # SLEEP
 # ============================================================================
 
@@ -475,6 +511,7 @@ log_message "BACKUP_TIME                        ${BACKUP_TIME:-(not set, one-sho
 log_message "BACKUP_DAY                         ${BACKUP_DAY:-(not set)}"
 log_message "BACKUP_TIMEOUT                     $BACKUP_TIMEOUT seconds"
 log_message "UPDATE_FREQUENCY                   $UPDATE_FREQUENCY seconds"
+log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 log_message "-----------------------------------"
 
 # ============================================================================
@@ -494,6 +531,10 @@ while true; do
 
   META_STATE=$(detect_database_meta_state) \
     || { log_error "Database not initialized (missing base files)"; exit 1; }
+
+  if ! check_backup_disk_space; then
+    exit 1
+  fi
 
   log_message "Backup started (meta=$META_STATE, areas=$AREAS)"
 

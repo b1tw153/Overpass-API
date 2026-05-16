@@ -44,8 +44,10 @@ Environment variables:
   FETCH_OSC_PARALLEL_MAX        Maximum parallel connections for batch downloads (default: 4)
   FETCH_OSC_PARALLEL_MODE       Batch download mode: "immediate" or "multiplexed"
                                 (default: multiplexed)
-  FETCH_OSC_SPEED_LIMIT         Minimum download speed in bytes/sec; 0 to disable (default: 1024)
-  FETCH_OSC_SPEED_TIME          Time in seconds over which to check minimum speed (default: 30)
+  FETCH_OSC_SPEED_LIMIT             Minimum download speed in bytes/sec; 0 to disable (default: 1024)
+  FETCH_OSC_SPEED_TIME              Time in seconds over which to check minimum speed (default: 30)
+  OVERPASS_MIN_FREE_DISK_PERCENT    Minimum free disk space on the diff filesystem as a percentage;
+                                    downloads halt if the threshold is not met (default: 5)
 
 EOF
   exit 1
@@ -118,6 +120,9 @@ PARALLEL_MAX=${FETCH_OSC_PARALLEL_MAX:-4}               # Maximum parallel conne
 PARALLEL_MODE=${FETCH_OSC_PARALLEL_MODE:-"multiplexed"} # Either "immediate" or "multiplexed"
 SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}              # Minimum download speed in bytes/sec
 SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}                  # Time in seconds to check for speed limit
+
+# Disk space configuration
+MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
 SOURCE_VERIFIED=false  # Flag to track if source URL has been verified
 
@@ -264,6 +269,12 @@ verify_globals()
 
   if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
     MESSAGE="Invalid SPEED_TIME: $SPEED_TIME"
+    log_error "$MESSAGE"
+    exit 1
+  fi
+
+  if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+    MESSAGE="Invalid OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (must be an integer from 0 to 99)"
     log_error "$MESSAGE"
     exit 1
   fi
@@ -620,6 +631,21 @@ update_fetch_state()
 }
 
 # ============================================================================
+# DISK SPACE CHECK
+# ============================================================================
+
+check_diff_disk_space()
+{
+  local USED_PCT FREE_PCT
+  USED_PCT=$(df --output=pcent "$LOCAL_DIR" | tail -1 | tr -d ' %')
+  FREE_PCT=$(( 100 - USED_PCT ))
+  if [[ $FREE_PCT -lt $MIN_FREE_DISK_PERCENT ]]; then
+    log_error "Insufficient free disk space on diff filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
+    exit 1
+  fi
+}
+
+# ============================================================================
 # SIGNAL HANDLERS
 # ============================================================================
 
@@ -663,6 +689,7 @@ log_message "FETCH_OSC_PARALLEL_MAX             $PARALLEL_MAX"
 log_message "FETCH_OSC_PARALLEL_MODE            $PARALLEL_MODE"
 log_message "FETCH_OSC_SPEED_LIMIT              $SPEED_LIMIT"
 log_message "FETCH_OSC_SPEED_TIME               $SPEED_TIME"
+log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 log_message "-----------------------------------"
 
 if [[ "$START_ID" == "auto" ]]; then
@@ -691,6 +718,8 @@ else
 fi
 
 while true; do
+  check_diff_disk_space
+
   if ! get_latest_available_id; then
     log_error "Cannot initialize - replication source unreachable or invalid"
     exit 1
