@@ -642,12 +642,12 @@ stop_backup()
 
 stop_overpass()
 {
-  stop_backup
-  stop_rules_loop
-  stop_fetch_osc
   stop_apply_osc
+  stop_fetch_osc
+  stop_rules_loop
   stop_areas_dispatcher
   stop_base_dispatcher
+  stop_backup
 }
 
 # ============================================================================
