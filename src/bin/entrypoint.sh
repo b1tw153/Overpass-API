@@ -3,6 +3,8 @@
 # Entrypoint script for containers
 #
 
+GO_ZOMBIE=false
+
 EXEC_DIR="$(realpath "$(dirname "$0")")"
 
 message()
@@ -75,7 +77,15 @@ shutdown()
   FCGI_PID=
 
   message "Shutdown complete"
-  exit "$EXIT_CODE"
+  if $GO_ZOMBIE; then
+    GO_ZOMBIE=false
+    while true; do
+      sleep 60 &
+      wait $!
+    done
+  else
+    exit "$EXIT_CODE"
+  fi
 }
 
 trap 'shutdown 143 "SIGTERM received"' SIGTERM
@@ -128,9 +138,9 @@ while true; do
   EXIT_CODE="$?"
 
   case "$EXITED_PID" in
-    "$FCGI_PID")  EXITED_CHILD="fcgiwrap"; break ;;
-    "$NGINX_PID") EXITED_CHILD="nginx"; break ;;
-    "$OSM3S_PID") EXITED_CHILD="Overpass"; break ;;
+    "$FCGI_PID")  EXITED_CHILD="fcgiwrap"; GO_ZOMBIE=true; break ;;
+    "$NGINX_PID") EXITED_CHILD="nginx";    GO_ZOMBIE=true; break ;;
+    "$OSM3S_PID") EXITED_CHILD="Overpass"; GO_ZOMBIE=true; break ;;
   esac
 done
 
