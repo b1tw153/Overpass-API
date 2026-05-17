@@ -69,10 +69,6 @@ MAX_BATCH_TIME=${APPLY_OSC_MAX_BATCH_TIME:-86400} # Maximum time span per batch 
 
 # Disk space configuration
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
-  echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
-  exit 1
-fi
 
 # Update configuration
 UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}        # Frequency of updates in seconds
@@ -164,6 +160,39 @@ log_error()
 }
 
 # ============================================================================
+# GLOBAL VALIDATION
+# ============================================================================
+
+verify_globals()
+{
+  local MESSAGE
+
+  if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
+    MESSAGE="Invalid OVERPASS_UPDATE_FREQUENCY: $UPDATE_FREQUENCY (must be a positive integer)"
+    log_error "$MESSAGE"
+    exit 1
+  fi
+
+  if [[ ! "$MAX_BATCH_MB" =~ ^[1-9][0-9]*$ ]]; then
+    MESSAGE="Invalid APPLY_OSC_MAX_BATCH_MB: $MAX_BATCH_MB (must be a positive integer)"
+    log_error "$MESSAGE"
+    exit 1
+  fi
+
+  if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]*$ ]]; then
+    MESSAGE="Invalid APPLY_OSC_MAX_BATCH_TIME: $MAX_BATCH_TIME (must be a positive integer)"
+    log_error "$MESSAGE"
+    exit 1
+  fi
+
+  if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+    MESSAGE="Invalid OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (must be an integer from 0 to 99)"
+    log_error "$MESSAGE"
+    exit 1
+  fi
+}
+
+# ============================================================================
 # DATABASE STATE DETECTION
 # ============================================================================
 
@@ -201,8 +230,7 @@ validate_meta_mode()
 
   # Detect actual database state
   local DB_STATE
-  DB_STATE=$(detect_database_meta_state)
-  if [[ $? -ne 0 ]]; then
+  if ! DB_STATE=$(detect_database_meta_state); then
     log_message "WARNING: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
     log_message "The database may not be properly initialized"
     return 0
@@ -497,7 +525,7 @@ apply_batch()
   local MAX_RETRIES=5
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" $META --flush-size=0 &
+    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" ${META:+"$META"} --flush-size=0 &
     CHILD_PID="$!"
     wait "$CHILD_PID"
     local EXIT_CODE=$?
@@ -728,6 +756,8 @@ trap 'shutdown 129' SIGHUP
 # MAIN EXECUTION
 # ============================================================================
 
+verify_globals
+
 log_message "-----------------------------------"
 log_message "Starting Apply Process ($0)"
 log_message "-----------------------------------"
@@ -746,8 +776,7 @@ else
 fi
 
 if [[ "$START_ID" == "auto" ]]; then
-  CURRENT_ID=$(read_current_state)
-  if [[ $? -ne 0 ]]; then
+  if ! CURRENT_ID=$(read_current_state); then
     log_error "$STATE_FILE does not exist and start set to auto"
     log_error "Auto mode requires an existing replicate_id to resume from"
     log_error "Use an explicit replicate ID to specify the starting point"
