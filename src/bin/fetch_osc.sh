@@ -34,21 +34,20 @@ Usage: $0 replicate_id diff_url diff_dir [sleep]
   sleep          (Optional, ignored - kept for compatibility)
 
 Environment variables:
-  OVERPASS_UPDATE_FREQUENCY     Update interval in seconds: 60, 3600, or 86400 (default: 60)
-  FETCH_OSC_MAX_BATCH_SIZE      Maximum number of OSC files per batch download (default: 360)
-  FETCH_OSC_MAX_BATCH_TIME      Maximum time span of a batch in seconds (default: 86400)
-  FETCH_OSC_MAX_RETRIES         Maximum download attempts per file before giving up (default: 20)
-  FETCH_OSC_RETRY_DELAY         Seconds between retry attempts (default: 15)
-  FETCH_OSC_CONNECT_TIMEOUT     Connection timeout in seconds (default: 30)
-  FETCH_OSC_KEEPALIVE_TIME      Seconds to keep idle connections alive (default: 20)
-  FETCH_OSC_PARALLEL_MAX        Maximum parallel connections for batch downloads (default: 4)
-  FETCH_OSC_PARALLEL_MODE       Batch download mode: "immediate" or "multiplexed"
-                                (default: multiplexed)
-  FETCH_OSC_SPEED_LIMIT             Minimum download speed in bytes/sec; 0 to disable (default: 1024)
-  FETCH_OSC_SPEED_TIME              Time in seconds over which to check minimum speed (default: 30)
-  OVERPASS_MIN_FREE_DISK_PERCENT    Minimum free disk space on the diff filesystem as a percentage;
-                                    downloads halt if the threshold is not met (default: 5)
-
+  OVERPASS_UPDATE_FREQUENCY        Update interval in seconds: 60, 3600, or 86400 (default: 60)
+  OVERPASS_MIN_FREE_DISK_PERCENT   Minimum free disk space on the diff filesystem as a percentage;
+                                   downloads halt if the threshold is not met (default: 5)
+  FETCH_OSC_MAX_BATCH_SIZE         Maximum number of OSC files per batch download (default: 360)
+  FETCH_OSC_MAX_BATCH_TIME         Maximum time span of a batch in seconds (default: 86400)
+  FETCH_OSC_MAX_RETRIES            Maximum download attempts per file before giving up (default: 20)
+  FETCH_OSC_RETRY_DELAY            Seconds between retry attempts (default: 15)
+  FETCH_OSC_CONNECT_TIMEOUT        Connection timeout in seconds (default: 30)
+  FETCH_OSC_KEEPALIVE_TIME         Seconds to keep idle connections alive (default: 20)
+  FETCH_OSC_PARALLEL_MAX           Maximum parallel connections for batch downloads (default: 4)
+  FETCH_OSC_PARALLEL_MODE          Batch download mode: "immediate" or "multiplexed"
+                                   (default: multiplexed)
+  FETCH_OSC_SPEED_LIMIT            Minimum download speed in bytes/sec; 0 to disable (default: 1024)
+  FETCH_OSC_SPEED_TIME             Time in seconds over which to check minimum speed (default: 30)
 EOF
   exit 1
 fi
@@ -679,6 +678,7 @@ log_message "OVERPASS_REPLICATE_ID              $START_ID"
 log_message "OVERPASS_DIFF_URL                  $SOURCE_URL"
 log_message "OVERPASS_DIFF_DIR                  $LOCAL_DIR"
 log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
+log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 log_message "FETCH_OSC_MAX_BATCH_SIZE           $MAX_BATCH_SIZE"
 log_message "FETCH_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
 log_message "FETCH_OSC_MAX_RETRIES              $MAX_RETRIES"
@@ -689,7 +689,6 @@ log_message "FETCH_OSC_PARALLEL_MAX             $PARALLEL_MAX"
 log_message "FETCH_OSC_PARALLEL_MODE            $PARALLEL_MODE"
 log_message "FETCH_OSC_SPEED_LIMIT              $SPEED_LIMIT"
 log_message "FETCH_OSC_SPEED_TIME               $SPEED_TIME"
-log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 log_message "-----------------------------------"
 
 if [[ "$START_ID" == "auto" ]]; then

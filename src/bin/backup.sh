@@ -34,14 +34,13 @@ Usage: $0 [--time HH:MM] [--day DAY] backup_dir
                     implies --time 00:00 if --time is not specified
 
 Environment variables (overridden by arguments):
-  OVERPASS_BACKUP_TIME        Same as --time
-  OVERPASS_BACKUP_DAY         Same as --day
-  OVERPASS_BACKUP_TIMEOUT     Rsync timeout in seconds (default: 7200)
-  OVERPASS_UPDATE_FREQUENCY   Update interval in seconds; used to tickle replicate_id
-                              while the lock is held (default: 60)
-  OVERPASS_MIN_FREE_DISK_PERCENT
-                              Headroom added to the estimated space needed for backup,
-                              as a percentage; backup is skipped if not met (default: 5)
+  OVERPASS_BACKUP_TIME             Same as --time
+  OVERPASS_BACKUP_DAY              Same as --day
+  OVERPASS_BACKUP_TIMEOUT          Rsync timeout in seconds (default: 7200)
+  OVERPASS_UPDATE_FREQUENCY        Update interval in seconds; used to tickle replicate_id
+                                   while the lock is held (default: 60)
+  OVERPASS_MIN_FREE_DISK_PERCENT   Headroom added to the estimated space needed for backup,
+                                   as a percentage; backup is skipped if not met (default: 5)
 EOF
 }
 
@@ -507,10 +506,10 @@ log_message "-----------------------------------"
 log_message "Starting backup.sh"
 log_message "-----------------------------------"
 log_message "BACKUP_DIR                         $BACKUP_DIR"
-log_message "BACKUP_TIME                        ${BACKUP_TIME:-(not set, one-shot mode)}"
-log_message "BACKUP_DAY                         ${BACKUP_DAY:-(not set)}"
-log_message "BACKUP_TIMEOUT                     $BACKUP_TIMEOUT seconds"
-log_message "UPDATE_FREQUENCY                   $UPDATE_FREQUENCY seconds"
+log_message "OVERPASS_BACKUP_TIME               ${BACKUP_TIME:-(not set, one-shot mode)}"
+log_message "OVERPASS_BACKUP_DAY                ${BACKUP_DAY:-(not set)}"
+log_message "OVERPASS_BACKUP_TIMEOUT            $BACKUP_TIMEOUT seconds"
+log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY seconds"
 log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 log_message "-----------------------------------"
 

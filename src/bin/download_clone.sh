@@ -336,6 +336,8 @@ check_clone_disk_space()
 {
   local files file data_url idx_url size total_bytes threshold free_bytes
 
+  log_message "Checking file sizes and free disk space..."
+
   files="$FILES_BASE"
   if [[ "$META" == "yes" || "$META" == "attic" ]]; then
     files="$files $FILES_META"
@@ -675,6 +677,7 @@ main()
   log_message "DOWNLOAD_CLONE_RETRY_DELAY         $RETRY_DELAY"
   log_message "DOWNLOAD_CLONE_SPEED_LIMIT         $SPEED_LIMIT"
   log_message "DOWNLOAD_CLONE_SPEED_TIME          $SPEED_TIME"
+  log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
   log_message "-----------------------------------"
   if [[ "$USE_ARIA2C" == "true" ]]; then
     log_message "aria2c detected, using for parallel segment downloads"

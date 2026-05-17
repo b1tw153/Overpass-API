@@ -33,11 +33,11 @@ Usage: $0 diff_dir replicate_id --meta=(attic|yes|no)
   --meta          Metadata handling mode (attic=full history, yes=metadata, no=current only)
 
 Environment variables:
-  APPLY_OSC_MAX_BATCH_MB             Maximum uncompressed size per batch in MB (default: 512)
-  APPLY_OSC_MAX_BATCH_TIME           Maximum time span per batch in seconds (default: 86400)
-  OVERPASS_UPDATE_FREQUENCY          Update interval in seconds (default: 60)
-  OVERPASS_MIN_FREE_DISK_PERCENT     Minimum free disk space on the database filesystem as a
-                                     percentage; updates halt if the threshold is not met (default: 5)
+  OVERPASS_UPDATE_FREQUENCY        Update interval in seconds (default: 60)
+  OVERPASS_MIN_FREE_DISK_PERCENT   Minimum free disk space on the database filesystem as a
+                                   percentage; updates halt if the threshold is not met (default: 5)
+  APPLY_OSC_MAX_BATCH_MB           Maximum uncompressed size per batch in MB (default: 512)
+  APPLY_OSC_MAX_BATCH_TIME         Maximum time span per batch in seconds (default: 86400)
 EOF
   exit 1
 fi
@@ -734,10 +734,10 @@ log_message "-----------------------------------"
 log_message "OVERPASS_DIFF_DIR                  $REPLICATE_DIR"
 log_message "OVERPASS_REPLICATE_ID              $START_ID"
 log_message "OVERPASS_META_MODE                 ${META_ARG#--meta=}"
-log_message "APPLY_OSC_MAX_BATCH_MB             $MAX_BATCH_MB"
-log_message "APPLY_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
 log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
 log_message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
+log_message "APPLY_OSC_MAX_BATCH_MB             $MAX_BATCH_MB"
+log_message "APPLY_OSC_MAX_BATCH_TIME           $MAX_BATCH_TIME"
 log_message "-----------------------------------"
 if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
   log_message "Batch wait mode: tracking file updates using inotifywait"

@@ -67,6 +67,9 @@ Environment variables (no argument equivalent):
                                 implies OVERPASS_BACKUP_TIME 00:00 if OVERPASS_BACKUP_TIME
                                 is not specified
   OVERPASS_LOG_DIR              Directory containing web server logs (if run_osm3s.sh should rotate them)
+  OVERPASS_MIN_FREE_DISK_PERCENT
+                                Minimum free disk space on the log filesystem as a percentage;
+                                Overpass shuts down if the threshold is not met (default: 5)
   DISPATCHER_BASE_SPACE         Base dispatcher shared memory in bytes (default: 12884901888)
   DISPATCHER_AREAS_SPACE        Areas dispatcher shared memory in bytes (default: 4294967296)
   DISPATCHER_TIME               Dispatcher time limit (default: 262144)
@@ -74,9 +77,6 @@ Environment variables (no argument equivalent):
   DISPATCHER_ALLOW_DUPLICATE_QUERIES
                                 Allow duplicate queries: yes|no (default: yes)
   DISPATCHER_LIMIT_CLIENT_ZERO  Apply rate limit to local queries: yes|no (default: no)
-  OVERPASS_MIN_FREE_DISK_PERCENT
-                                Minimum free disk space on the log filesystem as a percentage;
-                                Overpass shuts down if the threshold is not met (default: 5)
 
 See usage for fetch_osc.sh, apply_osc_to_db.sh, rules_loop.sh, and backup.sh for
 additional environment variable parameters.
@@ -858,12 +858,12 @@ message "OVERPASS_SOCKET_DIR                $OVERPASS_SOCKET_DIR"
 message "OVERPASS_STALL_MULTIPLIER          $OVERPASS_STALL_MULTIPLIER"
 message "OVERPASS_CLEANUP_INTERVAL          $OVERPASS_CLEANUP_INTERVAL hours"
 message "OVERPASS_CLEANUP_KEEP_HOURS        $OVERPASS_CLEANUP_KEEP_HOURS hours"
+message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 message "DISPATCHER_BASE_SPACE              ~$((DISPATCHER_BASE_SPACE / 1048576)) MiB"
 message "DISPATCHER_AREAS_SPACE             ~$((DISPATCHER_AREAS_SPACE / 1048576)) MiB"
 message "DISPATCHER_TIME                    $DISPATCHER_TIME seconds"
 message "DISPATCHER_RATE_LIMIT              $DISPATCHER_RATE_LIMIT"
 message "DISPATCHER_ALLOW_DUPLICATE_QUERIES $DISPATCHER_ALLOW_DUPLICATE_QUERIES"
-message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 message "-----------------------------------"
 
 validate_meta_mode
