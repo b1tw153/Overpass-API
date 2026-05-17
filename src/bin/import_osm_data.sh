@@ -50,6 +50,7 @@ Environment variables:
   OVERPASS_DIFF_URL               Same as --diff-url
   OVERPASS_META_MODE              Same as --meta
   IMPORT_OSM_COMPRESSION_METHOD   Same as --compression-method
+  OVERPASS_MIN_FREE_DISK_PERCENT  Minimum free disk space percentage (default: 5)
 
 Supported file formats (detected from URL):
   .osm.bz2.torrent  BitTorrent download, decompressed with bunzip2
@@ -77,6 +78,7 @@ DATA_SOURCE="${IMPORT_OSM_DATA_SOURCE:-$DEFAULT_DATA_SOURCE}"
 REPLICATION_SOURCE="${OVERPASS_DIFF_URL:-}"
 META="${OVERPASS_META_MODE:-no}"
 COMPRESSION="${IMPORT_OSM_COMPRESSION_METHOD:-lz4}"
+MIN_FREE_DISK_PERCENT="${OVERPASS_MIN_FREE_DISK_PERCENT:-5}"
 
 # ============================================================================
 # ARGUMENT PARSING
@@ -132,6 +134,11 @@ fi
 
 if ! [[ "$COMPRESSION" =~ ^(no|gz|lz4)$ ]]; then
   message "ERROR: Invalid value for --compression-method: $COMPRESSION (expected no, gz, or lz4)"
+  exit 1
+fi
+
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+  message "ERROR: Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
   exit 1
 fi
 
@@ -218,6 +225,48 @@ fi
 if ! mkdir -p "$DIFF_DIR"; then
   message "ERROR: Failed to create or access diff directory: $DIFF_DIR"
   exit 1
+fi
+
+# ============================================================================
+# DISK SPACE CHECK
+# ============================================================================
+
+# Ratios (db_size / source_file_size) derived from planet.openstreetmap.org
+# clone and planet file sizes as of 2026-05.  Uses the larger (conservative)
+# planet ratio for .bz2 in base/meta modes; switches to the history ratio for
+# attic mode.  The .pbf attic ratio is extrapolated from the pbf/bz2 compression
+# factor since no history.osm.pbf exists at time of writing.
+FILE_SIZE=$(curl -sIL --max-time 30 "$FILE_URL" 2>/dev/null \
+  | grep -i "^content-length:" | tail -1 | tr -d ' \r' | cut -d: -f2)
+
+if [[ -z "$FILE_SIZE" || ! "$FILE_SIZE" =~ ^[0-9]+$ ]]; then
+  message "WARNING: Unable to determine source file size; skipping disk space check"
+elif [[ $USE_OSMIUM -eq 0 && $USE_BUNZIP2 -eq 0 ]]; then
+  message "WARNING: Cannot estimate disk space for .osm format; skipping disk space check"
+else
+  # DB_RATIO is db_size / source_size as an integer percentage
+  # (e.g. 315 = database will be approximately 3.15x the source file size)
+  if [[ $USE_OSMIUM -eq 1 ]]; then
+    case "$META" in
+      attic) DB_RATIO=509 ;;  # extrapolated: history.pbf → attic db
+      yes)   DB_RATIO=422 ;;  # planet.pbf  → meta db
+      *)     DB_RATIO=315 ;;  # planet.pbf  → base db
+    esac
+  else
+    case "$META" in
+      attic) DB_RATIO=272 ;;  # history.bz2 → attic db
+      yes)   DB_RATIO=226 ;;  # planet.bz2  → meta db  (conservative: planet, not history)
+      *)     DB_RATIO=168 ;;  # planet.bz2  → base db  (conservative: planet, not history)
+    esac
+  fi
+
+  # Threshold: space for source file + database, plus MIN_FREE_DISK_PERCENT headroom
+  THRESHOLD=$(( FILE_SIZE * (100 + DB_RATIO) * (100 + MIN_FREE_DISK_PERCENT) / 100 / 100 ))
+  FREE_BYTES=$(df --output=avail -B1 "$DB_DIR" | tail -1 | tr -d ' ')
+  if [[ $FREE_BYTES -lt $THRESHOLD ]]; then
+    message "ERROR: Insufficient free disk space on database filesystem: ${FREE_BYTES} bytes free (minimum: ${THRESHOLD} bytes)"
+    exit 1
+  fi
 fi
 
 # ============================================================================

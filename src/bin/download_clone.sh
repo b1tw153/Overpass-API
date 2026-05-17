@@ -45,16 +45,17 @@ Usage: $0 [options]
   --parallel=N              Number of parallel downloads
 
 Environment variables:
-  OVERPASS_DB_DIR               Same as --db-dir
-  DOWNLOAD_CLONE_SOURCE         Same as --source
-  OVERPASS_META_MODE            Same as --meta
-  DOWNLOAD_CLONE_PARALLEL_JOBS  Same as --parallel (default: 3)
-  DOWNLOAD_CLONE_MAX_TIME       Total time limit in seconds (default: 86400)
+  OVERPASS_DB_DIR                 Same as --db-dir
+  DOWNLOAD_CLONE_SOURCE           Same as --source
+  OVERPASS_META_MODE              Same as --meta
+  DOWNLOAD_CLONE_PARALLEL_JOBS    Same as --parallel (default: 3)
+  DOWNLOAD_CLONE_MAX_TIME         Total time limit in seconds (default: 86400)
   DOWNLOAD_CLONE_CONNECT_TIMEOUT  Connection timeout in seconds (default: 30)
-  DOWNLOAD_CLONE_RETRY_COUNT    Retries per file (default: 240)
-  DOWNLOAD_CLONE_RETRY_DELAY    Seconds between retries (default: 15)
-  DOWNLOAD_CLONE_SPEED_LIMIT    Minimum bytes/sec before stall detection (default: 1024)
-  DOWNLOAD_CLONE_SPEED_TIME     Seconds below speed limit before aborting (default: 30)
+  DOWNLOAD_CLONE_RETRY_COUNT      Retries per file (default: 240)
+  DOWNLOAD_CLONE_RETRY_DELAY      Seconds between retries (default: 15)
+  DOWNLOAD_CLONE_SPEED_LIMIT      Minimum bytes/sec before stall detection (default: 1024)
+  DOWNLOAD_CLONE_SPEED_TIME       Seconds below speed limit before aborting (default: 30)
+  OVERPASS_MIN_FREE_DISK_PERCENT  Minimum free disk space percentage (default: 5)
 EOF
 }
 
@@ -163,6 +164,7 @@ RETRY_COUNT=${DOWNLOAD_CLONE_RETRY_COUNT:-240}        # Number of retries per fi
 RETRY_DELAY=${DOWNLOAD_CLONE_RETRY_DELAY:-15}         # Seconds between retries
 SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-1024}       # Minimum bytes/sec before considering stalled
 SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-30}           # Seconds below speed limit before aborting
+MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
 if [[ ! "$PARALLEL_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   log_error "Invalid value for DOWNLOAD_CLONE_PARALLEL_JOBS: $PARALLEL_JOBS"
@@ -196,6 +198,11 @@ fi
 
 if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
   log_error "Invalid value for DOWNLOAD_CLONE_SPEED_TIME: $SPEED_TIME"
+  exit 1
+fi
+
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+  log_error "Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
   exit 1
 fi
 
@@ -321,6 +328,50 @@ acquire_lock()
     log_error "Failed to create lock file: $LOCK_FILE"
     exit 1
   }; fi
+}
+
+# Check that CLONE_DIR has enough free space for remaining downloads.
+# Skips files already verified complete by is_file_complete().
+check_clone_disk_space()
+{
+  local files file data_url idx_url size total_bytes threshold free_bytes
+
+  files="$FILES_BASE"
+  if [[ "$META" == "yes" || "$META" == "attic" ]]; then
+    files="$files $FILES_META"
+  fi
+  if [[ "$META" == "attic" ]]; then
+    files="$files $FILES_ATTIC"
+  fi
+
+  total_bytes=0
+  for file in $files; do
+  {
+    data_url="$REMOTE_DIR/$file"
+    idx_url="$REMOTE_DIR/$file.idx"
+
+    if ! is_file_complete "$data_url" "$CLONE_DIR/$file"; then
+      size=$(get_remote_file_size "$data_url")
+      [[ -n "$size" ]] && total_bytes=$(( total_bytes + size ))
+    fi
+
+    if ! is_file_complete "$idx_url" "$CLONE_DIR/$file.idx"; then
+      size=$(get_remote_file_size "$idx_url")
+      [[ -n "$size" ]] && total_bytes=$(( total_bytes + size ))
+    fi
+  }; done
+
+  if [[ $total_bytes -eq 0 ]]; then
+    return 0
+  fi
+
+  threshold=$(( total_bytes * (100 + MIN_FREE_DISK_PERCENT) / 100 ))
+  free_bytes=$(df --output=avail -B1 "$CLONE_DIR" | tail -1 | tr -d ' ')
+
+  if [[ $free_bytes -lt $threshold ]]; then
+    log_error "Insufficient free disk space on database filesystem: ${free_bytes} bytes free (minimum: ${threshold} bytes)"
+    exit 1
+  fi
 }
 
 # Download multiple files in parallel using curl's built-in parallel support
@@ -637,8 +688,6 @@ main()
     exit 1
   }; fi
 
-  acquire_lock
-
   # Fetch the clone URL from the trigger_clone endpoint
   if ! curl -f -s -S -L --max-time "$CONNECT_TIMEOUT" -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
   {
@@ -667,6 +716,10 @@ main()
     log_error "Clone not accessible"
     exit 1
   }; fi
+
+  check_clone_disk_space
+
+  acquire_lock
 
   # Download files
   download_files "$FILES_BASE"
