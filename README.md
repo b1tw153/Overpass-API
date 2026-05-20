@@ -16,6 +16,7 @@ This project is a fork of drolbr/Overpass-API which is an API to perform queries
 * Faster downloads in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `download_clone.sh`
 * Support and optimization for hourly and daily replication sources in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
 * Adaptive and customizable area creation scheduling in `rules_loop.sh`
+* NEW: Container status endpoint via `container_status.sh` that reports the operational status of all Overpass components in plain text or JSON
 * NEW: Backup script that does not require the server to shut down in `backup.sh` and an associated `restore.sh` for recovery
 * NEW: Automated cleanup of old diff data in `clean_osc.sh`
 * NEW: Consolidated startup/entrypoint script in `run_osm3s.sh`
@@ -399,6 +400,38 @@ export OVERPASS_BACKUP_DAY=  # Day to run backup: MON|TUE|WED|THU|FRI|SAT|SUN or
 The backup script will pause database updates while the database files are being copied.
 
 If you run `backup.sh` manually without setting `OVERPASS_BACKUP_TIME` or `OVERPASS_BACKUP_DAY`, it runs once immediately and exits (one-shot mode) which may be suitable for use with other schedulers like `cron`.
+
+### Container Status Endpoint
+
+The container image includes a `container_status.sh` script that reports the current operational
+status of all Overpass components. When running as a container, it is served by nginx at
+`/container-status`:
+
+```bash
+curl http://localhost/container-status
+curl http://localhost/container-status?format=json
+```
+
+You can also run it directly from the command line inside the container:
+
+```bash
+/opt/overpass/bin/container_status.sh
+/opt/overpass/bin/container_status.sh --format=json
+```
+
+The status report covers:
+
+* nginx / fcgiwrap
+* Base Dispatcher
+* Areas Dispatcher
+* apply_osc_to_db.sh
+* fetch_osc.sh
+* backup.sh
+* rules_loop.sh
+* Log Rotation
+* clean_osc.sh
+* interpreter
+* Host (filesystem usage, directory sizes, memory usage, load average)
 
 ### Optional Settings
 
