@@ -401,6 +401,38 @@ The backup script will pause database updates while the database files are being
 
 If you run `backup.sh` manually without setting `OVERPASS_BACKUP_TIME` or `OVERPASS_BACKUP_DAY`, it runs once immediately and exits (one-shot mode) which may be suitable for use with other schedulers like `cron`.
 
+### Database Recovery
+
+To restore the database from a backup, all Overpass processes must be stopped before running `restore.sh`. See **Monitoring Overpass** for shutdown instructions. `restore.sh` will abort if the dispatcher is still running.
+
+If you compiled from source code:
+
+```bash
+OVERPASS_BIN_DIR=    # path to the bin directory in your Overpass installation
+OVERPASS_DB_DIR=     # path to your Overpass database directory
+OVERPASS_BACKUP_DIR= # path to your Overpass backup directory
+"$OVERPASS_BIN_DIR/restore.sh" "$OVERPASS_BACKUP_DIR" "$OVERPASS_DB_DIR"
+```
+
+If you're using the container, stop it first and run `restore.sh` as a one-off container command:
+
+```bash
+OVERPASS_DB_DIR=     # path to your Overpass database directory on the host
+OVERPASS_BACKUP_DIR= # path to your Overpass backup directory on the host
+docker stop <container-name>
+docker run --rm \
+  --no-healthcheck \
+  -v "$OVERPASS_DB_DIR":/opt/overpass/db \
+  -v "$OVERPASS_BACKUP_DIR":/opt/overpass/backup \
+  --entrypoint /opt/overpass/bin/restore.sh \
+  b1tw153/overpass-api \
+  /opt/overpass/backup /opt/overpass/db
+```
+
+After the restore completes, start Overpass normally.
+
+`restore.sh` automatically detects whether the backup includes meta, attic, or area files and restores only the files present in the backup. The default restore timeout is 7200 seconds; set `OVERPASS_RESTORE_TIMEOUT` to override it.
+
 ### Container Status Endpoint
 
 The container image includes a `container_status.sh` script that reports the current operational

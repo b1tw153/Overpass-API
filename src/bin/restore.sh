@@ -32,7 +32,7 @@ Usage: $0 backup_dir db_dir
   db_dir        Target database directory
 
 Environment variables:
-  OVERPASS_RESTORE_TIMEOUT    Rsync timeout in seconds (default: 7200)
+  OVERPASS_RESTORE_TIMEOUT    Restore timeout in seconds (default: 7200)
 EOF
 }
 
@@ -107,7 +107,7 @@ relations.bin relations.bin.idx relations.map relations.map.idx \
 relation_roles.bin relation_roles.bin.idx \
 relation_tags_local.bin relation_tags_local.bin.idx relation_tags_global.bin relation_tags_global.bin.idx \
 relation_frequent_tags.bin relation_frequent_tags.bin.idx relation_keys.bin relation_keys.bin.idx \
-base-url osm_base_version replicate_id"
+osm_base_version replicate_id"
 
 FILES_META="\
 nodes_meta.bin nodes_meta.bin.idx \

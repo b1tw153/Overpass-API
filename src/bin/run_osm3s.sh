@@ -369,6 +369,25 @@ validate_meta_mode()
   fi
 }
 
+delete_stale_socket_files()
+{
+  # if $OVERPASS_SOCKET_DIR/osm3s_osm_base exists, warn about a possible uncontrolled shutdown and database corruption and delete the file
+  if [[ -S "$OVERPASS_SOCKET_DIR/osm3s_osm_base" ]]; then
+    message "WARNING: Stale socket file detected: $OVERPASS_SOCKET_DIR/osm3s_osm_base"
+    message "This may indicate an uncontrolled shutdown and potential database corruption"
+    message "Deleting stale socket file: $OVERPASS_SOCKET_DIR/osm3s_osm_base"
+    rm -f "$OVERPASS_SOCKET_DIR/osm3s_osm_base"
+  fi
+
+  # if $OVERPASS_SOCKET_DIR/osm3s_areas exists, warn about a possible uncontrolled shutdown and database corruption and delete the file
+  if [[ -S "$OVERPASS_SOCKET_DIR/osm3s_areas" ]]; then
+    message "WARNING: Stale socket file detected: $OVERPASS_SOCKET_DIR/osm3s_areas"
+    message "This may indicate an uncontrolled shutdown and potential database corruption"
+    message "Deleting stale socket file: $OVERPASS_SOCKET_DIR/osm3s_areas"
+    rm -f "$OVERPASS_SOCKET_DIR/osm3s_areas"
+  fi
+}
+
 # ============================================================================
 # UPDATE FREQUENCY DETECTION
 # ============================================================================
@@ -867,6 +886,8 @@ message "DISPATCHER_ALLOW_DUPLICATE_QUERIES $DISPATCHER_ALLOW_DUPLICATE_QUERIES"
 message "-----------------------------------"
 
 validate_meta_mode
+
+delete_stale_socket_files
 
 if ! OVERPASS_UPDATE_FREQUENCY=$(detect_update_frequency); then
   message "ERROR: Unable to detect update frequency from $OVERPASS_DIFF_URL"
