@@ -276,9 +276,10 @@ if [[ -f "$ACCESS_LOG" ]]; then
             return parts[3] "-" sprintf("%02d", m) "-" sprintf("%02d", parts[1]+0) \
                    " " parts[4] ":" parts[5] ":" parts[6]
         }
-        NF >= 9 {
+        {
+            if (!match($0, /\] "[^"]*" ([0-9]+) /, arr)) next
             total++
-            counts[$9]++
+            counts[arr[1]]++
             if (total == 1) first = $4
             last = $4
         }
