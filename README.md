@@ -72,6 +72,7 @@ Approximate full planet database sizes by metadata mode as of Q2 2026:
 | `attic` (full history) | ~750 GiB |
 | `meta` (latest metadata) | ~365 GiB |
 | `no` (base data only) | ~270 GiB |
+| Area data (`--areas=yes`) | ~30 GiB (additional) |
 
 Note: the OpenStreetMap planet has grown significantly over time. Figures from older documentation will be substantially lower than current reality.
 
