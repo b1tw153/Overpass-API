@@ -72,7 +72,7 @@ Approximate full planet database sizes by metadata mode as of Q2 2026:
 | `attic` (full history) | ~750 GiB |
 | `meta` (latest metadata) | ~365 GiB |
 | `no` (base data only) | ~270 GiB |
-| Area data (`--areas=yes`) | ~30 GiB (additional) |
+| `--areas=yes` (area data) | ~30 GiB (additional) |
 
 Note: the OpenStreetMap planet has grown significantly over time. Figures from older documentation will be substantially lower than current reality.
 
@@ -82,7 +82,7 @@ If you enable backups, the backup directory will mirror the database size. Accou
 
 The diff directory is small and transient. Under normal operation with replication keeping up, it stays well under 1 GiB.
 
-**Use fast SSDs.** Overpass query performance is heavily dependent on random I/O. Slow disks will significantly degrade query response times under any meaningful load.
+**Use fast SSDs.** Overpass query performance is heavily dependent on random I/O. Slow disks will significantly degrade query response times under any meaningful load. Ideally, the database files should be on fast NVMe.
 
 ### CPU
 
@@ -343,6 +343,7 @@ The Overpass directory structure includes several directories that are populated
 | `log` | Contains the nginx web server log files | (Container Only) |
 | `rules` | Contains the default rules files for area creation | (Container Only) |
 | `run` | Contains runtime PID and lock files | (Container Only) |
+| `static` | Static files to be served by nginx (e.g., index.html) | (Container Only) |
 | `templates` | Contains templates for wiki pages | |
 | `test-bin` | Contains executables for testing the Overpass implementation | |
 | `tmp` | (Container Only) Contains temporary files used by nginx | |
@@ -465,6 +466,10 @@ The status report covers:
 * clean_osc.sh
 * interpreter
 * Host (filesystem usage, directory sizes, memory usage, load average)
+
+### Static Web Content
+
+The nginx web server in the container is configured to serve static files from the `/opt/overpass/static` directory in the container. You can mount static content into this directory to serve `index.html` or additional Web assets.
 
 ### Optional Settings
 
