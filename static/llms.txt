@@ -5,7 +5,7 @@
 
 ## Usage Policy
 
-This public endpoint must not be queried by LLMs, AI agents, or automated scripts.
+This public endpoint must not be queried by LLMs, AI agents, or high-volume scripts.
 It is provided for interactive use by human operators and browser applications such
 as Overpass Turbo.
 
