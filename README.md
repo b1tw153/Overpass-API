@@ -180,7 +180,7 @@ docker run -d \
   --meta="$OVERPASS_META_MODE"
 ```
 
-The database files are large and the download may take some time, so it's best to run it as a background process that will not terminate if the terminal connection is closed.
+The database files are large and the download may take some time, so it's best to run it as a background process that will not terminate if the terminal connection is closed. Downloads can fail due to transient network issues. However, the download process can be rerun to resume the download.
 
 #### Initialize the Database from a Planet File
 
