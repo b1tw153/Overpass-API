@@ -41,7 +41,7 @@ http {
         }
 
         location ~ ^/api/(.*)$ {
-            limit_conn overpass ${FCGIWRAP_WORKERS};
+            limit_conn overpass ${NGINX_MAX_CONN};
 
             fastcgi_pass unix:/opt/overpass/run/fcgiwrap.socket;
             fastcgi_param SCRIPT_FILENAME /opt/overpass/cgi-bin/$1;

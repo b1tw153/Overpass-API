@@ -30,6 +30,16 @@ fi
 
 export NGINX_FASTCGI_TIMEOUT
 
+NGINX_CONNECTION_QUEUE=${NGINX_CONNECTION_QUEUE:-0}
+
+if [[ ! "$NGINX_CONNECTION_QUEUE" =~ ^[0-9]+$ ]]; then
+  message "ERROR: NGINX_CONNECTION_QUEUE must be a non-negative integer, got: '$NGINX_CONNECTION_QUEUE'"
+  exit 1
+fi
+
+NGINX_MAX_CONN=$(( FCGIWRAP_WORKERS + NGINX_CONNECTION_QUEUE ))
+export NGINX_MAX_CONN
+
 if [[ -z "${DISPATCHER_BASE_SPACE:-}" ]]; then
   CGROUP_MEMORY_MAX=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)
   if [[ "$CGROUP_MEMORY_MAX" =~ ^[0-9]+$ ]]; then
@@ -119,7 +129,7 @@ FCGI_PID=$!
 echo "$FCGI_PID" > /opt/overpass/run/fcgiwrap.pid
 
 # Render nginx config from template
-envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT} ${NGINX_MAX_CONN}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # Start nginx
 message "Starting nginx"
