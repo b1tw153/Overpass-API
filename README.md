@@ -477,6 +477,8 @@ In either case, ngnix requests will time out after a maximum of `NGINX_FASTCGI_T
 
 The nginx web server in the container is configured to serve static files from the `/opt/overpass/static` directory in the container. You can mount static content into this directory to serve `index.html` or additional Web assets.
 
+The `/opt/overpass/static` directory in the container contains default `robots.txt` and `llms.txt` files. Reuse or replace these files as appropriate for your instance.
+
 ### Optional Settings
 
-All of the parameters for Overpass can be set using environment variables. See the [`etc/overpass.env`](etc/overpass.env) template or the usage for individual scripts for additional documentation.
+All of the parameters for Overpass can be set using environment variables. See the [`etc/overpass.env`](https://github.com/b1tw153/Overpass-API/blob/main/etc/overpass.env) template or the usage for individual scripts for additional documentation.
