@@ -86,7 +86,7 @@ The diff directory is small and transient. Under normal operation with replicati
 
 ### CPU
 
-The container runs one fcgiwrap worker per CPU core by default (`FCGIWRAP_WORKERS` defaults to `nproc`). Each worker handles one concurrent query. Provision CPU cores based on your expected concurrent query load. A single core is sufficient for light personal use; a public-facing instance benefits from more cores to handle concurrent requests without queuing or rate limiting.
+The container runs one fcgiwrap worker per CPU core by default (`FCGIWRAP_WORKERS` defaults to `nproc`). Each worker handles one concurrent query. Provision CPU cores based on your expected concurrent query load. A single core is sufficient for light personal use; a public-facing instance benefits from more cores to handle concurrent requests without queuing or rate limiting. An optional request queue can be configured in nginx. See **Rate Limiting** below.
 
 ### Memory
 
@@ -466,6 +466,12 @@ The status report covers:
 * clean_osc.sh
 * interpreter
 * Host (filesystem usage, directory sizes, memory usage, load average)
+
+### Rate Limiting
+
+Overpass performs best when each query runs on a single CPU (see **Resource Sizing** above). By default, the container will return HTTP 429 responses when the number of concurrent requests is greater than the number of available CPUs. Set the `NGINX_CONNECTION_QUEUE` environment variable to configure nginx to queue an additional number of requests above the number of CPUs. This will result in fewer HTTP 429 responses, but slower query completion times when there are requests in the queue.
+
+In either case, ngnix requests will time out after a maximum of `NGINX_FASTCGI_TIMEOUT` seconds. Nginx will return an HTTP 504 response when a query hits this limit regardless of the `[timeout:...]` setting within the query text. The default for `NGINX_FASTCGI_TIMEOUT` is 300 seconds. Adjust this by setting the environment variable as appropriate for the expected query load.
 
 ### Static Web Content
 
