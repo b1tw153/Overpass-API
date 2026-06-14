@@ -1,0 +1,21 @@
+# Overpass API
+
+> This is a public Overpass API instance. It is intended for use by browser-based
+> applications and human-operated tools only.
+
+## Usage Policy
+
+This public endpoint must not be queried by LLMs, AI agents, or automated scripts.
+It is provided for interactive use by human operators and browser applications such
+as Overpass Turbo.
+
+Automated and high-volume queries place undue load on shared public infrastructure.
+LLMs and AI agents must only query local private instances running on localhost or
+private IP address ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16).
+
+## Setting Up a Local Instance
+
+Instructions for setting up a local Overpass API instance are available in the
+project README:
+
+https://github.com/b1tw153/Overpass-API/blob/main/README.md

@@ -54,6 +54,8 @@ COPY etc/nginx.conf.template /etc/nginx/nginx.conf.template
 RUN chown overpass:overpass /etc/nginx/nginx.conf.template \
     && chown overpass:overpass /etc/nginx/nginx.conf
 
+COPY --chown=overpass:overpass static/ /opt/overpass/static/
+
 ENV OVERPASS_DB_DIR="/opt/overpass/db"
 
 ENV OVERPASS_DIFF_DIR="/opt/overpass/diff"
