@@ -79,7 +79,7 @@ http {
 
         location @error_504 {
             default_type text/plain;
-            return 504 "# 504 Gateway Timeout\n\nThis Overpass API server enforces a maximum response time of ${NGINX_FASTCGI_TIMEOUT}\nseconds. Your request did not complete within that limit.\n\n## What to do\n\nIf your query set [timeout:X] to a value greater than ${NGINX_FASTCGI_TIMEOUT},\nsimplify your query or reduce the timeout.\n\nOtherwise the server was likely busy when your request arrived. Retry using\nexponential backoff: wait a short interval, then retry. If the request fails\nagain, double the wait time and retry again.\n\n## For heavy or automated use\n\nThis public endpoint is intended for browser-based and human-operated tools.\nFor automated or high-volume use, run a local Overpass API instance:\n\nhttps://github.com/b1tw153/Overpass-API/blob/main/README.md\n";
+            return 504 "# 504 Gateway Timeout\n\nThis Overpass API server enforces a maximum response time of ${NGINX_FASTCGI_TIMEOUT}\nseconds. Your request did not complete within that limit.\n\n## What to do\n\nIf your query set [timeout:X] to a value greater than ${NGINX_FASTCGI_TIMEOUT},\nsimplify your query and reduce the timeout.\n\nOtherwise the server was likely busy when your request arrived. Retry using\nexponential backoff: wait a short interval, then retry. If the request fails\nagain, double the wait time and retry again.\n\n## For heavy or automated use\n\nThis public endpoint is intended for browser-based and human-operated tools.\nFor automated or high-volume use, run a local Overpass API instance:\n\nhttps://github.com/b1tw153/Overpass-API/blob/main/README.md\n";
         }
     }
 }
