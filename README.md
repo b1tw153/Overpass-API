@@ -8,6 +8,8 @@ This project is a fork of drolbr/Overpass-API which is an API to perform queries
 * [Overpass API Documentation](https://dev.overpass-api.de/)
 * [Overpass Releases](https://dev.overpass-api.de/releases/?C=M;O=D)
 
+**NOTE:** If you're reading this file on Docker Hub, the contents may be truncated. The complete original [README.md](https://github.com/b1tw153/Overpass-API/blob/main/README.md) file is available in the GitHub repository.
+
 ## Improvements
 
 * More resilient replication downloads using `fetch_osc.sh` or `fetch_osc_and_apply.sh`
