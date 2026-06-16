@@ -2,3 +2,43 @@
 /cgi-bin/
 /test-bin/
 
+# Autoconf/automake generated files
+src/Makefile
+src/ar-lib
+src/compile
+src/config.h
+src/config.log
+src/config.status
+src/libtool
+src/stamp-h1
+
+# Libtool archives and build tree
+src/.libs/
+src/lib*.la
+src/osm-3s_v*/
+
+# Per-directory build artifacts
+**/.deps/
+**/.dirstamp
+**/.libs/
+**/*.o
+**/*.lo
+
+# Compiled binaries in src/bin/ (shell scripts there are tracked)
+src/bin/bbox_brim_query
+src/bin/dispatcher
+src/bin/draw_route_svg
+src/bin/escape_xml
+src/bin/migrate_database
+src/bin/osm3s_query
+src/bin/sketch_route_svg
+src/bin/tocgi
+src/bin/translate_xapi
+src/bin/uncgi
+src/bin/update_database
+src/bin/update_from_dir
+
+# Compiled binaries in src/cgi-bin/ (scripts there are tracked)
+src/cgi-bin/interpreter
+src/cgi-bin/status
+src/cgi-bin/timestamp
