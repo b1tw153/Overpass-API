@@ -12,13 +12,12 @@ This project is a fork of drolbr/Overpass-API which is an API to perform queries
 
 ## Improvements
 
-* More resilient replication downloads using `fetch_osc.sh` or `fetch_osc_and_apply.sh`
-* Safer recovery from uncontrolled shutdowns in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
-* Safer controlled shutdown in `apply_osc_to_db.sh` to reduce the risk of database corruption
-* Faster downloads in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `download_clone.sh`
-* Support and optimization for hourly and daily replication sources in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
-* Adaptive and customizable area creation scheduling in `rules_loop.sh`
-* NEW: Container status endpoint via `container_status.sh` that reports the operational status of all Overpass components in plain text or JSON
+* IMPROVED: More resilient replication downloads using `fetch_osc.sh` or `fetch_osc_and_apply.sh`
+* IMPROVED: Safer recovery from uncontrolled shutdowns in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
+* IMPROVED: Safer controlled shutdown in `apply_osc_to_db.sh` to reduce the risk of database corruption
+* IMPROVED: Faster downloads in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `download_clone.sh`
+* IMPROVED: Support and optimization for hourly and daily replication sources in `fetch_osc.sh`, `fetch_osc_and_apply.sh`, and `apply_osc_to_db.sh`
+* IMPROVED: Adaptive and customizable area creation scheduling in `rules_loop.sh`
 * NEW: Backup script that does not require the server to shut down in `backup.sh` and an associated `restore.sh` for recovery
 * NEW: Automated cleanup of old diff data in `clean_osc.sh`
 * NEW: Consolidated startup/entrypoint script in `run_osm3s.sh`
@@ -38,8 +37,13 @@ This project is a fork of drolbr/Overpass-API which is an API to perform queries
   * Minimal base image using `debian:bookworm-slim`
   * Preconfigured with `nginx` and `fcgiwrap`
   * External mounts for database, replication, and backup data
-  * Control all runtime parameters using environment variables
+  * Control **all** runtime parameters using environment variables
+* NEW: Container status endpoint via `container_status.sh` that reports the operational status of all Overpass components in plain text or JSON
 * NEW: Container image automatically published to Docker Hub as [b1tw153/overpass-api](https://hub.docker.com/repository/docker/b1tw153/overpass-api)
+* NEW: Container serves static HTTP content from `/static` directory
+* NEW: Default `robots.txt` and `llms.txt` files in `/static` to guide bot traffic
+* NEW: Container serves HTTP 429 and HTTP 504 error responses with clear messaging on backoff and retries
+* NEW: Container has a configurable queue to hold requests in nginx when query workers are busy
 
 ## Overview
 
