@@ -149,51 +149,13 @@ sleep_with_interrupts() {
 }
 
 # ============================================================================
-# TICKLE REPLICATE_ID
-# ============================================================================
-
-# run_osm3s.sh monitors the mtime of replicate_id to detect a stalled update
-# process: if the file has not been updated within STALL_THRESHOLD seconds,
-# it assumes the database is stalled and may shut down.
-#
-# Area updates can take a long time on systems with poor performance. If an
-# area update takes longer than STALL_THRESHOLD, apply_osc_to_db.sh may not
-# have had an opportunity to advance replicate_id, causing run_osm3s.sh to
-# incorrectly trigger a shutdown.
-#
-# The fix: while an area update is running, periodically touch replicate_id
-# (without changing its contents) to update its mtime. This tells run_osm3s.sh
-# that the database is still being actively managed, even if no OSC updates
-# have been applied.
-
-TICKLE_PID=
-
-tickle_replicate_id()
-{
-  while true; do
-    sleep_with_interrupts "$OVERPASS_UPDATE_FREQUENCY"
-    touch "$DB_DIR/replicate_id" 2>/dev/null || true
-  done
-}
-
-stop_tickle()
-{
-  if [[ -n "$TICKLE_PID" ]]; then
-    kill "$TICKLE_PID" 2>/dev/null || true
-    wait "$TICKLE_PID" 2>/dev/null || true
-    TICKLE_PID=
-  fi
-}
-
-# ============================================================================
 # SIGNAL HANDLERS
 # ============================================================================
 
-QUERY_PID=
+QUERY_PID=""
 
 shutdown() {
   local EXIT_CODE=$1
-  stop_tickle
   [[ -n "$QUERY_PID" ]] && kill "$QUERY_PID" 2>/dev/null
   exit "$EXIT_CODE"
 }
@@ -229,14 +191,11 @@ while true; do
   if [[ "$CURRENT_REPLICATE_ID" != "$LAST_REPLICATE_ID" ]] && should_update_areas; then
     LAST_DB_UPDATE_TIME=$(stat -c %Y "$DB_DIR/replicate_id" 2>/dev/null)
     log_message "Area update started"
-    tickle_replicate_id &
-    TICKLE_PID=$!
     "$EXEC_DIR/osm3s_query" --progress --rules < "$AREA_RULES_FILE" &
     QUERY_PID=$!
     wait "$QUERY_PID"
     QUERY_EXIT=$?
-    QUERY_PID=
-    stop_tickle
+    QUERY_PID=""
     if [[ $QUERY_EXIT -ne 0 ]]; then
       log_message "Area update failed (osm3s_query exit code $QUERY_EXIT)"
     else
