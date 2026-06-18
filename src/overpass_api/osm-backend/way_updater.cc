@@ -38,7 +38,11 @@
 #include "way_updater.h"
 
 
-static const bool debug_attic = (getenv("OVERPASS_DEBUG_ATTIC") != nullptr);
+static const bool debug_attic = []() {
+  bool v = (getenv("OVERPASS_DEBUG_ATTIC") != nullptr);
+  if (v) std::cerr << "OVERPASS_DEBUG_ATTIC: way_updater debug active\n";
+  return v;
+}();
 
 
 Way_Updater::Way_Updater(Transaction& transaction_, Database_Meta_State::Mode meta_)
@@ -271,49 +275,55 @@ void adapt_newest_existing_attic
      std::map< Uint31_Index, std::set< Attic< Way_Delta > > >& full_attic,
      const char* caller)
 {
-  if (debug_attic
-      && !existing_delta.full
-      && existing_reference.id == existing_delta.id
-      && existing_delta.nds_removed.size() >
-             existing_reference.nds.size() + existing_delta.nds_added.size())
+  if (debug_attic && !existing_delta.full)
   {
-    std::cerr << "GUARD [" << caller << "]:"
-              << " way=" << existing_delta.id.val()
-              << " delta_ts=" << Timestamp(existing_delta.timestamp).str()
-              << "\n  existing_delta:"
-              << " full=" << existing_delta.full
-              << " nds_removed=" << existing_delta.nds_removed.size()
-              << " nds_added=" << existing_delta.nds_added.size()
-              << " geom_removed=" << existing_delta.geometry_removed.size()
-              << " geom_added=" << existing_delta.geometry_added.size()
-              << "\n  nds_removed indices:";
-    for (uint v : existing_delta.nds_removed)
-      std::cerr << ' ' << v;
-    std::cerr << "\n  nds_added (pos:node):";
-    for (const auto& p : existing_delta.nds_added)
-      std::cerr << ' ' << p.first << ':' << p.second.val();
-    std::cerr << "\n  existing_reference.nds (" << existing_reference.nds.size() << "):";
-    for (const auto& n : existing_reference.nds)
-      std::cerr << ' ' << n.val();
-    std::cerr << "\n  nds_removed cross-ref:";
-    for (uint v : existing_delta.nds_removed)
+    bool nds_bad = existing_delta.nds_removed.size() >
+                   existing_reference.nds.size() + existing_delta.nds_added.size();
+    bool geom_bad = existing_delta.geometry_removed.size() >
+                    existing_reference.geometry.size() + existing_delta.geometry_added.size();
+    if (nds_bad || geom_bad)
     {
-      if (v < existing_reference.nds.size())
-        std::cerr << " [" << v << "]=" << existing_reference.nds[v].val();
-      else
-        std::cerr << " [" << v << "]=OUT_OF_RANGE";
-    }
-    std::cerr << "\n  new_reference.nds (" << new_reference.nds.size() << "):";
-    for (const auto& n : new_reference.nds)
-      std::cerr << ' ' << n.val();
-    if (existing_delta.geometry_removed.size() >
-        existing_reference.geometry.size() + existing_delta.geometry_added.size())
-      std::cerr << "\n  geometry also inconsistent:"
+      std::cerr << "GUARD [" << caller << "]:"
+                << " way=" << existing_delta.id.val()
+                << " ref_id=" << existing_reference.id.val()
+                << " delta_ts=" << Timestamp(existing_delta.timestamp).str()
+                << "\n  existing_delta:"
+                << " full=" << existing_delta.full
+                << " nds_removed=" << existing_delta.nds_removed.size()
+                << " nds_added=" << existing_delta.nds_added.size()
                 << " geom_removed=" << existing_delta.geometry_removed.size()
-                << " reference.geometry=" << existing_reference.geometry.size()
-                << " geom_added=" << existing_delta.geometry_added.size();
-    std::cerr << '\n';
-    return;
+                << " geom_added=" << existing_delta.geometry_added.size()
+                << "\n  existing_reference.nds (" << existing_reference.nds.size() << "):";
+      for (const auto& n : existing_reference.nds)
+        std::cerr << ' ' << n.val();
+      if (nds_bad)
+      {
+        std::cerr << "\n  nds_removed indices:";
+        for (uint v : existing_delta.nds_removed)
+          std::cerr << ' ' << v;
+        std::cerr << "\n  nds_added (pos:node):";
+        for (const auto& p : existing_delta.nds_added)
+          std::cerr << ' ' << p.first << ':' << p.second.val();
+        std::cerr << "\n  nds_removed cross-ref:";
+        for (uint v : existing_delta.nds_removed)
+        {
+          if (v < existing_reference.nds.size())
+            std::cerr << " [" << v << "]=" << existing_reference.nds[v].val();
+          else
+            std::cerr << " [" << v << "]=OUT_OF_RANGE";
+        }
+      }
+      if (geom_bad)
+        std::cerr << "\n  geometry inconsistent:"
+                  << " geom_removed=" << existing_delta.geometry_removed.size()
+                  << " reference.geometry=" << existing_reference.geometry.size()
+                  << " geom_added=" << existing_delta.geometry_added.size();
+      std::cerr << "\n  new_reference.nds (" << new_reference.nds.size() << "):";
+      for (const auto& n : new_reference.nds)
+        std::cerr << ' ' << n.val();
+      std::cerr << '\n';
+      return;
+    }
   }
 
   Way_Delta new_delta(old_idx == new_idx ? new_reference : Way_Skeleton(),
@@ -351,6 +361,15 @@ void compute_new_attic_skeletons
      std::map< Way_Skeleton::Id_Type, std::set< Uint31_Index > >& idx_lists,
      std::map< Uint31_Index, std::set< Attic< Way_Delta > > >& attic_skeletons_to_delete)
 {
+  if (debug_attic)
+  {
+    size_t loop2_count = 0;
+    for (const auto& kv : implicitly_moved_skeletons)
+      loop2_count += kv.second.size();
+    std::cerr << "ATTIC: compute_new_attic_skeletons starting: loop1=" << new_data.data.size()
+              << " loop2=" << loop2_count << '\n';
+  }
+
   // Fill nodes_by_id from attic nodes as well as the current nodes in new_node_idx_by_id
   std::map< Node_Skeleton::Id_Type,
          std::vector< std::pair< Node::Index, Attic< Node_Skeleton > > > > nodes_by_id
@@ -363,6 +382,8 @@ void compute_new_attic_skeletons
   for (std::vector< Data_By_Id< Way_Skeleton >::Entry >::const_iterator
       it = new_data.data.begin(); it != new_data.data.end(); ++it)
   {
+    if (debug_attic)
+      std::cerr << "ATTIC: loop1 way=" << it->elem.id.val() << '\n';
     ++next_it;
     Uint31_Index it_idx = it->idx;
     if (next_it != new_data.data.end() && it->elem.id == next_it->elem.id)
@@ -447,11 +468,15 @@ void compute_new_attic_skeletons
   }
 
   // Add the missing elements that result from node moves only
+  if (debug_attic)
+    std::cerr << "ATTIC: loop1 done, entering loop2\n";
   for (std::map< Uint31_Index, std::set< Way_Skeleton > >::const_iterator
       it = implicitly_moved_skeletons.begin(); it != implicitly_moved_skeletons.end(); ++it)
   {
     for (std::set< Way_Skeleton >::const_iterator it2 = it->second.begin(); it2 != it->second.end(); ++it2)
     {
+      if (debug_attic)
+        std::cerr << "ATTIC: loop2 way=" << it2->id.val() << '\n';
       std::map< Way_Skeleton::Id_Type, std::pair< Uint31_Index, Attic< Way_Delta > > >::const_iterator
           it_attic_time = existing_attic_skeleton_timestamps.find(it2->id);
       Uint31_Index dummy;
