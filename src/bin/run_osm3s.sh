@@ -679,8 +679,9 @@ check_base_dispatcher()
   local EXIT_CODE
   DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
   EXIT_CODE=$?
-  DB_DIR="${DB_DIR%/}"
+  DB_DIR="$(realpath "$DB_DIR")"
   if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
+    message "ERROR: base dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR)"
     return 1
   fi
   return 0
@@ -693,8 +694,9 @@ check_areas_dispatcher()
   local EXIT_CODE
   DB_DIR=$("$EXEC_DIR/dispatcher" --areas --show-dir)
   EXIT_CODE=$?
-  DB_DIR="${DB_DIR%/}"
+  DB_DIR="$(realpath "$DB_DIR")"
   if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
+    message "ERROR: areas dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR)"
     return 1
   fi
   return 0
@@ -705,6 +707,7 @@ check_apply_osc()
   if [[ -n "$APPLY_OSC_PID" ]] && kill -0 "$APPLY_OSC_PID" 2>/dev/null; then
     return 0
   else
+    message "ERROR: apply_osc_to_db.sh is not running (PID $APPLY_OSC_PID)"
     return 1
   fi
 }
@@ -714,6 +717,7 @@ check_fetch_osc()
   if [[ -n "$FETCH_OSC_PID" ]] && kill -0 "$FETCH_OSC_PID" 2>/dev/null; then
     return 0
   else
+    message "ERROR: fetch_osc.sh is not running (PID $FETCH_OSC_PID)"
     return 1
   fi
 }
@@ -724,6 +728,7 @@ check_rules_loop()
   if [[ -n "$RULES_LOOP_PID" ]] && kill -0 "$RULES_LOOP_PID" 2>/dev/null; then
     return 0
   else
+    message "ERROR: rules_loop.sh is not running (PID $RULES_LOOP_PID)"
     return 1
   fi
 }
@@ -734,6 +739,7 @@ check_backup()
   if [[ -n "$BACKUP_PID" ]] && kill -0 "$BACKUP_PID" 2>/dev/null; then
     return 0
   else
+    message "ERROR: backup.sh is not running (PID $BACKUP_PID)"
     return 1
   fi
 }
