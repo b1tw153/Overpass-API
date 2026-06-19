@@ -188,6 +188,15 @@ find_all_proc_pids() {
     done
 }
 
+fmt_ms() {
+    awk -v ms="$1" 'BEGIN {
+        if      (ms < 1000)    printf "%dms",   ms
+        else if (ms < 60000)   printf "%.1fs",  ms/1000
+        else if (ms < 3600000) printf "%.1fm",  ms/60000
+        else                   printf "%.1fh",  ms/3600000
+    }'
+}
+
 proc_stats() {
     local pid="$1"
     local clk_tck=100
@@ -200,21 +209,16 @@ proc_stats() {
     stime=$(echo "$stat" | awk '{print $15}')
     starttime=$(echo "$stat" | awk '{print $22}')
 
-    local cpu_secs=$(( (utime + stime) / clk_tck ))
-    local cpu_fmt
-    cpu_fmt=$(printf '%02d:%02d:%02d' $(( cpu_secs/3600 )) $(( (cpu_secs%3600)/60 )) $(( cpu_secs%60 )))
-
-    local uptime_secs
-    uptime_secs=$(awk '{print int($1)}' /proc/uptime)
-    local start_epoch=$(( $(date +%s) - uptime_secs + starttime / clk_tck ))
-    local start_time
-    start_time=$(date -d "@$start_epoch" -u '+%Y-%m-%d %H:%M:%S')
+    local cpu_ms=$(( (utime + stime) * 1000 / clk_tck ))
+    local uptime_ms
+    uptime_ms=$(awk '{printf "%d", $1 * 1000}' /proc/uptime)
+    local elapsed_ms=$(( uptime_ms - starttime * 1000 / clk_tck ))
 
     local rss_kb
     rss_kb=$(echo "$status_file" | awk '/^VmRSS:/ {print $2}')
     local rss_mb=$(( rss_kb / 1024 ))
 
-    printf 'pid %-8s  started %s  cpu %s  rss %dM\n' "$pid" "$start_time" "$cpu_fmt" "$rss_mb"
+    printf 'time %s  cpu %s  rss %dM\n' "$(fmt_ms "$elapsed_ms")" "$(fmt_ms "$cpu_ms")" "$rss_mb"
 }
 
 # ============================================================================
@@ -730,11 +734,91 @@ begin_section "interpreter"
 RATE_LIMIT=$(curl -sf http://127.0.0.1:8080/api/status 2>/dev/null | awk '/^Rate limit:/ {print $3}' || true)
 kv "rate limit" "${RATE_LIMIT:-unavailable}"
 
-mapfile -t QUERY_PIDS < <(find_all_proc_pids "osm3s_query")
+mapfile -t QUERY_PIDS < <(find_all_proc_pids "interpreter")
 kv "running queries" "${#QUERY_PIDS[@]}"
 for pid in "${QUERY_PIDS[@]}"; do
-    kv "query $pid" "$(proc_stats "$pid")"
+    kv "PID $pid" "$(proc_stats "$pid")"
 done
+
+QUERY_LOG="$DB_DIR/transactions.log"
+if [[ -f "$QUERY_LOG" ]]; then
+    begin_section "query log"
+    while IFS=$'\t' read -r type key val; do
+        case "$type" in
+            K) kv "$key" "$val" ;;
+            S) begin_section "$key" ;;
+            E) end_section ;;
+        esac
+    done < <(awk '
+        $4 == "read_finished" && NF >= 10 {
+            anon = $5; client = $8
+            br = $9+0; c0 = $10+0
+            c1 = NF >= 11 ? $11+0 : 0
+            c2 = NF >= 12 ? $12+0 : 0
+            n++
+            sum_br += br;   ssq_br += br*br
+            sum_c0 += c0;   ssq_c0 += c0*c0
+            sum_c1 += c1;   ssq_c1 += c1*c1
+            sum_c2 += c2;   ssq_c2 += c2*c2
+            cn[client]++; cbr[client] += br; ccpu[client] += c0
+            qn[anon]++;   qbr[anon]  += br; qcpu[anon]   += c0
+        }
+        function fmt_ms(ms,    s) {
+            if (ms < 1000)   return sprintf("%dms", int(ms))
+            s = ms / 1000
+            if (s < 60)      return sprintf("%.1fs", s)
+            if (s < 3600)    return sprintf("%.1fm", s/60)
+                             return sprintf("%.1fh", s/3600)
+        }
+        function ms_stat(s, sq, cnt,    mean, var, sd) {
+            mean = s/cnt; var = sq/cnt - mean*mean
+            sd = var > 0 ? sqrt(var) : 0
+            return fmt_ms(mean) " avg  +/-" fmt_ms(sd)
+        }
+        function int_stat(s, sq, cnt,    mean, var, sd) {
+            mean = s/cnt; var = sq/cnt - mean*mean
+            sd = var > 0 ? sqrt(var) : 0
+            return sprintf("%d avg  +/-%d", int(mean), int(sd))
+        }
+        function top3(cpu, result,    key) {
+            result[1] = result[2] = result[3] = ""
+            for (key in cpu) {
+                if (result[1] == "" || cpu[key] > cpu[result[1]]) { result[3]=result[2]; result[2]=result[1]; result[1]=key }
+                else if (result[2] == "" || cpu[key] > cpu[result[2]]) { result[3]=result[2]; result[2]=key }
+                else if (result[3] == "" || cpu[key] > cpu[result[3]])   result[3]=key
+            }
+        }
+        END {
+            if (n == 0) { print "K\tcount\t0"; exit }
+            print "K\tcount\t" n
+            print "K\tblock reads\t"  int_stat(sum_br, ssq_br, n)
+            print "K\tcpu query\t"    ms_stat(sum_c1, ssq_c1, n)
+            print "K\tcpu format\t"   ms_stat(sum_c2, ssq_c2, n)
+            print "K\tcpu total\t"    ms_stat(sum_c0, ssq_c0, n)
+
+            print "S\ttop clients"
+            top3(ccpu, top)
+            for (i = 1; i <= 3; i++) {
+                if (top[i] == "") break
+                c = top[i]
+                printf "K\t%s\t%d queries  %d block reads  %s cpu\n", c, cn[c], cbr[c], fmt_ms(ccpu[c])
+            }
+            print "E"
+
+            print "S\ttop queries"
+            top3(qcpu, top)
+            for (i = 1; i <= 3; i++) {
+                if (top[i] == "") break
+                q = top[i]
+                printf "K\t%s\t%d queries  %d block reads  %s cpu\n", q, qn[q], qbr[q], fmt_ms(qcpu[q])
+            }
+            print "E"
+        }
+    ' "$QUERY_LOG")
+    end_section
+else
+    kv "query log" "not found"
+fi
 
 end_section
 
