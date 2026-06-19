@@ -277,9 +277,11 @@ if [[ -f "$ACCESS_LOG" ]]; then
                    " " parts[4] ":" parts[5] ":" parts[6]
         }
         {
-            if (!match($0, /\] "[^"]*" ([0-9]+) /, arr)) next
+            if (!match($0, /\] "[^"]*" /)) next
+            code = substr($0, RSTART + RLENGTH, 3)
+            if (code !~ /^[0-9]+$/) next
             total++
-            counts[arr[1]]++
+            counts[code]++
             if (total == 1) first = $4
             last = $4
         }
