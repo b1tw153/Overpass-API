@@ -176,17 +176,23 @@ find_proc_pid() {
 
 find_all_proc_pids() {
     local pattern="$1"
-    local pid
+    local pid cmdline
+    local -A cmdlines=()
+
     for cmdline_file in /proc/[0-9]*/cmdline; do
         [[ -r "$cmdline_file" ]] || continue
         pid="${cmdline_file%/cmdline}"
         pid="${pid##*proc/}"
         [[ "$pid" == "$$" ]] && continue
-        if tr '\0' '\n' < "$cmdline_file" 2>/dev/null | grep -qF "$pattern"; then
-            echo "$pid"
-        fi
+        IFS= read -rd '' cmdline < "$cmdline_file" 2>/dev/null || true
+        cmdlines[$pid]="$cmdline"
+    done
+
+    for pid in "${!cmdlines[@]}"; do
+        [[ "${cmdlines[$pid]}" == *"$pattern"* ]] && echo "$pid"
     done
 }
+
 
 fmt_ms() {
     awk -v ms="$1" 'BEGIN {
@@ -685,12 +691,12 @@ kv "last rotation" "$LAST_ROTATION"
 
 LOG_SIZE=$(find /opt/overpass -maxdepth 2 -name "*.log*" -type f -print0 2>/dev/null \
     | xargs -r -0 stat -c %s 2>/dev/null \
-    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}')
+    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}') || LOG_SIZE="?"
 kv "log files (.log*)" "${LOG_SIZE:-0}"
 
 OUT_SIZE=$(find /opt/overpass -maxdepth 2 -name "*.out*" -type f -print0 2>/dev/null \
     | xargs -r -0 stat -c %s 2>/dev/null \
-    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}')
+    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}') || OUT_SIZE="?"
 kv "out files (.out*)" "${OUT_SIZE:-0}"
 
 end_section
@@ -719,8 +725,8 @@ else
     kv "log" "not found"
 fi
 
-OSC_COUNT=$(find "$DIFF_DIR" -name "*.osc.gz" 2>/dev/null | wc -l)
-OSC_SIZE=$(du -sh "$DIFF_DIR" 2>/dev/null | awk '{print $1}')
+OSC_COUNT=$(find "$DIFF_DIR" -name "*.osc.gz" 2>/dev/null | wc -l) || OSC_COUNT=0
+OSC_SIZE=$(du -sh "$DIFF_DIR" 2>/dev/null | awk '{print $1}') || OSC_SIZE="?"
 kv "diff cache" "$OSC_COUNT files  ($OSC_SIZE)"
 
 end_section
@@ -737,7 +743,7 @@ kv "rate limit" "${RATE_LIMIT:-unavailable}"
 mapfile -t QUERY_PIDS < <(find_all_proc_pids "interpreter")
 kv "running queries" "${#QUERY_PIDS[@]}"
 for pid in "${QUERY_PIDS[@]}"; do
-    kv "PID $pid" "$(proc_stats "$pid")"
+    kv "PID $pid" "$(proc_stats "$pid" || echo "(finished)")"
 done
 
 QUERY_LOG="$DB_DIR/transactions.log"
@@ -749,13 +755,18 @@ if [[ -f "$QUERY_LOG" ]]; then
             S) begin_section "$key" ;;
             E) end_section ;;
         esac
-    done < <(awk '
+    done < <(awk -v now="$(date +%s)" '
         $4 == "read_finished" && NF >= 10 {
             anon = $5; client = $8
             br = $9+0; c0 = $10+0
             c1 = NF >= 11 ? $11+0 : 0
             c2 = NF >= 12 ? $12+0 : 0
             n++
+            split($1, d, "-"); split($2, t, ":")
+            age = now - mktime(d[1] " " d[2] " " d[3] " " t[1] " " t[2] " " t[3])
+            if (age <=  60) n1m++
+            if (age <= 300) n5m++
+            if (age <= 900) n15m++
             sum_br += br;   ssq_br += br*br
             sum_c0 += c0;   ssq_c0 += c0*c0
             sum_c1 += c1;   ssq_c1 += c1*c1
@@ -791,6 +802,7 @@ if [[ -f "$QUERY_LOG" ]]; then
         END {
             if (n == 0) { print "K\tcount\t0"; exit }
             print "K\tcount\t" n
+            print "K\tqueries\t1m: " n1m+0 "  5m: " n5m+0 "  15m: " n15m+0
             print "K\tblock reads\t"  int_stat(sum_br, ssq_br, n)
             print "K\tcpu query\t"    ms_stat(sum_c1, ssq_c1, n)
             print "K\tcpu format\t"   ms_stat(sum_c2, ssq_c2, n)
@@ -838,7 +850,7 @@ end_section
 begin_section "directories"
 for dir in /opt/overpass/backup /opt/overpass/db /opt/overpass/diff /opt/overpass/log /opt/overpass/run; do
     [[ -d "$dir" ]] || continue
-    kv "$dir" "$(du -sh "$dir" 2>/dev/null | awk '{print $1}')"
+    kv "$dir" "$(du -sh "$dir" 2>/dev/null | awk '{print $1}' || echo "?")"
 done
 end_section
 
