@@ -124,7 +124,7 @@ done
 # Start fcgiwrap for CGI script handling
 message "Starting fcgi"
 rm -f /opt/overpass/run/fcgiwrap.socket
-fcgiwrap -s unix:/opt/overpass/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" &
+fcgiwrap -s unix:/opt/overpass/run/fcgiwrap.socket -c "$FCGIWRAP_WORKERS" >> "$OVERPASS_LOG_DIR/fcgiwrap.out" 2>&1 &
 FCGI_PID=$!
 echo "$FCGI_PID" > /opt/overpass/run/fcgiwrap.pid
 
@@ -133,7 +133,7 @@ envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT} ${NGINX_MAX_CONN}' < /etc
 
 # Start nginx
 message "Starting nginx"
-nginx -g 'daemon off;' &
+nginx -g 'daemon off;' >> "$OVERPASS_LOG_DIR/nginx.out" 2>&1 &
 NGINX_PID="$!"
 
 # Start overpass

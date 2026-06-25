@@ -833,7 +833,7 @@ EOF
 
   if [[ -n "$OVERPASS_LOG_DIR" ]]; then
     cat >> "$OVERPASS_DB_DIR/logrotate.conf" <<EOF
-$OVERPASS_LOG_DIR/*.log {
+$OVERPASS_LOG_DIR/*.log $OVERPASS_LOG_DIR/*.out {
     daily
     minsize 512k
     missingok
