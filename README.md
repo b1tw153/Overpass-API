@@ -311,7 +311,17 @@ docker run -d \
   b1tw153/overpass-api
 ```
 
-Alternatively, you can set the container parameters as environment variables using a .env script or your preferred container orchestration environment. Mount the OVERPASS_DB_DIR and OVERPASS_DIFF_DIR directories to the predefined paths, keep the variables local and leave them unset in the container.
+Alternatively, you can set the container parameters as environment variables using a `.env` script or your preferred container orchestration environment. Mount the `OVERPASS_DB_DIR` and `OVERPASS_DIFF_DIR` directories to the predefined paths, keep the variables local and leave them unset in the container.
+
+### Area Generation at First Startup
+
+When Overpass starts from a database clone, extract file, or planet file (or if the database is restored from a backup), the database will be significantly behind the current replication state and it will take some time for the database to catch up.
+
+Also at first startup, the area files will be missing from the database. If you're running Overpass in the container or starting it with `run_osm3s.sh` and area generation is enabled, the default behavior is to generate area files immediately. That can take some time, but the processing is not typically an issue. However, if the host is resource constrained, area generation can slow down the process of catching up to the initial replication state.
+
+If `AREA_UPDATE_TIME` is also set (see `overpass.env`), the initial area generation at first startup will be deferred until the specified time.
+
+On resource constrained hosts, it may be better to run Overpass without area generation, to defer area generation until a specified time using `AREA_UPDATE_TIME`, or to manually control area generation by starting Overpass without area generation while replication catches up then restarting with area generation.
 
 ## Maintenance
 
