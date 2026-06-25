@@ -699,16 +699,8 @@ if [[ "$START_ID" == "auto" ]]; then
     exit 1
   fi
 
-  DB_ID=$(read_db_state)
-  FETCH_ID=$(read_fetch_state)
-
-  if [[ $FETCH_ID -gt $DB_ID ]]; then
-    CURRENT_ID=$FETCH_ID
-    log_message "Auto mode: resuming from $CURRENT_ID (fetch ahead of apply)"
-  else
-    CURRENT_ID=$DB_ID
-    log_message "Auto mode: resuming from $CURRENT_ID (database state)"
-  fi
+  CURRENT_ID=$(read_db_state)
+  log_message "Auto mode: resuming from $CURRENT_ID (database state)"
 else
   # In explicit mode, START_ID is the first file to download
   # Set CURRENT_ID to the file before it (last file we "already have")
