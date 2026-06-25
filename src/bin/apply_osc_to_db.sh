@@ -835,7 +835,6 @@ if [[ ! -d "$WORK_DIR" ]]; then
   die 1
 fi
 
-START_TIME=$(date +%s)
 POLL_START=
 
 while true; do
@@ -843,15 +842,10 @@ while true; do
 
   # Try to collect a batch
   if ! collect_batch "$CURRENT_ID"; then
-    if [[ -n "$START_TIME" && $(date +%s) -gt $((START_TIME + UPDATE_FREQUENCY * 2)) ]]; then
-      log_error "No new files to process after two update cycles. Is fetch_osc.sh running?"
-      die 1
-    fi
     wait_for_batch
     continue
   fi
 
-  START_TIME=
   POLL_START=
 
   # Prepare processing directory
