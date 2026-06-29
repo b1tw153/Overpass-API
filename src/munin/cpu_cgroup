@@ -47,7 +47,7 @@ if [[ "$1" = "config" ]]; then
 } ; exit 0 ; fi
 
 awk '
-    /^user_usec/   { user   = $2 }
-    /^system_usec/ { system = $2 }
-    END { printf "user.value %s\nsystem.value %s\n", user, system }
+    /^user_usec/   { user = $2 }
+    /^system_usec/ { sys  = $2 }
+    END { printf "user.value %s\nsystem.value %s\n", user, sys }
 ' "$CPU_STAT"
