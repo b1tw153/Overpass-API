@@ -217,7 +217,10 @@ proc_stats() {
 
     local cpu_ms=$(( (utime + stime) * 1000 / clk_tck ))
     local uptime_ms
-    uptime_ms=$(awk '{printf "%d", $1 * 1000}' /proc/uptime)
+    # %.0f, not %d: mawk's printf "%d" is 32-bit and saturates at INT_MAX, so
+    # uptime_ms wraps once host uptime exceeds ~24.86 days. %.0f keeps it in
+    # double precision.
+    uptime_ms=$(awk '{printf "%.0f", $1 * 1000}' /proc/uptime)
     local elapsed_ms=$(( uptime_ms - starttime * 1000 / clk_tck ))
 
     local rss_kb
