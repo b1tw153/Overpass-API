@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: container swap usage from cgroup v2.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins as "swap".
+#
+# Reports swap bytes used by this container from memory.swap.current.
+# Upper limit is taken from memory.swap.max when a limit is configured.
+#
+# Note: the stock swap plugin measures swap I/O rate (pages in/out per second).
+# That metric has no cgroup equivalent; this plugin reports swap usage instead.
+# Requires swap accounting to be enabled in the kernel (memory.swap.current
+# present); returns autoconf "no" otherwise.
+
+SWAP_CURRENT=/sys/fs/cgroup/memory.swap.current
+SWAP_MAX=/sys/fs/cgroup/memory.swap.max
+
+if [[ "$1" = "autoconf" ]]; then
+    if [[ -r "$SWAP_CURRENT" ]]; then
+        echo yes
+    else
+        echo "no (${SWAP_CURRENT} not readable; swap accounting may be disabled)"
+    fi
+    exit 0
+fi
+
+swap_max=$(cat "$SWAP_MAX" 2>/dev/null)
+
+if [[ "$1" = "config" ]]; then
+{
+    echo 'graph_title Swap usage'
+    if [[ "$swap_max" != "max" && -n "$swap_max" ]]; then
+        echo "graph_args --base 1024 -l 0 --upper-limit ${swap_max}"
+    else
+        echo 'graph_args --base 1024 -l 0'
+    fi
+    echo 'graph_vlabel Bytes'
+    echo 'graph_category system'
+    echo 'graph_info Swap space used by this container (cgroup v2).'
+    echo 'swap.label swap'
+    echo 'swap.draw AREA'
+    echo 'swap.info Swap bytes currently in use.'
+} ; exit 0 ; fi
+
+swap_current=$(cat "$SWAP_CURRENT")
+echo "swap.value ${swap_current}"

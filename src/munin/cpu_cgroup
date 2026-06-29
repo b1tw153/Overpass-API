@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: container CPU usage from cgroup v2.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins as "cpu".
+#
+# Reports user and system CPU time for this container from
+# /sys/fs/cgroup/cpu.stat. iowait, irq, softirq, steal, and idle are
+# not available from cgroup accounting.
+
+CPU_STAT=/sys/fs/cgroup/cpu.stat
+
+if [[ "$1" = "autoconf" ]]; then
+    if [[ -r "$CPU_STAT" ]]; then
+        echo yes
+    else
+        echo "no (${CPU_STAT} not readable)"
+    fi
+    exit 0
+fi
+
+NCPU=$(nproc)
+
+if [[ "$1" = "config" ]]; then
+{
+    echo 'graph_title CPU usage'
+    echo 'graph_order system user'
+    echo "graph_args --base 1000 -r --lower-limit 0 --upper-limit $((NCPU * 100))"
+    echo 'graph_vlabel %'
+    echo 'graph_scale no'
+    echo 'graph_info CPU time used by this container (cgroup v2). iowait, irq, softirq, steal, and idle are not available per cgroup.'
+    echo 'graph_category system'
+    echo 'graph_period second'
+    echo 'system.label system'
+    echo 'system.draw AREA'
+    echo 'system.min 0'
+    echo 'system.type DERIVE'
+    echo 'system.info CPU time spent by the kernel in system activities'
+    echo 'system.cdef system,10000,/'
+    echo 'user.label user'
+    echo 'user.draw STACK'
+    echo 'user.min 0'
+    echo 'user.type DERIVE'
+    echo 'user.info CPU time spent by normal programs and daemons'
+    echo 'user.cdef user,10000,/'
+} ; exit 0 ; fi
+
+awk '
+    /^user_usec/   { user   = $2 }
+    /^system_usec/ { system = $2 }
+    END { printf "user.value %s\nsystem.value %s\n", user, system }
+' "$CPU_STAT"

@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: container uptime.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins as "uptime".
+#
+# Reports the uptime of this container in days, derived from the start time of
+# PID 1 (/proc/1/stat field 22, clock ticks since boot) relative to host
+# uptime (/proc/uptime). HZ is assumed to be 100, matching the host kernel
+# default and the assumption made by the stock cpu plugin.
+
+if [[ "$1" = "autoconf" ]]; then
+    if [[ -r /proc/1/stat && -r /proc/uptime ]]; then
+        echo yes
+    else
+        echo "no (/proc/1/stat or /proc/uptime not readable)"
+    fi
+    exit 0
+fi
+
+if [[ "$1" = "config" ]]; then
+{
+    echo 'graph_title Uptime'
+    echo 'graph_args --base 1000 -l 0'
+    echo 'graph_scale no'
+    echo 'graph_vlabel uptime in days'
+    echo 'graph_category system'
+    echo 'uptime.label uptime'
+    echo 'uptime.draw AREA'
+} ; exit 0 ; fi
+
+# NR==FNR selects /proc/uptime (first file); the second file is /proc/1/stat.
+# Field 22 of /proc/[pid]/stat is starttime in clock ticks since boot, but the
+# comm field (field 2) may contain spaces inside parentheses, so strip
+# everything up through the closing paren before counting fields.
+awk '
+    NR == FNR { host_uptime = $1; next }
+    {
+        sub(/.*\) /, "")
+        container_uptime = host_uptime - $20 / 100
+        printf "uptime.value %.2f\n", container_uptime / 86400
+    }
+' /proc/uptime /proc/1/stat

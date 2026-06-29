@@ -14,7 +14,7 @@
 
 if [[ "$1" = "config" ]]; then
 {
-  echo 'graph_title Lag to OSM main database'
+  echo 'graph_title Local database age'
   echo 'graph_vlabel seconds'
   echo "osm_db_lag.label osm_base"
 

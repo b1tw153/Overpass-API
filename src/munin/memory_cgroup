@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: container memory usage from cgroup v2.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins as "memory".
+#
+# Reports anon, file cache, shmem, and kernel memory for this container from
+# /sys/fs/cgroup/memory.stat. Swap is included when memory.swap.current is
+# available. Upper limit is taken from memory.max when a limit is configured.
+
+MEM_STAT=/sys/fs/cgroup/memory.stat
+MEM_CURRENT=/sys/fs/cgroup/memory.current
+MEM_MAX=/sys/fs/cgroup/memory.max
+SWAP_CURRENT=/sys/fs/cgroup/memory.swap.current
+
+if [[ "$1" = "autoconf" ]]; then
+    if [[ -r "$MEM_STAT" && -r "$MEM_CURRENT" ]]; then
+        echo yes
+    else
+        echo "no (${MEM_STAT} or ${MEM_CURRENT} not readable)"
+    fi
+    exit 0
+fi
+
+mem_max=$(cat "$MEM_MAX" 2>/dev/null)
+have_swap=0
+swap_current=
+if [[ -r "$SWAP_CURRENT" ]]; then
+    have_swap=1
+    swap_current=$(cat "$SWAP_CURRENT")
+fi
+
+if [[ "$1" = "config" ]]; then
+{
+    echo 'graph_title Memory usage'
+    if [[ "$mem_max" != "max" && -n "$mem_max" ]]; then
+        echo "graph_args --base 1024 -l 0 --upper-limit ${mem_max}"
+    else
+        echo 'graph_args --base 1024 -l 0'
+    fi
+    echo 'graph_vlabel Bytes'
+    echo 'graph_category system'
+    echo 'graph_info Memory used by this container (cgroup v2). kernel includes slab, stacks, page tables, and other kernel overhead.'
+    order="anon cache shmem kernel"
+    [[ $have_swap -eq 1 ]] && order="$order swap"
+    echo "graph_order $order"
+    echo 'anon.label anon'
+    echo 'anon.draw AREA'
+    echo 'anon.info Anonymous memory (process heap and stack).'
+    echo 'cache.label cache'
+    echo 'cache.draw STACK'
+    echo 'cache.info File page cache.'
+    echo 'shmem.label shmem'
+    echo 'shmem.draw STACK'
+    echo 'shmem.info Shared memory and tmpfs.'
+    echo 'kernel.label kernel'
+    echo 'kernel.draw STACK'
+    echo 'kernel.info Kernel memory (slab, stacks, page tables, etc.).'
+    if [[ $have_swap -eq 1 ]]; then
+        echo 'swap.label swap'
+        echo 'swap.draw STACK'
+        echo 'swap.info Swap space used.'
+    fi
+} ; exit 0 ; fi
+
+awk -v have_swap="$have_swap" -v swap_current="$swap_current" '
+    /^anon /             { anon      = $2 }
+    /^file /             { file      = $2 }
+    /^shmem /            { shmem     = $2 }
+    /^kernel /           { kernel    = $2 }
+    /^kernel_stack /     { kstack    = $2 }
+    /^pagetables /       { ptables   = $2 }
+    /^slab_reclaimable / { slab_rec  = $2 }
+    /^slab_unreclaimable / { slab_unrec = $2 }
+    END {
+        if (kernel == "") kernel = kstack + ptables + slab_rec + slab_unrec
+        printf "anon.value %s\n",   anon
+        printf "cache.value %s\n",  file - shmem
+        printf "shmem.value %s\n",  shmem
+        printf "kernel.value %s\n", kernel
+        if (have_swap) printf "swap.value %s\n", swap_current
+    }
+' "$MEM_STAT"
