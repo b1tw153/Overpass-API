@@ -67,6 +67,8 @@ RUN chmod +x /usr/share/munin/plugins/osm_* \
        done \
     && chown -R overpass:overpass /etc/munin /var/lib/munin-node
 
+ENV OVERPASS_BIN_DIR="/opt/overpass/bin"
+
 ENV OVERPASS_DB_DIR="/opt/overpass/db"
 
 ENV OVERPASS_DIFF_DIR="/opt/overpass/diff"

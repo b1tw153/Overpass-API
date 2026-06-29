@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-
-# If you want munin monitoring then please copy this file to /etc/munin/plugins
+#
+# Munin plugin: Overpass API request counters (started, completed, shedded,
+# rate-limited, duplicate) per minute, from the dispatcher status.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins. Supply the Overpass binary directory
+# in /etc/munin/plugin-conf.d, e.g.:
+#   [osm_*]
+#   env.OVERPASS_BIN_DIR /usr/local/bin
 
 if [[ "$1" = "config" ]]; then
 {
@@ -29,5 +36,14 @@ if [[ "$1" = "config" ]]; then
   exit 0
 }; fi
 
-/OVERPASS_EXEC_DIR/bin/dispatcher --osm-base --status | grep -E '^Counter' | \
+if [[ -z "$OVERPASS_BIN_DIR" ]]; then
+  echo "OVERPASS_BIN_DIR is not set" >&2
+  exit 1
+fi
+if [[ ! -x "$OVERPASS_BIN_DIR/dispatcher" ]]; then
+  echo "$OVERPASS_BIN_DIR/dispatcher is not executable" >&2
+  exit 1
+fi
+
+"$OVERPASS_BIN_DIR/dispatcher" --osm-base --status | grep -E '^Counter' | \
 awk '{ if ($3 == "started") print "overpass_request_started.value "$5; else if ($3 == "finished") print "overpass_request_completed.value "$5; else if ($3 == "load") print "overpass_request_shedded.value "$6; else if ($3 == "rate") print "overpass_request_rate_limited.value "$6; else if ($4 == "duplicate") print "overpass_request_duplicate.value "$7; }'

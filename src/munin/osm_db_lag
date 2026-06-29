@@ -1,21 +1,61 @@
 #!/usr/bin/env bash
-
-# If you want munin monitoring then please copy this file to /etc/munin/plugins
+#
+# Munin plugin: lag in seconds between the local database and real time,
+# derived from the osm_base_version timestamp.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins. Supply the database directory in
+# /etc/munin/plugin-conf.d, e.g.:
+#   [osm_*]
+#   env.OVERPASS_DB_DIR /srv/overpass/db
+# Optional: env.OVERPASS_UPDATE_FREQUENCY (seconds, default 60) scales the
+# default warning/critical thresholds to the replication cadence; or set
+# env.warning / env.critical to fixed values.
 
 if [[ "$1" = "config" ]]; then
 {
   echo 'graph_title Lag to OSM main database'
   echo 'graph_vlabel seconds'
   echo "osm_db_lag.label osm_base"
-  echo "osm_db_lag.warning 300"
-  echo "osm_db_lag.critical 3600"
+
+  UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
+  if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
+    echo "OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'" >&2
+    exit 1
+  fi
+
+  if   [[ "$UPDATE_FREQUENCY" -lt 1800  ]]; then    # minutely
+    WARNING_DEFAULT=$(( UPDATE_FREQUENCY * 5 ))
+    CRITICAL_DEFAULT=$(( UPDATE_FREQUENCY * 60 ))
+  elif [[ "$UPDATE_FREQUENCY" -lt 43200 ]]; then    # hourly
+    WARNING_DEFAULT=$(( UPDATE_FREQUENCY * 2 ))
+    CRITICAL_DEFAULT=$(( UPDATE_FREQUENCY * 6 ))
+  else                                              # daily
+    WARNING_DEFAULT=$(( UPDATE_FREQUENCY * 3 / 2 ))
+    CRITICAL_DEFAULT=$(( UPDATE_FREQUENCY * 3 ))
+  fi
+  echo "osm_db_lag.warning ${warning:-$WARNING_DEFAULT}"
+  echo "osm_db_lag.critical ${critical:-$CRITICAL_DEFAULT}"
   exit 0
 }; fi
 
-DB_DATE=`cat /OVERPASS_DB_DIR/osm_base_version` # adapt directory
-CUR_DATE=`date -u +%T`
-DB_SECONDS=$((10#${DB_DATE:11:2}*3600 + 10#${DB_DATE:15:2}*60 + 10#${DB_DATE:19:2}))
-CUR_SECONDS=$((10#${CUR_DATE:0:2}*3600 + 10#${CUR_DATE:3:2}*60 + 10#${CUR_DATE:6:2}))
-LAG=$(( ( $CUR_SECONDS + 86400 - $DB_SECONDS ) % 86400 ))
+if [[ -z "$OVERPASS_DB_DIR" ]]; then
+  echo "OVERPASS_DB_DIR is not set" >&2
+  exit 1
+fi
+if [[ ! -s "$OVERPASS_DB_DIR/osm_base_version" ]]; then
+  echo "$OVERPASS_DB_DIR/osm_base_version is missing or empty" >&2
+  exit 1
+fi
+
+DB_TIMESTAMP=$(cat "$OVERPASS_DB_DIR/osm_base_version")
+DB_TIMESTAMP="${DB_TIMESTAMP//\\:/:}"
+DB_SECONDS=$(date -d "$DB_TIMESTAMP" +%s 2>/dev/null)
+if [[ -z "$DB_SECONDS" ]]; then
+  echo "Could not parse timestamp '$DB_TIMESTAMP' from osm_base_version" >&2
+  exit 1
+fi
+CURRENT_SECONDS=$(date +%s)
+LAG=$(( CURRENT_SECONDS - DB_SECONDS ))
 
 echo "osm_db_lag.value $LAG"

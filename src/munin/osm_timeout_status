@@ -1,15 +1,31 @@
 #!/usr/bin/env bash
+#
+# Munin plugin: average time units the dispatcher has granted to running
+# queries, from the dispatcher status.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins. Supply the Overpass binary directory
+# in /etc/munin/plugin-conf.d, e.g.:
+#   [osm_*]
+#   env.OVERPASS_BIN_DIR /usr/local/bin
 
 if [[ "$1" = "config" ]]; then
 {
-  echo 'graph_title Dispatcher granted runtime'
-  echo 'graph_vlabel seconds'
+  echo 'graph_title Dispatcher granted time units'
+  echo 'graph_vlabel time units'
   echo "osm_timeout_status.label osm_timeout"
-  echo "osm_timeout_status.warning 120000"
-  echo "osm_timeout_status.critical 200000"
   exit 0
 }; fi
 
-GRANTED=$(/OVERPASS_EXEC_DIR/bin/dispatcher --osm-base --status | grep -E "^Average claimed time units:" | awk '{ print $5; }')
+if [[ -z "$OVERPASS_BIN_DIR" ]]; then
+  echo "OVERPASS_BIN_DIR is not set" >&2
+  exit 1
+fi
+if [[ ! -x "$OVERPASS_BIN_DIR/dispatcher" ]]; then
+  echo "$OVERPASS_BIN_DIR/dispatcher is not executable" >&2
+  exit 1
+fi
+
+GRANTED=$("$OVERPASS_BIN_DIR/dispatcher" --osm-base --status | grep -E "^Average claimed time units:" | awk '{ print $5; }')
 
 echo "osm_timeout_status.value $GRANTED"

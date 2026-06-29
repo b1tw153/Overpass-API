@@ -1,15 +1,39 @@
 #!/usr/bin/env bash
+#
+# Munin plugin: average shared memory (bytes) the dispatcher has granted to
+# running queries, from the dispatcher status.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins. Supply the Overpass binary directory
+# in /etc/munin/plugin-conf.d, e.g.:
+#   [osm_*]
+#   env.OVERPASS_BIN_DIR /usr/local/bin
 
 if [[ "$1" = "config" ]]; then
 {
   echo 'graph_title Dispatcher granted memory'
   echo 'graph_vlabel bytes'
   echo "osm_mem_status.label osm_base"
-  echo "osm_mem_status.warning 8000000000"
-  echo "osm_mem_status.critical 16000000000"
+
+  DISPATCHER_BASE_SPACE=${DISPATCHER_BASE_SPACE:-12884901888}
+  if [[ ! "$DISPATCHER_BASE_SPACE" =~ ^[1-9][0-9]*$ ]]; then
+    echo "DISPATCHER_BASE_SPACE must be a positive integer, got: '$DISPATCHER_BASE_SPACE'" >&2
+    exit 1
+  fi
+  echo "osm_mem_status.warning ${warning:-$(( DISPATCHER_BASE_SPACE / 2 ))}"
+  echo "osm_mem_status.critical ${critical:-$(( DISPATCHER_BASE_SPACE * 4 / 5 ))}"
   exit 0
 }; fi
 
-GRANTED=`$(/OVERPASS_EXEC_DIR/bin/dispatcher --osm-base --status | grep -E "^Average claimed space:" | awk '{ print $4; }')
+if [[ -z "$OVERPASS_BIN_DIR" ]]; then
+  echo "OVERPASS_BIN_DIR is not set" >&2
+  exit 1
+fi
+if [[ ! -x "$OVERPASS_BIN_DIR/dispatcher" ]]; then
+  echo "$OVERPASS_BIN_DIR/dispatcher is not executable" >&2
+  exit 1
+fi
+
+GRANTED=$("$OVERPASS_BIN_DIR/dispatcher" --osm-base --status | grep -E "^Average claimed space:" | awk '{ print $4; }')
 
 echo "osm_mem_status.value $GRANTED"
