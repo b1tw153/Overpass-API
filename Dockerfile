@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libexpat1 \
     liblz4-1 \
     logrotate \
+    munin-node \
     nginx \
     osmium-tool \
     rsync \
@@ -55,6 +56,16 @@ RUN chown overpass:overpass /etc/nginx/nginx.conf.template \
     && chown overpass:overpass /etc/nginx/nginx.conf
 
 COPY --chown=overpass:overpass static/ /opt/overpass/static/
+
+COPY etc/munin-node.conf.template /etc/munin/munin-node.conf.template
+COPY src/munin/ /usr/share/munin/plugins/
+RUN chmod +x /usr/share/munin/plugins/osm_* \
+    && rm -f /etc/munin/plugins/* \
+    && for plugin in df df_inode open_files open_inodes forks threads uptime \
+                     osm_db_lag osm_db_request_count osm_mem_status osm_timeout_status; do \
+         ln -s "/usr/share/munin/plugins/$plugin" "/etc/munin/plugins/$plugin"; \
+       done \
+    && chown -R overpass:overpass /etc/munin /var/lib/munin-node
 
 ENV OVERPASS_DB_DIR="/opt/overpass/db"
 

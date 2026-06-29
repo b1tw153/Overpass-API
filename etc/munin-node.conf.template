@@ -1,0 +1,36 @@
+# munin-node configuration for the Overpass API container.
+#
+# Rendered to /etc/munin/munin-node.conf at startup by entrypoint.sh using
+# envsubst. The MUNIN_NODE_* values substituted below are documented in
+# etc/overpass.env. Paths and process settings are fixed by the container
+# context and are not configurable.
+
+log_level ${MUNIN_NODE_LOG_LEVEL}
+log_file /opt/overpass/log/munin-node.log
+pid_file /opt/overpass/run/munin-node.pid
+
+# The node runs in the foreground under the entrypoint's process supervision.
+# The container runs as the unprivileged "overpass" user, so the node neither
+# detaches nor drops privileges to root.
+background 0
+setsid 0
+user overpass
+group overpass
+
+# Node name reported to the munin master. Defaults to the container hostname;
+# set MUNIN_NODE_HOST_NAME to a stable value so the master keeps a single RRD
+# history across container restarts.
+host_name ${MUNIN_NODE_HOST_NAME}
+
+# Access control. The master's source address must match a cidr_allow entry
+# and no cidr_deny entry to poll the node (deny is evaluated first, so a deny
+# inside an allowed range wins). Configuring at least one cidr_allow entry is
+# what enables the node to start at all; with none configured the entrypoint
+# leaves munin-node stopped. Rendered from MUNIN_NODE_CIDR_ALLOW and the
+# optional MUNIN_NODE_CIDR_DENY.
+${MUNIN_NODE_ACL}
+
+# IPv4 address and port the node binds to inside the container. The default
+# binds all interfaces because the only route in is the operator-published port.
+host ${MUNIN_NODE_HOST}
+port ${MUNIN_NODE_PORT}

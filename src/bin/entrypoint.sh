@@ -12,6 +12,13 @@ message()
   echo "$(date -u '+%F %T'): $1"
 }
 
+# Validate an IP address or CIDR netblock with the same library (Net::CIDR) that
+# munin-node uses to enforce its access-control list.
+munin_valid_cidr()
+{
+  perl -MNet::CIDR=cidrvalidate -e 'exit(defined cidrvalidate($ARGV[0]) ? 0 : 1)' "$1"
+}
+
 FCGIWRAP_WORKERS=${FCGIWRAP_WORKERS:-$(nproc)}
 
 if [[ ! "$FCGIWRAP_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
@@ -48,6 +55,68 @@ if [[ -z "${DISPATCHER_BASE_SPACE:-}" ]]; then
   fi
 fi
 
+# Munin monitoring is opt-in: the node starts only when the operator names who
+# may poll it via MUNIN_NODE_CIDR_ALLOW. An empty allow-list leaves it stopped.
+MUNIN_NODE_CIDR_ALLOW=${MUNIN_NODE_CIDR_ALLOW:-}
+MUNIN_NODE_CIDR_DENY=${MUNIN_NODE_CIDR_DENY:-}
+
+if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
+  MUNIN_NODE_LOG_LEVEL=${MUNIN_NODE_LOG_LEVEL:-4}
+  if [[ ! "$MUNIN_NODE_LOG_LEVEL" =~ ^[0-9]+$ ]]; then
+    message "ERROR: MUNIN_NODE_LOG_LEVEL must be a non-negative integer, got: '$MUNIN_NODE_LOG_LEVEL'"
+    exit 1
+  fi
+
+  MUNIN_NODE_PORT=${MUNIN_NODE_PORT:-4949}
+  if [[ ! "$MUNIN_NODE_PORT" =~ ^[1-9][0-9]*$ ]]; then
+    message "ERROR: MUNIN_NODE_PORT must be a positive integer, got: '$MUNIN_NODE_PORT'"
+    exit 1
+  fi
+
+  MUNIN_NODE_HOST_NAME=${MUNIN_NODE_HOST_NAME:-$HOSTNAME}
+  if [[ ! "$MUNIN_NODE_HOST_NAME" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$ ]]; then
+    message "ERROR: MUNIN_NODE_HOST_NAME must be a hostname or FQDN, got: '$MUNIN_NODE_HOST_NAME'"
+    exit 1
+  fi
+
+  # Single IPv4 bind address, default all interfaces.
+  MUNIN_NODE_HOST=${MUNIN_NODE_HOST:-0.0.0.0}
+  if [[ "$MUNIN_NODE_HOST" == *[[:space:]]* || "$MUNIN_NODE_HOST" == *:* \
+        || "$MUNIN_NODE_HOST" == */* ]] || ! munin_valid_cidr "$MUNIN_NODE_HOST"; then
+    message "ERROR: MUNIN_NODE_HOST must be a single IPv4 address, got: '$MUNIN_NODE_HOST'"
+    exit 1
+  fi
+
+  # Validate the access-control lists, then render the cidr_allow / cidr_deny
+  # block from them.
+  read -ra MUNIN_ALLOW_CIDRS <<< "$MUNIN_NODE_CIDR_ALLOW"
+  for cidr in "${MUNIN_ALLOW_CIDRS[@]}"; do
+    if ! munin_valid_cidr "$cidr"; then
+      message "ERROR: MUNIN_NODE_CIDR_ALLOW entries must be CIDR netblocks, got: '$cidr'"
+      exit 1
+    fi
+  done
+
+  read -ra MUNIN_DENY_CIDRS <<< "$MUNIN_NODE_CIDR_DENY"
+  for cidr in "${MUNIN_DENY_CIDRS[@]}"; do
+    if ! munin_valid_cidr "$cidr"; then
+      message "ERROR: MUNIN_NODE_CIDR_DENY entries must be CIDR netblocks, got: '$cidr'"
+      exit 1
+    fi
+  done
+
+  MUNIN_NODE_ACL=$(
+    for cidr in "${MUNIN_ALLOW_CIDRS[@]}"; do
+      printf 'cidr_allow %s\n' "$cidr"
+    done
+    for cidr in "${MUNIN_DENY_CIDRS[@]}"; do
+      printf 'cidr_deny %s\n' "$cidr"
+    done
+  )
+
+  export MUNIN_NODE_LOG_LEVEL MUNIN_NODE_HOST_NAME MUNIN_NODE_ACL MUNIN_NODE_HOST MUNIN_NODE_PORT
+fi
+
 # ============================================================================
 # SIGNAL HANDLER
 # ============================================================================
@@ -57,6 +126,14 @@ shutdown()
   local EXIT_CODE="$1"
   local EXIT_REASON="$2"
   message "$EXIT_REASON, shutting down..."
+
+  if [[ -n "$MUNIN_PID" ]] && kill -0 "$MUNIN_PID" 2>/dev/null; then
+    message "Stopping munin-node"
+    kill "$MUNIN_PID" 2>/dev/null
+    wait "$MUNIN_PID"
+    message "Stopped munin-node"
+  fi
+  MUNIN_PID=
 
   if [[ -n "$NGINX_PID" ]] && kill -0 "$NGINX_PID" 2>/dev/null; then
     message "Stopping nginx"
@@ -141,6 +218,15 @@ message "Starting Overpass"
 "$EXEC_DIR/run_osm3s.sh" &
 OSM3S_PID="$!"
 
+# Start munin-node if monitoring is enabled (not load-bearing for serving)
+if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
+  message "Starting munin-node"
+  envsubst '${MUNIN_NODE_LOG_LEVEL} ${MUNIN_NODE_HOST_NAME} ${MUNIN_NODE_ACL} ${MUNIN_NODE_HOST} ${MUNIN_NODE_PORT}' \
+    < /etc/munin/munin-node.conf.template > /etc/munin/munin-node.conf
+  munin-node --config /etc/munin/munin-node.conf >> "$OVERPASS_LOG_DIR/munin-node.out" 2>&1 &
+  MUNIN_PID="$!"
+fi
+
 message "All processes started"
 
 while true; do
@@ -151,6 +237,10 @@ while true; do
     "$FCGI_PID")  EXITED_CHILD="fcgiwrap"; GO_ZOMBIE=true; break ;;
     "$NGINX_PID") EXITED_CHILD="nginx";    GO_ZOMBIE=true; break ;;
     "$OSM3S_PID") EXITED_CHILD="Overpass"; GO_ZOMBIE=true; break ;;
+    "$MUNIN_PID")
+      message "WARNING: munin-node exited with code $EXIT_CODE; monitoring has stopped"
+      MUNIN_PID=
+      ;;
   esac
 done
 
