@@ -3,9 +3,11 @@
 # Munin plugin: Overpass interpreter throughput and query run time, parsed
 # incrementally from the dispatcher transactions.log.
 #
-# Two graphs (multigraph):
-#   osm_interpreter_throughput  completed queries per minute
-#   osm_interpreter_runtime     average query run time, wall clock vs CPU
+# Multigraph:
+#   osm_interpreter_throughput       completed queries per minute
+#   osm_interpreter_runtime          average query run time vs CPU time
+#   osm_interpreter_block_reads      database blocks read per minute
+#   osm_interpreter_block_reads_avg  average blocks read per query
 #
 # Each run reads only the bytes appended to transactions.log since the previous
 # run; the read position and cumulative counters are kept in $MUNIN_PLUGSTATE,
@@ -55,13 +57,13 @@ queries.draw LINE2
 multigraph osm_interpreter_runtime
 graph_title Overpass interpreter query run time
 graph_vlabel seconds
-graph_info Average query run time over each interval: wall clock (read_finished minus requesting, 1 s resolution) versus CPU time. Divergence indicates queries waiting rather than computing.
-wall.label wall clock
+graph_info Average query run time over each interval: run time (read_finished minus requesting, 1 s resolution) versus CPU time. Divergence indicates queries waiting rather than computing.
+wall.label run time
 wall.type DERIVE
 wall.min 0
 wall.cdef wall,wall_n,/
 wall.draw LINE2
-cpu.label CPU
+cpu.label CPU time
 cpu.type DERIVE
 cpu.min 0
 cpu.cdef cpu,n,/,1000,/
@@ -69,6 +71,29 @@ cpu.draw LINE2
 wall_n.graph no
 wall_n.type DERIVE
 wall_n.min 0
+n.graph no
+n.type DERIVE
+n.min 0
+
+multigraph osm_interpreter_block_reads
+graph_title Overpass interpreter block reads
+graph_vlabel blocks per minute
+graph_info Total database blocks read per minute across all queries (aggregate read load).
+block_reads.label per minute
+block_reads.type DERIVE
+block_reads.min 0
+block_reads.cdef block_reads,60,*
+block_reads.draw LINE2
+
+multigraph osm_interpreter_block_reads_avg
+graph_title Overpass interpreter block reads per query
+graph_vlabel blocks
+graph_info Average database blocks read per completed query (block-read cost of a typical query).
+block_reads.label per query
+block_reads.type DERIVE
+block_reads.min 0
+block_reads.cdef block_reads,n,/
+block_reads.draw LINE2
 n.graph no
 n.type DERIVE
 n.min 0
@@ -98,7 +123,7 @@ cur_head=$(head -n 1 "$LOG" | cksum | cut -d' ' -f1)
 # run should not parse the entire historical log).
 prev_offset=$cur_size
 prev_head=$cur_head
-t_queries=0 t_wall=0 t_walln=0 t_cpu=0
+t_queries=0 t_wall=0 t_walln=0 t_cpu=0 t_br=0
 inflight=""
 
 if [[ -f "$STATE" ]]; then
@@ -106,7 +131,7 @@ if [[ -f "$STATE" ]]; then
     case "$key" in
       offset)   prev_offset="$rest" ;;
       head)     prev_head="$rest" ;;
-      totals)   read -r t_queries t_wall t_walln t_cpu <<<"$rest" ;;
+      totals)   read -r t_queries t_wall t_walln t_cpu t_br <<<"$rest" ;;
       inflight) inflight="$rest" ;;
     esac
   done < "$STATE"
@@ -161,7 +186,7 @@ fi
 
 awk \
   -v head="$cur_head" -v offset="$new_offset" \
-  -v t_queries="$t_queries" -v t_wall="$t_wall" -v t_walln="$t_walln" -v t_cpu="$t_cpu" \
+  -v t_queries="$t_queries" -v t_wall="$t_wall" -v t_walln="$t_walln" -v t_cpu="$t_cpu" -v t_br="$t_br" \
   -v inflight="$inflight" -v statetmp="$STATETMP" -v max_age="$INFLIGHT_MAX_AGE" '
   function to_epoch(date, time,    d, t, y, mo, dy, hr, mn, sc, days, i, mdays) {
     split(date, d, "-"); split(time, t, ":")
@@ -176,7 +201,7 @@ awk \
     return (days + dy - 1) * 86400 + hr*3600 + mn*60 + sc
   }
   BEGIN {
-    queries = t_queries+0; wall = t_wall+0; walln = t_walln+0; cpu = t_cpu+0
+    queries = t_queries+0; wall = t_wall+0; walln = t_walln+0; cpu = t_cpu+0; brs = t_br+0
     maxts = 0
     m = split(inflight, a, ",")
     for (i = 1; i <= m; i++) {
@@ -193,6 +218,7 @@ awk \
     } else if ($4 == "read_finished") {
       queries++
       cpu += $10+0
+      brs += $9+0
       if (pid in start) {
         w = ts - start[pid]; if (w < 0) w = 0
         wall += w; walln++
@@ -207,7 +233,7 @@ awk \
     }
     printf "offset %s\n", offset           > statetmp
     printf "head %s\n", head               >> statetmp
-    printf "totals %.0f %.0f %.0f %.0f\n", queries, wall, walln, cpu >> statetmp
+    printf "totals %.0f %.0f %.0f %.0f %.0f\n", queries, wall, walln, cpu, brs >> statetmp
     fl = ""
     for (p in start) fl = fl (fl == "" ? "" : ",") p ":" sprintf("%.0f", start[p])
     printf "inflight %s\n", fl             >> statetmp
@@ -218,6 +244,11 @@ awk \
     printf "wall.value %.0f\n", wall
     printf "wall_n.value %.0f\n", walln
     printf "cpu.value %.0f\n", cpu
+    printf "n.value %.0f\n", queries
+    print  "multigraph osm_interpreter_block_reads"
+    printf "block_reads.value %.0f\n", brs
+    print  "multigraph osm_interpreter_block_reads_avg"
+    printf "block_reads.value %.0f\n", brs
     printf "n.value %.0f\n", queries
   }
 ' "$CHUNK"
