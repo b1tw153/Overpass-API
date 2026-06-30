@@ -1,0 +1,308 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: Overpass nginx access-log stats, parsed incrementally from the
+# access log in a single pass.
+#
+# Multigraphs:
+#   osm_nginx_status     requests per minute, one stacked series per HTTP
+#                        response code seen (200, 404, 429, 504, ...)
+#   osm_nginx_bytes      response body bytes sent per minute (egress bandwidth)
+#   osm_nginx_bytes_avg  average response body size per request
+#   osm_nginx_path       requests per minute by nginx endpoint (interpreter,
+#                        status, kill, liveness, static, ...)
+#   osm_nginx_latency    average request_time vs upstream_response_time per
+#                        request (requires the combined_timed log_format)
+#
+# Each run reads only the bytes appended to the access log since the previous
+# run, via the shared osm_logtail helper, which also follows a logrotate
+# copytruncate rotation across the boundary. Cumulative counters are kept in
+# $MUNIN_PLUGSTATE, so the DERIVE graphs ride through rotations without the
+# reset-to-zero spike a fresh full parse would punch into them. All four graphs
+# come from one tail of the log, so the extra graphs cost no extra scan.
+#
+# The status field set is dynamic: a field "httpNNN" exists for each code that
+# has appeared in the log. Both "config" and "fetch" derive those fields from
+# the per-code counters in the state file; "config" reads the state but never
+# advances it (it must not consume the log). A code seen for the first time in a
+# "fetch" is declared by "config" on the next poll -- standard for a dynamic
+# munin plugin. The endpoint buckets, by contrast, are a fixed set tied to the
+# nginx "location" blocks in nginx.conf.template (keep them in sync).
+#
+# This file is a plugin (executable, symlinked into /etc/munin/plugins). It
+# sources osm_logtail.sh from the plugin library. Supply the log directory in
+# /etc/munin/plugin-conf.d, e.g.:
+#   [osm_*]
+#   env.OVERPASS_LOG_DIR /opt/overpass/log
+
+# shellcheck source-path=SCRIPTDIR
+# shellcheck source=osm_logtail.sh
+. "${MUNIN_LIBDIR:-/usr/share/munin}/plugins/osm_logtail.sh"
+
+LOG_DIR="${OVERPASS_LOG_DIR:-}"
+LOG="$LOG_DIR/nginx_access.log"
+STATE="${MUNIN_PLUGSTATE:-/tmp}/$(basename "$0").state"
+
+# Endpoint buckets, in graph order. This list and its labels must match the
+# path_bucket() function in the fetch awk below, which maps a request URI to one
+# of these names from the nginx.conf.template "location" set.
+PATH_BUCKETS=(interpreter status kill api_other static liveness container_status nginx_status other)
+declare -A PATH_LABEL=(
+  [interpreter]="/api/interpreter"
+  [status]="/api/status"
+  [kill]="/api/kill"
+  [api_other]="/api/* (other)"
+  [static]="static / other"
+  [liveness]="/liveness"
+  [container_status]="/container-status"
+  [nginx_status]="/nginx-status"
+  [other]="unparsed"
+)
+
+if [[ "$1" = "autoconf" ]]; then
+  if [[ -n "$LOG_DIR" && -r "$LOG" ]]; then
+    echo yes
+  else
+    echo "no ($LOG not readable; set env.OVERPASS_LOG_DIR)"
+  fi
+  exit 0
+fi
+
+if [[ "$1" = "config" ]]; then
+  # Reason phrases for the status field labels. Standard codes are the IANA HTTP
+  # Status Code Registry; codes marked "(nginx)" are nginx's own non-standard
+  # codes (it can log these, so they may appear in the access log). A code
+  # absent from the table is labelled with just its number.
+  declare -A HTTP_REASON=(
+    [100]="Continue" [101]="Switching Protocols" [102]="Processing"
+    [103]="Early Hints"
+    [200]="OK" [201]="Created" [202]="Accepted"
+    [203]="Non-Authoritative Information" [204]="No Content"
+    [205]="Reset Content" [206]="Partial Content" [207]="Multi-Status"
+    [208]="Already Reported" [226]="IM Used"
+    [300]="Multiple Choices" [301]="Moved Permanently" [302]="Found"
+    [303]="See Other" [304]="Not Modified" [305]="Use Proxy"
+    [307]="Temporary Redirect" [308]="Permanent Redirect"
+    [400]="Bad Request" [401]="Unauthorized" [402]="Payment Required"
+    [403]="Forbidden" [404]="Not Found" [405]="Method Not Allowed"
+    [406]="Not Acceptable" [407]="Proxy Authentication Required"
+    [408]="Request Timeout" [409]="Conflict" [410]="Gone"
+    [411]="Length Required" [412]="Precondition Failed"
+    [413]="Content Too Large" [414]="URI Too Long"
+    [415]="Unsupported Media Type" [416]="Range Not Satisfiable"
+    [417]="Expectation Failed" [418]="I'm a Teapot"
+    [421]="Misdirected Request" [422]="Unprocessable Content" [423]="Locked"
+    [424]="Failed Dependency" [425]="Too Early" [426]="Upgrade Required"
+    [428]="Precondition Required" [429]="Too Many Requests"
+    [431]="Request Header Fields Too Large"
+    [451]="Unavailable For Legal Reasons"
+    [444]="No Response (nginx)" [494]="Request Header Too Large (nginx)"
+    [495]="SSL Certificate Error (nginx)"
+    [496]="SSL Certificate Required (nginx)"
+    [497]="HTTP Request Sent to HTTPS Port (nginx)"
+    [499]="Client Closed Request (nginx)"
+    [500]="Internal Server Error" [501]="Not Implemented" [502]="Bad Gateway"
+    [503]="Service Unavailable" [504]="Gateway Timeout"
+    [505]="HTTP Version Not Supported" [506]="Variant Also Negotiates"
+    [507]="Insufficient Storage" [508]="Loop Detected" [510]="Not Extended"
+    [511]="Network Authentication Required"
+  )
+
+  echo "multigraph osm_nginx_status"
+  echo "graph_title Overpass HTTP response codes"
+  echo "graph_vlabel requests per minute"
+  echo "graph_info Completed requests per minute, one stacked series per HTTP response code seen in the nginx access log (e.g. 429 rate-limited, 504 timeout)."
+  # One field per code already recorded in the state file, numeric ascending so
+  # the field order is stable across runs. No state yet (fresh container): emit
+  # the graph header only; fields appear as codes are seen.
+  if [[ -f "$STATE" ]]; then
+    while read -r code; do
+      reason=${HTTP_REASON[$code]:-}
+      printf 'http%s.label %s%s\n' "$code" "$code" "${reason:+ $reason}"
+      printf 'http%s.type DERIVE\n' "$code"
+      printf 'http%s.min 0\n' "$code"
+      printf 'http%s.cdef http%s,60,*\n' "$code" "$code"
+      printf 'http%s.draw AREASTACK\n' "$code"
+    done < <(awk '$1 == "code" { print $2 }' "$STATE" | sort -n)
+  fi
+
+  echo "multigraph osm_nginx_bytes"
+  echo "graph_title Overpass egress bytes"
+  echo "graph_vlabel bytes per minute"
+  echo "graph_args --base 1024 --lower-limit 0"
+  echo "graph_info Response body bytes sent per minute (egress bandwidth). Body bytes only -- headers are not counted."
+  echo "bytes.label egress"
+  echo "bytes.type DERIVE"
+  echo "bytes.min 0"
+  echo "bytes.cdef bytes,60,*"
+  echo "bytes.draw AREA"
+
+  echo "multigraph osm_nginx_bytes_avg"
+  echo "graph_title Overpass average response size"
+  echo "graph_vlabel bytes per request"
+  echo "graph_args --base 1024 --lower-limit 0"
+  echo "graph_info Average response body size per request over the interval (total body bytes divided by request count)."
+  echo "size.label average response size"
+  echo "size.type DERIVE"
+  echo "size.min 0"
+  echo "size.cdef size,size_n,/"
+  echo "size.draw LINE2"
+  echo "size_n.label requests"
+  echo "size_n.graph no"
+  echo "size_n.type DERIVE"
+  echo "size_n.min 0"
+
+  echo "multigraph osm_nginx_path"
+  echo "graph_title Overpass requests by endpoint"
+  echo "graph_vlabel requests per minute"
+  echo "graph_info Requests per minute by nginx endpoint, including requests served or rejected before the dispatcher (rate-limited queries, liveness probes, static files) that transactions.log never records."
+  for bucket in "${PATH_BUCKETS[@]}"; do
+    printf 'path_%s.label %s\n' "$bucket" "${PATH_LABEL[$bucket]}"
+    printf 'path_%s.type DERIVE\n' "$bucket"
+    printf 'path_%s.min 0\n' "$bucket"
+    printf 'path_%s.cdef path_%s,60,*\n' "$bucket" "$bucket"
+    printf 'path_%s.draw AREASTACK\n' "$bucket"
+  done
+
+  echo "multigraph osm_nginx_latency"
+  echo "graph_title Overpass response latency"
+  echo "graph_vlabel seconds"
+  echo "graph_info Average response time per request over the interval. 'request' is the full server-side duration nginx sees (includes connection queueing and response transfer to the client); 'upstream' is the fcgiwrap/dispatcher time only. Divergence means time spent queueing or transferring rather than computing. Needs the combined_timed log_format; old log lines without timing fields are excluded."
+  echo "request.label request_time (total)"
+  echo "request.type DERIVE"
+  echo "request.min 0"
+  echo "request.cdef request,request_n,/,1000,/"
+  echo "request.draw LINE2"
+  echo "request_n.label request samples"
+  echo "request_n.graph no"
+  echo "request_n.type DERIVE"
+  echo "request_n.min 0"
+  echo "upstream.label upstream_response_time"
+  echo "upstream.type DERIVE"
+  echo "upstream.min 0"
+  echo "upstream.cdef upstream,upstream_n,/,1000,/"
+  echo "upstream.draw LINE2"
+  echo "upstream_n.label upstream samples"
+  echo "upstream_n.graph no"
+  echo "upstream_n.type DERIVE"
+  echo "upstream_n.min 0"
+  exit 0
+fi
+
+# ---- fetch ----
+
+if [[ -z "$LOG_DIR" ]]; then
+  echo "OVERPASS_LOG_DIR is not set" >&2
+  exit 1
+fi
+if [[ ! -r "$LOG" ]]; then
+  echo "$LOG is not readable" >&2
+  exit 1
+fi
+
+osm_logtail "$LOG" "$STATE" || { echo "$LOG is not readable" >&2; exit 1; }
+
+STATETMP=$(mktemp)
+trap 'rm -f "$OSM_LOGTAIL_CHUNK" "$STATETMP"' EXIT
+
+# Prior cumulative totals are read from the existing state file (first awk
+# input); the appended chunk is the second input. /dev/null stands in for a
+# missing state file so the two-input split still holds on the first run.
+state_in="$STATE"
+[[ -f "$STATE" ]] || state_in=/dev/null
+
+awk \
+  -v offset="$OSM_LOGTAIL_OFFSET" -v head="$OSM_LOGTAIL_HEAD" \
+  -v statefile="$state_in" -v statetmp="$STATETMP" \
+  -v buckets="${PATH_BUCKETS[*]}" '
+  # Map a request URI to one of the fixed endpoint buckets. Mirrors the nginx
+  # location set in nginx.conf.template and the PATH_BUCKETS list in the shell.
+  function path_bucket(uri) {
+    sub(/\?.*/, "", uri)                 # drop query string
+    if (uri == "/api/interpreter")  return "interpreter"
+    if (uri == "/api/kill")         return "kill"
+    if (uri == "/api/status")       return "status"
+    if (uri ~ /^\/api\//)           return "api_other"
+    if (uri == "/liveness")         return "liveness"
+    if (uri == "/container-status") return "container_status"
+    if (uri == "/nginx-status")     return "nginx_status"
+    if (uri ~ /^\//)                return "static"
+    return "other"
+  }
+  FILENAME == statefile {
+    if      ($1 == "code")    counts[$2] = $3
+    else if ($1 == "bytes")   bytes = $2
+    else if ($1 == "path")    pcount[$2] = $3
+    else if ($1 == "latency") { rt_ms = $2; rt_n = $3; ut_ms = $4; ut_n = $5 }
+    next
+  }
+  {
+    # Anchor on the "] \"request\" " boundary (same idiom as container_status.sh):
+    # the first "] " in a combined line closes the [time] field, so what follows
+    # the quoted request line is "status body_bytes ...", and the quoted request
+    # itself is "METHOD URI PROTOCOL".
+    if (!match($0, /\] "[^"]*" /)) next
+    request = substr($0, RSTART + 3, RLENGTH - 5)   # strip leading "] \"" and trailing "\" "
+    tail = substr($0, RSTART + RLENGTH)             # "status body_bytes ..."
+    code = substr(tail, 1, 3)
+    if (code !~ /^[0-9][0-9][0-9]$/) next
+    counts[code]++
+    split(tail, tf, " ")
+    if (tf[2] ~ /^[0-9]+$/) bytes += tf[2]          # body_bytes_sent ("-" when none)
+    split(request, rf, " ")
+    pcount[path_bucket(rf[2])]++                    # rf[2] = URI (empty if request is "-")
+
+    # Timing fields (combined_timed format) are the last two whitespace tokens
+    # of the line and never contain spaces, so $(NF-1)/$NF reach them past the
+    # quoted user-agent. They are absent on plain-combined lines (older logs) and
+    # "-" for upstream when no upstream was contacted -- guard both numerically.
+    # Accumulate as integer milliseconds, as osm_interpreter does for CPU time.
+    rt = $(NF-1); ut = $NF
+    if (rt ~ /^[0-9]+(\.[0-9]+)?$/) { rt_ms += int(rt * 1000 + 0.5); rt_n++ }
+    if (ut ~ /^[0-9]+(\.[0-9]+)?$/) { ut_ms += int(ut * 1000 + 0.5); ut_n++ }
+  }
+  END {
+    printf "offset %s\n", offset > statetmp
+    printf "head %s\n", head     >> statetmp
+
+    n = 0
+    for (c in counts) order[++n] = c
+    for (i = 2; i <= n; i++) {            # insertion sort, numeric ascending
+      v = order[i]; j = i - 1
+      while (j >= 1 && order[j]+0 > v+0) { order[j+1] = order[j]; j-- }
+      order[j+1] = v
+    }
+
+    requests = 0
+    for (i = 1; i <= n; i++) requests += counts[order[i]]
+
+    print "multigraph osm_nginx_status"
+    for (i = 1; i <= n; i++) {
+      printf "code %s %.0f\n", order[i], counts[order[i]] >> statetmp
+      printf "http%s.value %.0f\n", order[i], counts[order[i]]
+    }
+
+    printf "bytes %.0f\n", bytes >> statetmp
+    print "multigraph osm_nginx_bytes"
+    printf "bytes.value %.0f\n", bytes
+    print "multigraph osm_nginx_bytes_avg"
+    printf "size.value %.0f\n", bytes
+    printf "size_n.value %.0f\n", requests
+
+    print "multigraph osm_nginx_path"
+    nb = split(buckets, blist, " ")
+    for (i = 1; i <= nb; i++) {
+      b = blist[i]
+      printf "path %s %.0f\n", b, pcount[b]+0 >> statetmp
+      printf "path_%s.value %.0f\n", b, pcount[b]+0
+    }
+
+    printf "latency %.0f %.0f %.0f %.0f\n", rt_ms, rt_n, ut_ms, ut_n >> statetmp
+    print "multigraph osm_nginx_latency"
+    printf "request.value %.0f\n", rt_ms
+    printf "request_n.value %.0f\n", rt_n
+    printf "upstream.value %.0f\n", ut_ms
+    printf "upstream_n.value %.0f\n", ut_n
+  }
+' "$state_in" "$OSM_LOGTAIL_CHUNK"
+
+mv "$STATETMP" "$STATE"

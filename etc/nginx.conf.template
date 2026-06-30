@@ -15,7 +15,16 @@ http {
     include /etc/nginx/mime.types;
     default_type application/octet-stream;
 
-    access_log /opt/overpass/log/nginx_access.log;
+    # Standard "combined" format with $request_time and $upstream_response_time
+    # appended (read by the osm_nginx munin plugin). The timing fields are at the
+    # end so anything parsing the combined prefix is unaffected;
+    # $upstream_response_time is "-" for requests that never reach the upstream.
+    log_format combined_timed '$remote_addr - $remote_user [$time_local] '
+                              '"$request" $status $body_bytes_sent '
+                              '"$http_referer" "$http_user_agent" '
+                              '$request_time $upstream_response_time';
+
+    access_log /opt/overpass/log/nginx_access.log combined_timed;
 
     client_body_temp_path /opt/overpass/tmp;
     fastcgi_temp_path     /opt/overpass/tmp;
@@ -34,7 +43,7 @@ http {
         error_page 429 @error_429;
         error_page 504 @error_504;
 
-        access_log /opt/overpass/log/nginx_access.log;
+        access_log /opt/overpass/log/nginx_access.log combined_timed;
         error_log  /opt/overpass/log/nginx_error.log;
 
         location / {

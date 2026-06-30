@@ -59,18 +59,32 @@ COPY --chown=overpass:overpass static/ /opt/overpass/static/
 
 COPY etc/munin-node.conf.template /etc/munin/munin-node.conf.template
 COPY src/munin/ /usr/share/munin/plugins/
-RUN chmod +x /usr/share/munin/plugins/osm_* \
-              /usr/share/munin/plugins/cpu_cgroup \
-              /usr/share/munin/plugins/memory_cgroup \
-              /usr/share/munin/plugins/swap_cgroup \
-              /usr/share/munin/plugins/uptime_container \
+RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
+             /usr/share/munin/plugins/osm_db_request_count \
+             /usr/share/munin/plugins/osm_dispatcher \
+             /usr/share/munin/plugins/osm_interpreter \
+             /usr/share/munin/plugins/osm_mem_status \
+             /usr/share/munin/plugins/osm_nginx \
+             /usr/share/munin/plugins/osm_timeout_status \
+             /usr/share/munin/plugins/cpu_cgroup \
+             /usr/share/munin/plugins/memory_cgroup \
+             /usr/share/munin/plugins/swap_cgroup \
+             /usr/share/munin/plugins/uptime_container \
     && rm -f /etc/munin/plugins/* \
-    && for plugin in df df_inode forks threads \
-                     osm_db_lag osm_db_request_count osm_mem_status osm_timeout_status osm_interpreter; do \
+    && for plugin in df \
+                     df_inode \
+                     forks \
+                     threads \
+                     osm_db_lag \
+                     osm_db_request_count \
+                     osm_dispatcher \
+                     osm_interpreter \
+                     osm_nginx \
+       ; do \
          ln -s "/usr/share/munin/plugins/$plugin" "/etc/munin/plugins/$plugin"; \
        done \
-    && ln -s /usr/share/munin/plugins/cpu_cgroup    /etc/munin/plugins/cpu \
-    && ln -s /usr/share/munin/plugins/memory_cgroup /etc/munin/plugins/memory \
+    && ln -s /usr/share/munin/plugins/cpu_cgroup       /etc/munin/plugins/cpu \
+    && ln -s /usr/share/munin/plugins/memory_cgroup    /etc/munin/plugins/memory \
     && ln -s /usr/share/munin/plugins/swap_cgroup      /etc/munin/plugins/swap \
     && ln -s /usr/share/munin/plugins/uptime_container /etc/munin/plugins/uptime \
     && chown -R overpass:overpass /etc/munin /var/lib/munin-node
