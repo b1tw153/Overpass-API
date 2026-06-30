@@ -44,20 +44,25 @@ fi
 
 if [[ "$1" = "config" ]]; then
   cat <<'CONFIG'
-multigraph osm_interpreter_throughput
-graph_title Overpass interpreter throughput
-graph_vlabel queries per minute
-graph_info Completed queries per minute, from read_finished records in transactions.log.
-queries.label completed
-queries.type DERIVE
-queries.min 0
-queries.cdef queries,60,*
-queries.draw LINE2
-
 multigraph osm_interpreter_runtime
-graph_title Overpass interpreter query run time
+graph_title Overpass interpreter run time
+graph_vlabel seconds per minute
+graph_info Total run time and CPU time consumed by queries per minute (aggregate interpreter load). Divergence between run time and CPU time indicates queries waiting rather than computing.
+wall.label run time
+wall.type DERIVE
+wall.min 0
+wall.cdef wall,60,*
+wall.draw LINE2
+cpu.label CPU time
+cpu.type DERIVE
+cpu.min 0
+cpu.cdef cpu,60,*,1000,/
+cpu.draw LINE2
+
+multigraph osm_interpreter_runtime_avg
+graph_title Overpass interpreter run time per query
 graph_vlabel seconds
-graph_info Average query run time over each interval: run time (read_finished minus requesting, 1 s resolution) versus CPU time. Divergence indicates queries waiting rather than computing.
+graph_info Average run time and CPU time per completed query. Divergence between run time and CPU time indicates queries waiting rather than computing.
 wall.label run time
 wall.type DERIVE
 wall.min 0
@@ -216,6 +221,7 @@ awk \
     if ($4 == "requesting") {
       start[pid] = ts
     } else if ($4 == "read_finished") {
+      if ($8 == "::") { delete start[pid]; next }
       queries++
       cpu += $10+0
       brs += $9+0
@@ -238,9 +244,10 @@ awk \
     for (p in start) fl = fl (fl == "" ? "" : ",") p ":" sprintf("%.0f", start[p])
     printf "inflight %s\n", fl             >> statetmp
 
-    print  "multigraph osm_interpreter_throughput"
-    printf "queries.value %.0f\n", queries
     print  "multigraph osm_interpreter_runtime"
+    printf "wall.value %.0f\n", wall
+    printf "cpu.value %.0f\n", cpu
+    print  "multigraph osm_interpreter_runtime_avg"
     printf "wall.value %.0f\n", wall
     printf "wall_n.value %.0f\n", walln
     printf "cpu.value %.0f\n", cpu
