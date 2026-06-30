@@ -64,12 +64,12 @@ RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
              /usr/share/munin/plugins/osm_dispatcher \
              /usr/share/munin/plugins/osm_interpreter \
              /usr/share/munin/plugins/osm_mem_status \
-             /usr/share/munin/plugins/osm_nginx \
+             /usr/share/munin/plugins/osm_nginx_access \
              /usr/share/munin/plugins/osm_timeout_status \
-             /usr/share/munin/plugins/cpu_cgroup \
-             /usr/share/munin/plugins/memory_cgroup \
-             /usr/share/munin/plugins/swap_cgroup \
-             /usr/share/munin/plugins/uptime_container \
+             /usr/share/munin/plugins/cgroup_cpu \
+             /usr/share/munin/plugins/cgroup_memory \
+             /usr/share/munin/plugins/cgroup_swap \
+             /usr/share/munin/plugins/container_uptime \
     && rm -f /etc/munin/plugins/* \
     && for plugin in df \
                      df_inode \
@@ -79,14 +79,14 @@ RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
                      osm_db_request_count \
                      osm_dispatcher \
                      osm_interpreter \
-                     osm_nginx \
+                     osm_nginx_access \
        ; do \
          ln -s "/usr/share/munin/plugins/$plugin" "/etc/munin/plugins/$plugin"; \
        done \
-    && ln -s /usr/share/munin/plugins/cpu_cgroup       /etc/munin/plugins/cpu \
-    && ln -s /usr/share/munin/plugins/memory_cgroup    /etc/munin/plugins/memory \
-    && ln -s /usr/share/munin/plugins/swap_cgroup      /etc/munin/plugins/swap \
-    && ln -s /usr/share/munin/plugins/uptime_container /etc/munin/plugins/uptime \
+    && ln -s /usr/share/munin/plugins/cgroup_cpu       /etc/munin/plugins/cpu \
+    && ln -s /usr/share/munin/plugins/cgroup_memory    /etc/munin/plugins/memory \
+    && ln -s /usr/share/munin/plugins/cgroup_swap      /etc/munin/plugins/swap \
+    && ln -s /usr/share/munin/plugins/container_uptime /etc/munin/plugins/uptime \
     && chown -R overpass:overpass /etc/munin /var/lib/munin-node
 
 ENV OVERPASS_BIN_DIR="/opt/overpass/bin"

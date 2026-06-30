@@ -16,7 +16,7 @@ http {
     default_type application/octet-stream;
 
     # Standard "combined" format with $request_time and $upstream_response_time
-    # appended (read by the osm_nginx munin plugin). The timing fields are at the
+    # appended (read by the osm_nginx_access munin plugin). The timing fields are at the
     # end so anything parsing the combined prefix is unaffected;
     # $upstream_response_time is "-" for requests that never reach the upstream.
     log_format combined_timed '$remote_addr - $remote_user [$time_local] '
