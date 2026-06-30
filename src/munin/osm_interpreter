@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: Overpass interpreter throughput and query run time, parsed
+# incrementally from the dispatcher transactions.log.
+#
+# Two graphs (multigraph):
+#   osm_interpreter_throughput  completed queries per minute
+#   osm_interpreter_runtime     average query run time, wall clock vs CPU
+#
+# Each run reads only the bytes appended to transactions.log since the previous
+# run; the read position and cumulative counters are kept in $MUNIN_PLUGSTATE,
+# so the cost is independent of the total log size. A logrotate copytruncate
+# rotation (the file is copied to "<log>.1" and truncated in place) is detected
+# and followed across the boundary. Run time pairs each "requesting"
+# line with the "read_finished" line for the same pid (process lifetimes for a
+# given pid cannot overlap, so the pairing is unambiguous), even when the two
+# lines fall in different runs or straddle a rotation.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins. Supply the database directory in
+# /etc/munin/plugin-conf.d, e.g.:
+#   [osm_*]
+#   env.OVERPASS_DB_DIR /srv/overpass/db
+
+# Byte-oriented awk: mawk is byte-oriented in the container; LC_ALL=C keeps gawk
+# byte-oriented too, so the partial-line trim measures bytes, not characters.
+export LC_ALL=C
+
+DB_DIR="${OVERPASS_DB_DIR:-}"
+LOG="$DB_DIR/transactions.log"
+STATE="${MUNIN_PLUGSTATE:-/tmp}/$(basename "$0").state"
+INFLIGHT_MAX_AGE=3600   # drop unpaired "requesting" entries older than this (s)
+
+if [[ "$1" = "autoconf" ]]; then
+  if [[ -n "$DB_DIR" && -r "$LOG" ]]; then
+    echo yes
+  else
+    echo "no ($LOG not readable; set env.OVERPASS_DB_DIR)"
+  fi
+  exit 0
+fi
+
+if [[ "$1" = "config" ]]; then
+  cat <<'CONFIG'
+multigraph osm_interpreter_throughput
+graph_title Overpass interpreter throughput
+graph_vlabel queries per minute
+graph_info Completed queries per minute, from read_finished records in transactions.log.
+queries.label completed
+queries.type DERIVE
+queries.min 0
+queries.cdef queries,60,*
+queries.draw LINE2
+
+multigraph osm_interpreter_runtime
+graph_title Overpass interpreter query run time
+graph_vlabel seconds
+graph_info Average query run time over each interval: wall clock (read_finished minus requesting, 1 s resolution) versus CPU time. Divergence indicates queries waiting rather than computing.
+wall.label wall clock
+wall.type DERIVE
+wall.min 0
+wall.cdef wall,wall_n,/
+wall.draw LINE2
+cpu.label CPU
+cpu.type DERIVE
+cpu.min 0
+cpu.cdef cpu,n,/,1000,/
+cpu.draw LINE2
+wall_n.graph no
+wall_n.type DERIVE
+wall_n.min 0
+n.graph no
+n.type DERIVE
+n.min 0
+CONFIG
+  exit 0
+fi
+
+# ---- fetch ----
+
+if [[ -z "$DB_DIR" ]]; then
+  echo "OVERPASS_DB_DIR is not set" >&2
+  exit 1
+fi
+if [[ ! -r "$LOG" ]]; then
+  echo "$LOG is not readable" >&2
+  exit 1
+fi
+
+cur_size=$(stat -c %s "$LOG")
+# Fingerprint of the first line: stable as the file grows (appends never change
+# it), but it changes when copytruncate resets the file. Together with a size
+# regression this is how rotation is detected; the inode does not change under
+# copytruncate, so it is useless here.
+cur_head=$(head -n 1 "$LOG" | cksum | cut -d' ' -f1)
+
+# No state yet: start caught up at end of file (a fresh container or a first
+# run should not parse the entire historical log).
+prev_offset=$cur_size
+prev_head=$cur_head
+t_queries=0 t_wall=0 t_walln=0 t_cpu=0
+inflight=""
+
+if [[ -f "$STATE" ]]; then
+  while read -r key rest; do
+    case "$key" in
+      offset)   prev_offset="$rest" ;;
+      head)     prev_head="$rest" ;;
+      totals)   read -r t_queries t_wall t_walln t_cpu <<<"$rest" ;;
+      inflight) inflight="$rest" ;;
+    esac
+  done < "$STATE"
+fi
+
+CHUNK=$(mktemp)
+STATETMP=$(mktemp)
+trap 'rm -f "$CHUNK" "$STATETMP"' EXIT
+
+# emit_range <file> <start> <end>: append complete lines in [start,end) to
+# $CHUNK and set CONSUMED to the number of bytes consumed (always ending on a
+# line boundary, so a partial trailing line is held back for the next run).
+CONSUMED=0
+emit_range() {
+  local f="$1" s="$2" e="$3" remaining tmp part_len keep
+  CONSUMED=0
+  remaining=$(( e - s ))
+  (( remaining <= 0 )) && return 0
+  tmp=$(mktemp)
+  tail -c "+$(( s + 1 ))" "$f" | head -c "$remaining" > "$tmp"
+  if [[ -s "$tmp" && -z "$(tail -c1 "$tmp")" ]]; then
+    cat "$tmp" >> "$CHUNK"            # ends in newline: all complete
+    CONSUMED="$remaining"
+  else                                # trailing partial: keep up to last newline
+    part_len=$(awk 'END{print length($0)}' "$tmp")
+    keep=$(( remaining - part_len ))
+    (( keep > 0 )) && head -c "$keep" "$tmp" >> "$CHUNK"
+    CONSUMED="$keep"
+  fi
+  rm -f "$tmp"
+}
+
+if (( cur_size < prev_offset )) || [[ "$cur_head" != "$prev_head" ]]; then
+  # Rotation (copytruncate): the live file was copied to <log>.1 and truncated
+  # in place. The dispatcher keeps the log open for its lifetime, so rename
+  # rotation would not work (it would keep writing to the renamed file);
+  # copytruncate preserves the inode. The unread tail [prev_offset, old end]
+  # now lives only in <log>.1, so drain it (when it still lines up with our
+  # offset -- it will not after multiple missed rotations), then read the
+  # truncated file from the start.
+  rot="$LOG.1"
+  if [[ -f "$rot" ]]; then
+    rot_size=$(stat -c %s "$rot")
+    (( prev_offset <= rot_size )) && emit_range "$rot" "$prev_offset" "$rot_size"
+  fi
+  emit_range "$LOG" 0 "$cur_size"
+  new_offset="$CONSUMED"
+else
+  emit_range "$LOG" "$prev_offset" "$cur_size"
+  new_offset=$(( prev_offset + CONSUMED ))
+fi
+
+awk \
+  -v head="$cur_head" -v offset="$new_offset" \
+  -v t_queries="$t_queries" -v t_wall="$t_wall" -v t_walln="$t_walln" -v t_cpu="$t_cpu" \
+  -v inflight="$inflight" -v statetmp="$STATETMP" -v max_age="$INFLIGHT_MAX_AGE" '
+  function to_epoch(date, time,    d, t, y, mo, dy, hr, mn, sc, days, i, mdays) {
+    split(date, d, "-"); split(time, t, ":")
+    y = d[1]+0; mo = d[2]+0; dy = d[3]+0
+    hr = t[1]+0; mn = t[2]+0; sc = t[3]+0
+    split("31 28 31 30 31 30 31 31 30 31 30 31", mdays, " ")
+    if ((y%4==0 && y%100!=0) || y%400==0) mdays[2] = 29
+    days = (y-1970)*365
+    for (i=1970; i<y; i++)
+      if ((i%4==0 && i%100!=0) || i%400==0) days++
+    for (i=1; i<mo; i++) days += mdays[i]
+    return (days + dy - 1) * 86400 + hr*3600 + mn*60 + sc
+  }
+  BEGIN {
+    queries = t_queries+0; wall = t_wall+0; walln = t_walln+0; cpu = t_cpu+0
+    maxts = 0
+    m = split(inflight, a, ",")
+    for (i = 1; i <= m; i++) {
+      if (a[i] == "") continue
+      split(a[i], kv, ":"); start[kv[1]] = kv[2]
+    }
+  }
+  {
+    ts = to_epoch($1, $2)
+    if (ts > maxts) maxts = ts
+    pid = $3; gsub(/[][]/, "", pid)
+    if ($4 == "requesting") {
+      start[pid] = ts
+    } else if ($4 == "read_finished") {
+      queries++
+      cpu += $10+0
+      if (pid in start) {
+        w = ts - start[pid]; if (w < 0) w = 0
+        wall += w; walln++
+        delete start[pid]
+      }
+    }
+  }
+  END {
+    if (maxts > 0) {                       # age out unpaired "requesting" entries
+      cutoff = maxts - max_age
+      for (p in start) if (start[p] < cutoff) delete start[p]
+    }
+    printf "offset %s\n", offset           > statetmp
+    printf "head %s\n", head               >> statetmp
+    printf "totals %.0f %.0f %.0f %.0f\n", queries, wall, walln, cpu >> statetmp
+    fl = ""
+    for (p in start) fl = fl (fl == "" ? "" : ",") p ":" sprintf("%.0f", start[p])
+    printf "inflight %s\n", fl             >> statetmp
+
+    print  "multigraph osm_interpreter_throughput"
+    printf "queries.value %.0f\n", queries
+    print  "multigraph osm_interpreter_runtime"
+    printf "wall.value %.0f\n", wall
+    printf "wall_n.value %.0f\n", walln
+    printf "cpu.value %.0f\n", cpu
+    printf "n.value %.0f\n", queries
+  }
+' "$CHUNK"
+
+mv "$STATETMP" "$STATE"

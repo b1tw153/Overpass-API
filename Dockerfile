@@ -66,7 +66,7 @@ RUN chmod +x /usr/share/munin/plugins/osm_* \
               /usr/share/munin/plugins/uptime_container \
     && rm -f /etc/munin/plugins/* \
     && for plugin in df df_inode forks threads \
-                     osm_db_lag osm_db_request_count osm_mem_status osm_timeout_status; do \
+                     osm_db_lag osm_db_request_count osm_mem_status osm_timeout_status osm_interpreter; do \
          ln -s "/usr/share/munin/plugins/$plugin" "/etc/munin/plugins/$plugin"; \
        done \
     && ln -s /usr/share/munin/plugins/cpu_cgroup    /etc/munin/plugins/cpu \
