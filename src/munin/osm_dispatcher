@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: Overpass dispatcher resource allocations, from dispatcher status.
+#
+# Multigraph:
+#   osm_dispatcher_memory     current and query-weighted average claimed space (bytes)
+#   osm_dispatcher_time       current and query-weighted average claimed time units
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins. Supply the Overpass binary directory
+# in /etc/munin/plugin-conf.d, e.g.:
+#   [osm_*]
+#   env.OVERPASS_BIN_DIR /opt/overpass/bin
+
+if [[ "$1" = "autoconf" ]]; then
+  if [[ -n "$OVERPASS_BIN_DIR" && -x "$OVERPASS_BIN_DIR/dispatcher" ]]; then
+    echo yes
+  else
+    echo "no (dispatcher not found; set env.OVERPASS_BIN_DIR)"
+  fi
+  exit 0
+fi
+
+if [[ "$1" = "config" ]]; then
+  DISPATCHER_BASE_SPACE=${DISPATCHER_BASE_SPACE:-12884901888}
+  if [[ ! "$DISPATCHER_BASE_SPACE" =~ ^[1-9][0-9]*$ ]]; then
+    echo "DISPATCHER_BASE_SPACE must be a positive integer, got: '$DISPATCHER_BASE_SPACE'" >&2
+    exit 1
+  fi
+
+  cat <<CONFIG
+multigraph osm_dispatcher_memory
+graph_title Dispatcher claimed memory
+graph_vlabel bytes
+graph_info Current and query-weighted average memory claimed by running queries. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
+claimed.label current
+claimed.type GAUGE
+claimed.draw LINE2
+claimed.warning ${warning:-$(( DISPATCHER_BASE_SPACE / 2 ))}
+claimed.critical ${critical:-$(( DISPATCHER_BASE_SPACE * 4 / 5 ))}
+query_weighted_avg.label query-weighted avg
+query_weighted_avg.type GAUGE
+query_weighted_avg.draw LINE1
+
+multigraph osm_dispatcher_time
+graph_title Dispatcher claimed time units
+graph_vlabel time units
+graph_info Current and query-weighted average time units claimed by running queries. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
+claimed.label current
+claimed.type GAUGE
+claimed.draw LINE2
+query_weighted_avg.label query-weighted avg
+query_weighted_avg.type GAUGE
+query_weighted_avg.draw LINE1
+CONFIG
+  exit 0
+fi
+
+if [[ -z "$OVERPASS_BIN_DIR" ]]; then
+  echo "OVERPASS_BIN_DIR is not set" >&2
+  exit 1
+fi
+if [[ ! -x "$OVERPASS_BIN_DIR/dispatcher" ]]; then
+  echo "$OVERPASS_BIN_DIR/dispatcher is not executable" >&2
+  exit 1
+fi
+
+STATUS=$("$OVERPASS_BIN_DIR/dispatcher" --osm-base --status)
+
+claimed_space=$(awk '/^Total claimed space:/ { print $4 }' <<<"$STATUS")
+avg_space=$(awk '/^Average claimed space:/ { print $4 }' <<<"$STATUS")
+claimed_time=$(awk '/^Total claimed time units:/ { print $5 }' <<<"$STATUS")
+avg_time=$(awk '/^Average claimed time units:/ { print $5 }' <<<"$STATUS")
+
+cat <<OUTPUT
+multigraph osm_dispatcher_memory
+claimed.value $claimed_space
+query_weighted_avg.value $avg_space
+
+multigraph osm_dispatcher_time
+claimed.value $claimed_time
+query_weighted_avg.value $avg_time
+OUTPUT
