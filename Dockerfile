@@ -72,6 +72,7 @@ RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
              /usr/share/munin/plugins/cgroup_cpu \
              /usr/share/munin/plugins/cgroup_memory \
              /usr/share/munin/plugins/cgroup_swap \
+             /usr/share/munin/plugins/cgroup_pressure \
              /usr/share/munin/plugins/container_uptime \
     && rm -f /etc/munin/plugins/* \
     && for plugin in df \
@@ -92,6 +93,7 @@ RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
     && ln -s /usr/share/munin/plugins/cgroup_cpu       /etc/munin/plugins/cpu \
     && ln -s /usr/share/munin/plugins/cgroup_memory    /etc/munin/plugins/memory \
     && ln -s /usr/share/munin/plugins/cgroup_swap      /etc/munin/plugins/swap \
+    && ln -s /usr/share/munin/plugins/cgroup_pressure  /etc/munin/plugins/pressure \
     && ln -s /usr/share/munin/plugins/container_uptime /etc/munin/plugins/uptime \
     && chown -R overpass:overpass /etc/munin /var/lib/munin-node
 

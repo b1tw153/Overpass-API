@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: container pressure stall information (PSI) from cgroup v2.
+#
+# Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
+# and symlink it into /etc/munin/plugins as "pressure".
+#
+# One graph per resource (CPU, memory, I/O) from
+# /sys/fs/cgroup/{cpu,memory,io}.pressure. Each shows the "some" and "full"
+# stall shares as a percentage of wall time.
+#
+# Derived from the PSI "total" microsecond counters (DERIVE), not the kernel's
+# avgN fields. The avgN are point-in-time EWMA snapshots of the last 10/60/300 s,
+# so at Munin's 5-minute cadence avg10/avg60 undersample the interval (a burst
+# between polls is invisible); the total counter integrated over the poll
+# interval is the exact time-lost fraction and is cadence-independent. Since
+# total is microseconds and DERIVE yields us/s, "cdef total,10000,/" gives the
+# percent of wall time stalled (1e6 us/s = 100%).
+#
+#   some = share of time at least one task was stalled on the resource
+#   full = share of time all non-idle tasks were stalled at once (zero progress)
+#
+# "full" is a subset of "some". The "full" line is absent for cpu.pressure on
+# older kernels; a resource file may be absent entirely -- both are probed, and
+# only what exists is emitted.
+#
+# Requires CONFIG_PSI=y with PSI enabled (psi=1, i.e. not default-disabled).
+
+PRESSURE_DIR=/sys/fs/cgroup
+RESOURCES="cpu memory io"
+declare -A RES_LABEL=([cpu]="CPU" [memory]="Memory" [io]="I/O")
+
+if [[ "$1" = "autoconf" ]]; then
+    if [[ -r "$PRESSURE_DIR/cpu.pressure" ]]; then
+        echo yes
+    else
+        echo "no ($PRESSURE_DIR/cpu.pressure not readable; PSI not enabled?)"
+    fi
+    exit 0
+fi
+
+# Probe availability: which resource files exist, and which carry a "full" line.
+declare -A HAVE_RES HAVE_FULL
+for res in $RESOURCES; do
+    f="$PRESSURE_DIR/$res.pressure"
+    if [[ -r "$f" ]]; then
+        HAVE_RES[$res]=1
+        if grep -q '^full ' "$f"; then HAVE_FULL[$res]=1; else HAVE_FULL[$res]=0; fi
+    else
+        HAVE_RES[$res]=0
+        HAVE_FULL[$res]=0
+    fi
+done
+
+if [[ "$1" = "config" ]]; then
+    for res in $RESOURCES; do
+        [[ ${HAVE_RES[$res]} -eq 1 ]] || continue
+        label=${RES_LABEL[$res]}
+        echo "multigraph pressure_$res"
+        echo "graph_title $label pressure"
+        echo "graph_category system"
+        echo "graph_vlabel % of time stalled"
+        echo "graph_args --lower-limit 0 --upper-limit 100"
+        echo "graph_period second"
+        case $res in
+            cpu)    echo "graph_info CPU pressure for this container (cgroup v2 PSI): share of wall time stalled waiting for CPU, integrated over the poll interval from the PSI total counter. 'some' = at least one task runnable but not scheduled -- CPU contention, the container-scoped stand-in for load average, measured as time lost rather than queue depth. 'full' = all non-idle tasks waiting for CPU at once. Rising 'some' is CPU starvation; 'full' is severe." ;;
+            memory) echo "graph_info Memory pressure for this container (cgroup v2 PSI): share of wall time stalled on memory -- reclaim, page-cache refaults, swap-in. This is the stall-time complement to the working-set refault graph: refaults count events, this shows how much time they cost. A rising trend is the DB working set outgrowing RAM." ;;
+            io)     echo "graph_info I/O pressure for this container (cgroup v2 PSI): share of wall time stalled on disk I/O. A portable disk-stall signal -- needs only CONFIG_PSI, not io-controller accounting. For a CPU-bound Overpass box this normally stays low; a rising trend means the DB device is becoming a bottleneck." ;;
+        esac
+        echo "some.label some (any task stalled)"
+        echo "some.type DERIVE"
+        echo "some.min 0"
+        echo "some.cdef some,10000,/"
+        echo "some.draw LINE2"
+        echo "some.info Share of time at least one task was stalled on the resource (PSI total counter, DERIVE)."
+        if [[ ${HAVE_FULL[$res]} -eq 1 ]]; then
+            echo "full.label full (all tasks stalled)"
+            echo "full.type DERIVE"
+            echo "full.min 0"
+            echo "full.cdef full,10000,/"
+            echo "full.draw LINE2"
+            echo "full.info Share of time all non-idle tasks were stalled at once -- zero progress (PSI total counter, DERIVE)."
+        fi
+    done
+    exit 0
+fi
+
+# ---- fetch ----
+for res in $RESOURCES; do
+    [[ ${HAVE_RES[$res]} -eq 1 ]] || continue
+    echo "multigraph pressure_$res"
+    # "total" is always the last field of each line (total=<us>). DERIVE wants the
+    # raw microsecond counter; the cdef in config converts it to a percentage.
+    awk -v have_full="${HAVE_FULL[$res]}" '
+        $1 == "some" { t = $NF; sub(/total=/, "", t); some = t }
+        $1 == "full" { t = $NF; sub(/total=/, "", t); full = t }
+        END {
+            printf "some.value %s\n", some
+            if (have_full) printf "full.value %s\n", full
+        }
+    ' "$PRESSURE_DIR/$res.pressure"
+done
