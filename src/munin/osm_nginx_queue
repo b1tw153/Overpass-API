@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: Overpass request pipeline occupancy -- queries executing in CGI
+# and requests queued in nginx ahead of them.
+#
+# Fields:
+#   executing  interpreter CGI processes currently running, counted from
+#              /proc/*/cmdline (point sample)
+#   queued     connections nginx has opened to the fcgiwrap socket that no
+#              worker has accepted yet: the listen socket's accept queue,
+#              read from ss -lx Recv-Q (point sample)
+#   workers / max_conn  configured ceilings, drawn as reference lines
+#
+# Stacked, executing + queued approximates the occupied limit_conn slots:
+# nginx admits at most NGINX_MAX_CONN concurrent /api requests
+# (FCGIWRAP_WORKERS executing plus NGINX_CONNECTION_QUEUE waiting) and
+# rejects the rest with 429. A queued band holding at the gap between the two
+# reference lines means new requests are being rejected; the 429s themselves
+# appear in the osm_nginx_access response-codes graph. As point samples the
+# fields track sustained load and miss sub-interval bursts.
+#
+# This file is a plugin (executable, symlinked into /etc/munin/plugins). In
+# the container the ceilings are inherited from the entrypoint environment;
+# override in /etc/munin/plugin-conf.d for bare-metal, e.g.:
+#   [osm_nginx_queue]
+#   env.FCGIWRAP_SOCKET /var/run/fcgiwrap.socket
+#   env.FCGIWRAP_WORKERS 16
+#   env.NGINX_MAX_CONN 24
+
+SOCKET="${FCGIWRAP_SOCKET:-/opt/overpass/run/fcgiwrap.socket}"
+
+FCGIWRAP_WORKERS=${FCGIWRAP_WORKERS:-$(nproc)}
+if [[ ! "$FCGIWRAP_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "FCGIWRAP_WORKERS must be a positive integer, got: '$FCGIWRAP_WORKERS'" >&2
+  exit 1
+fi
+
+NGINX_MAX_CONN=${NGINX_MAX_CONN:-$FCGIWRAP_WORKERS}
+if [[ ! "$NGINX_MAX_CONN" =~ ^[1-9][0-9]*$ ]]; then
+  echo "NGINX_MAX_CONN must be a positive integer, got: '$NGINX_MAX_CONN'" >&2
+  exit 1
+fi
+
+if [[ "$1" = "autoconf" ]]; then
+  if [[ -S "$SOCKET" ]] && command -v ss >/dev/null; then
+    echo yes
+  else
+    echo "no ($SOCKET is not a socket or ss is unavailable; set env.FCGIWRAP_SOCKET)"
+  fi
+  exit 0
+fi
+
+if [[ "$1" = "config" ]]; then
+  cat <<'CONFIG'
+graph_category nginx
+graph_title Overpass query pipeline
+graph_vlabel requests
+graph_args --lower-limit 0
+graph_info Point samples of the request pipeline. "executing" counts interpreter CGI processes; "queued" is the fcgiwrap listen socket's accept queue -- requests nginx has admitted past limit_conn but no worker has picked up yet. nginx admits at most "connection limit" concurrent /api requests and rejects the rest with 429, so a queued band holding at the gap between the two reference lines means requests are being rejected.
+executing.label executing
+executing.type GAUGE
+executing.draw AREASTACK
+queued.label queued
+queued.type GAUGE
+queued.draw AREASTACK
+workers.label worker limit
+workers.type GAUGE
+workers.draw LINE1
+max_conn.label connection limit
+max_conn.type GAUGE
+max_conn.draw LINE1
+CONFIG
+  exit 0
+fi
+
+# ---- fetch ----
+
+# Count interpreter CGI processes the same way container_status.sh does, but
+# match on "cgi-bin/interpreter" rather than "interpreter": the osm_interpreter
+# plugin runs on the same munin tick and a bare substring match would count it.
+EXECUTING=0
+for cmdline_file in /proc/[0-9]*/cmdline; do
+  [[ -r "$cmdline_file" ]] || continue
+  IFS= read -rd '' cmdline < "$cmdline_file" 2>/dev/null || true
+  [[ "$cmdline" == *cgi-bin/interpreter* ]] && EXECUTING=$(( EXECUTING + 1 ))
+done
+echo "executing.value $EXECUTING"
+
+# Recv-Q of the listening unix socket is the current accept-queue depth. A
+# failed ss or a missing socket yields an empty string, reported as U so the
+# master records a gap.
+QUEUED=$(ss -lx 2>/dev/null | awk -v sock="$SOCKET" '$5 == sock { print $3; exit }')
+echo "queued.value ${QUEUED:-U}"
+
+echo "workers.value $FCGIWRAP_WORKERS"
+echo "max_conn.value $NGINX_MAX_CONN"
