@@ -50,6 +50,7 @@ waiting.type GAUGE
 waiting.draw AREASTACK
 
 multigraph osm_nginx_status_rate
+graph_category nginx
 graph_title Overpass nginx connection rate
 graph_vlabel connections per minute
 graph_info New connections accepted per minute, and connections dropped before being handled (accepts minus handled). A nonzero dropped rate means nginx hit worker_connections and refused connections -- a failure invisible in the access log.

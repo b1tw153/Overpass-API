@@ -127,6 +127,7 @@ if [[ "$1" = "config" ]]; then
   fi
 
   echo "multigraph osm_nginx_access_bytes"
+  echo "graph_category nginx"
   echo "graph_title Overpass egress bytes"
   echo "graph_vlabel bytes per minute"
   echo "graph_args --base 1024 --lower-limit 0"
@@ -138,6 +139,7 @@ if [[ "$1" = "config" ]]; then
   echo "bytes.draw AREA"
 
   echo "multigraph osm_nginx_access_bytes_avg"
+  echo "graph_category nginx"
   echo "graph_title Overpass average response size"
   echo "graph_vlabel bytes per request"
   echo "graph_args --base 1024 --lower-limit 0"
@@ -153,6 +155,7 @@ if [[ "$1" = "config" ]]; then
   echo "size_n.min 0"
 
   echo "multigraph osm_nginx_access_path"
+  echo "graph_category nginx"
   echo "graph_title Overpass requests by endpoint"
   echo "graph_vlabel requests per minute"
   echo "graph_info Requests per minute by nginx endpoint, including requests served or rejected before the dispatcher (rate-limited queries, liveness probes, static files) that transactions.log never records."
@@ -165,6 +168,7 @@ if [[ "$1" = "config" ]]; then
   done
 
   echo "multigraph osm_nginx_access_latency"
+  echo "graph_category nginx"
   echo "graph_title Overpass response latency"
   echo "graph_vlabel seconds"
   echo "graph_info Average response time per request over the interval. 'request' is the full server-side duration nginx sees (includes connection queueing and response transfer to the client); 'upstream' is the fcgiwrap/dispatcher time only. Divergence means time spent queueing or transferring rather than computing. Needs the combined_timed log_format; old log lines without timing fields are excluded."
