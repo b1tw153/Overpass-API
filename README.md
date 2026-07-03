@@ -148,8 +148,12 @@ If you're using the container image with bind-mounted host directories, create t
 OVERPASS_DB_DIR=      # path to your Overpass database directory on the host
 OVERPASS_BACKUP_DIR=  # path to your Overpass backup directory on the host (optional)
 
+sudo groupadd -g 10001 overpass
+sudo useradd -u 10001 -s /usr/sbin/nologin overpass
+sudo usermod -aG overpass "$USER"
 mkdir -p "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
-chown -R 10001:10001 "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
+chown -R overpass:overpass "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
+sudo chmod g+w overpass
 ```
 
 Mounting other host directories in the container is optional. See the *Directory Structure* section below.
