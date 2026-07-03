@@ -10,6 +10,7 @@
 #   osm_interpreter_block_reads_avg  average blocks read per query
 #   osm_interpreter_cpu_hist         completed queries per minute by CPU-time band
 #   osm_interpreter_cpu_hist_work    CPU-seconds per minute by CPU-time band
+#   osm_interpreter_rejections       client-side query rejections per minute by reason
 #
 # Each run reads only the bytes appended to transactions.log since the previous
 # run, via the shared osm_logtail helper, which also follows a logrotate
@@ -139,6 +140,32 @@ block_reads.draw LINE2
 n.graph no
 n.type DERIVE
 n.min 0
+
+multigraph osm_interpreter_rejections
+graph_title Overpass interpreter client-side rejections
+graph_vlabel rejections per minute
+graph_args --lower-limit 0
+graph_info Queries rejected before running, per minute, from the client-side reject lines that the query process writes to transactions.log. "defer timeout" is defer-exhaustion -- the dispatcher deferred the query until the client gave up -- and is counted by NOTHING in the dispatcher --status counters (osm_db_request_count), so this is the only view of it. "rate limited" (per-IP Gate A) and "duplicate query" mirror dispatcher counters for cross-check; "hash blacklisted" is an anon_hash_blacklist hit. Each rejected query also emits a "requesting" line but never "read_finished", so these queries are disjoint from the run-time and histogram graphs. Pair with osm_db_request_count to see counted vs uncounted rejections side by side.
+timeout.label defer timeout
+timeout.type DERIVE
+timeout.min 0
+timeout.cdef timeout,60,*
+timeout.draw AREASTACK
+rate_limited.label rate limited
+rate_limited.type DERIVE
+rate_limited.min 0
+rate_limited.cdef rate_limited,60,*
+rate_limited.draw AREASTACK
+duplicate_query.label duplicate query
+duplicate_query.type DERIVE
+duplicate_query.min 0
+duplicate_query.cdef duplicate_query,60,*
+duplicate_query.draw AREASTACK
+hash_limited.label hash blacklisted
+hash_limited.type DERIVE
+hash_limited.min 0
+hash_limited.cdef hash_limited,60,*
+hash_limited.draw AREASTACK
 CONFIG
 
   # The two CPU-time histograms share the same nine bands; only the accumulated
@@ -186,12 +213,14 @@ fi
 # Prior cumulative totals and the in-flight "requesting" map come from the state
 # file; osm_logtail reads the offset/head lines itself and never writes state.
 t_queries=0 t_wall=0 t_walln=0 t_cpu=0 t_br=0 t_query=0 t_collate=0
+t_rej_timeout=0 t_rej_rate=0 t_rej_dup=0 t_rej_hash=0
 inflight=""
 hist_n="" hist_w=""
 if [[ -f "$STATE" ]]; then
   while read -r key rest; do
     case "$key" in
       totals)   read -r t_queries t_wall t_walln t_cpu t_br t_query t_collate <<<"$rest" ;;
+      rejects)  read -r t_rej_timeout t_rej_rate t_rej_dup t_rej_hash <<<"$rest" ;;
       inflight) inflight="$rest" ;;
       histn)    hist_n="$rest" ;;
       histw)    hist_w="$rest" ;;
@@ -209,7 +238,9 @@ awk \
   -v t_queries="$t_queries" -v t_wall="$t_wall" -v t_walln="$t_walln" -v t_cpu="$t_cpu" -v t_br="$t_br" \
   -v t_query="$t_query" -v t_collate="$t_collate" \
   -v inflight="$inflight" -v statetmp="$STATETMP" -v max_age="$INFLIGHT_MAX_AGE" \
-  -v hist_n="$hist_n" -v hist_w="$hist_w" -v edges="$HIST_EDGES" -v names="${HIST_NAMES[*]}" '
+  -v hist_n="$hist_n" -v hist_w="$hist_w" -v edges="$HIST_EDGES" -v names="${HIST_NAMES[*]}" \
+  -v t_rej_timeout="$t_rej_timeout" -v t_rej_rate="$t_rej_rate" \
+  -v t_rej_dup="$t_rej_dup" -v t_rej_hash="$t_rej_hash" '
   function to_epoch(date, time,    d, t, y, mo, dy, hr, mn, sc, days, i, mdays) {
     split(date, d, "-"); split(time, t, ":")
     y = d[1]+0; mo = d[2]+0; dy = d[3]+0
@@ -241,6 +272,8 @@ awk \
     nb = split(names, fname, " ")
     split(hist_n, hn, " "); split(hist_w, hw, " ")
     for (i = 1; i <= nb; i++) { cnt[i] = hn[i]+0; work[i] = hw[i]+0 }
+    rej_timeout = t_rej_timeout+0; rej_rate = t_rej_rate+0
+    rej_dup = t_rej_dup+0; rej_hash = t_rej_hash+0
   }
   {
     ts = to_epoch($1, $2)
@@ -261,6 +294,14 @@ awk \
         wall += w; walln++
         delete start[pid]
       }
+    } else if ($4 == "timeout") {         # client-side reject lines (dispatcher_stub.cc):
+      rej_timeout++; delete start[pid]    # the query logged "requesting" then this, never
+    } else if ($4 == "rate_limited") {    # "read_finished", so drop its in-flight entry
+      rej_rate++; delete start[pid]
+    } else if ($4 == "duplicate_query") {
+      rej_dup++; delete start[pid]
+    } else if ($4 == "hash_limited") {
+      rej_hash++; delete start[pid]
     }
   }
   END {
@@ -278,6 +319,7 @@ awk \
     print hl                               >> statetmp
     wl = "histw"; for (i = 1; i <= nb; i++) wl = wl sprintf(" %.0f", work[i])
     print wl                               >> statetmp
+    printf "rejects %.0f %.0f %.0f %.0f\n", rej_timeout, rej_rate, rej_dup, rej_hash >> statetmp
 
     print  "multigraph osm_interpreter_runtime"
     printf "wall.value %.0f\n", wall
@@ -300,6 +342,11 @@ awk \
     for (i = 1; i <= nb; i++) printf "%s.value %.0f\n", fname[i], cnt[i]
     print  "multigraph osm_interpreter_cpu_hist_work"
     for (i = 1; i <= nb; i++) printf "%s.value %.0f\n", fname[i], work[i]
+    print  "multigraph osm_interpreter_rejections"
+    printf "timeout.value %.0f\n", rej_timeout
+    printf "rate_limited.value %.0f\n", rej_rate
+    printf "duplicate_query.value %.0f\n", rej_dup
+    printf "hash_limited.value %.0f\n", rej_hash
   }
 ' "$OSM_LOGTAIL_CHUNK"
 
