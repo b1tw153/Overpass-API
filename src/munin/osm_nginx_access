@@ -12,13 +12,23 @@
 #                               status, kill, liveness, static, ...)
 #   osm_nginx_access_latency    average request_time vs upstream_response_time per
 #                               request (requires the combined_timed log_format)
+#   osm_nginx_access_clients        distinct /api client source IPs per interval
+#   osm_nginx_access_concentration  top-1/top-10 client share of /api demand (%)
 #
 # Each run reads only the bytes appended to the access log since the previous
 # run, via the shared osm_logtail helper, which also follows a logrotate
 # copytruncate rotation across the boundary. Cumulative counters are kept in
 # $MUNIN_PLUGSTATE, so the DERIVE graphs ride through rotations without the
-# reset-to-zero spike a fresh full parse would punch into them. All five graphs
+# reset-to-zero spike a fresh full parse would punch into them. All seven graphs
 # come from one tail of the log, so the extra graphs cost no extra scan.
+#
+# The two client-concentration graphs are the exception to the cumulative-DERIVE
+# pattern: they are per-poll GAUGE snapshots computed from the current chunk only
+# (distinct source IPs and top-N shares over /api/* requests in this window), so
+# nothing about them is persisted to the state file. Only /api/* requests count
+# -- static and internal probe endpoints (/liveness, /nginx-status,
+# /container-status, polled from loopback at a fixed cadence) are excluded so
+# they cannot dominate the top-client share on a quiet instance.
 #
 # The status field set is dynamic: a field "httpNNN" exists for each code that
 # has appeared in the log. Both "config" and "fetch" derive those fields from
@@ -109,7 +119,7 @@ if [[ "$1" = "config" ]]; then
 
   echo "multigraph osm_nginx_access_status"
   echo "graph_category nginx"
-  echo "graph_title Overpass HTTP response codes"
+  echo "graph_title nginx HTTP response codes"
   echo "graph_vlabel requests per minute"
   echo "graph_info Completed requests per minute, one stacked series per HTTP response code seen in the nginx access log (e.g. 429 rate-limited, 504 timeout)."
   # One field per code already recorded in the state file, numeric ascending so
@@ -128,7 +138,7 @@ if [[ "$1" = "config" ]]; then
 
   echo "multigraph osm_nginx_access_bytes"
   echo "graph_category nginx"
-  echo "graph_title Overpass egress bytes"
+  echo "graph_title nginx egress bytes"
   echo "graph_vlabel bytes per minute"
   echo "graph_args --base 1024 --lower-limit 0"
   echo "graph_info Response body bytes sent per minute (egress bandwidth). Body bytes only -- headers are not counted."
@@ -140,7 +150,7 @@ if [[ "$1" = "config" ]]; then
 
   echo "multigraph osm_nginx_access_bytes_avg"
   echo "graph_category nginx"
-  echo "graph_title Overpass average response size"
+  echo "graph_title nginx average response size"
   echo "graph_vlabel bytes per request"
   echo "graph_args --base 1024 --lower-limit 0"
   echo "graph_info Average response body size per request over the interval (total body bytes divided by request count)."
@@ -156,7 +166,7 @@ if [[ "$1" = "config" ]]; then
 
   echo "multigraph osm_nginx_access_path"
   echo "graph_category nginx"
-  echo "graph_title Overpass requests by endpoint"
+  echo "graph_title Overpass nginx requests by endpoint"
   echo "graph_vlabel requests per minute"
   echo "graph_info Requests per minute by nginx endpoint, including requests served or rejected before the dispatcher (rate-limited queries, liveness probes, static files) that transactions.log never records."
   for bucket in "${PATH_BUCKETS[@]}"; do
@@ -169,7 +179,7 @@ if [[ "$1" = "config" ]]; then
 
   echo "multigraph osm_nginx_access_latency"
   echo "graph_category nginx"
-  echo "graph_title Overpass response latency"
+  echo "graph_title nginx response latency"
   echo "graph_vlabel seconds"
   echo "graph_info Average response time per request over the interval. 'request' is the full server-side duration nginx sees (includes connection queueing and response transfer to the client); 'upstream' is the fcgiwrap/dispatcher time only. Divergence means time spent queueing or transferring rather than computing. Needs the combined_timed log_format; old log lines without timing fields are excluded."
   echo "request.label request_time (total)"
@@ -190,6 +200,36 @@ if [[ "$1" = "config" ]]; then
   echo "upstream_n.graph no"
   echo "upstream_n.type DERIVE"
   echo "upstream_n.min 0"
+
+  echo "multigraph osm_nginx_access_clients"
+  echo "graph_category nginx"
+  echo "graph_title Overpass nginx distinct API clients"
+  echo "graph_vlabel distinct IPs per interval"
+  echo "graph_args --lower-limit 0"
+  echo "graph_info Distinct client source IPs seen on /api/* requests in each poll interval -- a per-window snapshot, not a cumulative total. Read with the concentration graph: many IPs plus a low top-N share is broad organic demand; a share spike without a matching rise in IP count is a concentrated or automated source (e.g. a distributed scraper). Only /api/* query demand is counted; static and internal probe endpoints are excluded."
+  echo "distinct.label distinct API client IPs"
+  echo "distinct.type GAUGE"
+  echo "distinct.min 0"
+  echo "distinct.draw LINE2"
+
+  echo "multigraph osm_nginx_access_concentration"
+  echo "graph_category nginx"
+  echo "graph_title Overpass nginx API client concentration"
+  echo "graph_vlabel percent of interval"
+  echo "graph_args --lower-limit 0 --upper-limit 100 --rigid"
+  echo "graph_info Share of /api/* demand held by the busiest source IPs in each poll interval, by request count and by response bytes. 'top client' is the single busiest IP; 'top 10' is the ten busiest combined. High or spiking shares indicate concentrated or automated demand; broad organic demand keeps them low. Requests and bytes can diverge -- many small requests versus a few large downloads. Values are per-window and average out over longer RRD spans, so read long views as trend, not level."
+  echo "top1_req.label top client (requests)"
+  echo "top1_req.type GAUGE"
+  echo "top1_req.draw LINE2"
+  echo "top10_req.label top 10 clients (requests)"
+  echo "top10_req.type GAUGE"
+  echo "top10_req.draw LINE2"
+  echo "top1_bytes.label top client (bytes)"
+  echo "top1_bytes.type GAUGE"
+  echo "top1_bytes.draw LINE2"
+  echo "top10_bytes.label top 10 clients (bytes)"
+  echo "top10_bytes.type GAUGE"
+  echo "top10_bytes.draw LINE2"
   exit 0
 fi
 
@@ -256,6 +296,14 @@ awk \
     split(request, rf, " ")
     pcount[path_bucket(rf[2])]++                    # rf[2] = URI (empty if request is "-")
 
+    # Client concentration over query demand (/api/* only, so static and internal
+    # loopback probes do not skew it). Per-window tallies by source IP ($1); not
+    # persisted -- the END block turns them into per-poll GAUGE snapshots.
+    if (rf[2] ~ /^\/api\//) {
+      apireq[$1]++
+      if (tf[2] ~ /^[0-9]+$/) apibytes[$1] += tf[2]
+    }
+
     # Timing fields (combined_timed format) are the last two whitespace tokens
     # of the line and never contain spaces, so $(NF-1)/$NF reach them past the
     # quoted user-agent. They are absent on plain-combined lines (older logs) and
@@ -307,6 +355,45 @@ awk \
     printf "request_n.value %.0f\n", rt_n
     printf "upstream.value %.0f\n", ut_ms
     printf "upstream_n.value %.0f\n", ut_n
+
+    # Client concentration (per-window GAUGE, /api/* only). Keep the K largest
+    # per-IP tallies via an insertion into a fixed K-slot descending list -- O(N*K),
+    # so no full sort of the per-window IP set. K-slot padding with zeros means
+    # top-10 correctly equals 100% when fewer than 10 clients are present.
+    K = 10
+    distinct = 0; req_total = 0; bytes_total = 0
+    for (i = 1; i <= K; i++) { tr[i] = 0; tb[i] = 0 }
+    for (ip in apireq) {
+      distinct++
+      v = apireq[ip]; req_total += v
+      if (v > tr[K]) {
+        j = K
+        while (j > 1 && tr[j-1] < v) { tr[j] = tr[j-1]; j-- }
+        tr[j] = v
+      }
+    }
+    for (ip in apibytes) {
+      v = apibytes[ip]; bytes_total += v
+      if (v > tb[K]) {
+        j = K
+        while (j > 1 && tb[j-1] < v) { tb[j] = tb[j-1]; j-- }
+        tb[j] = v
+      }
+    }
+    top10_req = 0; top10_bytes = 0
+    for (i = 1; i <= K; i++) { top10_req += tr[i]; top10_bytes += tb[i] }
+
+    print "multigraph osm_nginx_access_clients"
+    printf "distinct.value %d\n", distinct
+    print "multigraph osm_nginx_access_concentration"
+    if (req_total > 0) {
+      printf "top1_req.value %.1f\n", 100 * tr[1] / req_total
+      printf "top10_req.value %.1f\n", 100 * top10_req / req_total
+    } else { print "top1_req.value U"; print "top10_req.value U" }
+    if (bytes_total > 0) {
+      printf "top1_bytes.value %.1f\n", 100 * tb[1] / bytes_total
+      printf "top10_bytes.value %.1f\n", 100 * top10_bytes / bytes_total
+    } else { print "top1_bytes.value U"; print "top10_bytes.value U" }
   }
 ' "$state_in" "$OSM_LOGTAIL_CHUNK"
 
