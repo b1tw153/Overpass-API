@@ -108,6 +108,7 @@ if [[ "$1" = "config" ]]; then
   )
 
   echo "multigraph osm_nginx_access_status"
+  echo "graph_category nginx"
   echo "graph_title Overpass HTTP response codes"
   echo "graph_vlabel requests per minute"
   echo "graph_info Completed requests per minute, one stacked series per HTTP response code seen in the nginx access log (e.g. 429 rate-limited, 504 timeout)."

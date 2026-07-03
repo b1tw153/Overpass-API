@@ -35,6 +35,7 @@ fi
 if [[ "$1" = "config" ]]; then
   cat <<'CONFIG'
 multigraph osm_nginx_status_connections
+graph_category nginx
 graph_title Overpass nginx connections
 graph_vlabel connections
 graph_info Current client connections by state, from nginx stub_status. The stack height equals nginx's Active connections; compare it against worker_connections for saturation headroom. "reading" is receiving the request, "writing" is sending the response (where long Overpass results sit), "waiting" is idle keep-alive.
