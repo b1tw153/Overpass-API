@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
 # Munin plugin: lag in seconds between the local database and real time,
-# derived from the osm_base_version timestamp.
+# derived from the osm_base_version and area_version timestamps. The graph is
+# logarithmic: steady-state lag (minutes) and area processing lag (hours to
+# days) share the scale, and a stall does not blow out the steady-state band.
 #
 # Place this file in the munin plugin library (e.g., /usr/share/munin/plugins)
 # and symlink it into /etc/munin/plugins. Supply the database directory in
@@ -15,6 +17,7 @@
 if [[ "$1" = "config" ]]; then
 {
   echo 'graph_title Local database age'
+  echo 'graph_args --logarithmic'
   echo 'graph_vlabel seconds'
   echo "osm_db_lag.label osm_base"
 
@@ -36,6 +39,10 @@ if [[ "$1" = "config" ]]; then
   fi
   echo "osm_db_lag.warning ${warning:-$WARNING_DEFAULT}"
   echo "osm_db_lag.critical ${critical:-$CRITICAL_DEFAULT}"
+
+  # No thresholds for areas: their cadence follows the rules_loop cycle time,
+  # not OVERPASS_UPDATE_FREQUENCY.
+  echo "osm_area_lag.label areas"
   exit 0
 }; fi
 
@@ -58,4 +65,23 @@ fi
 CURRENT_SECONDS=$(date +%s)
 LAG=$(( CURRENT_SECONDS - DB_SECONDS ))
 
+# rrdtool drops non-positive values on a logarithmic scale; clamp so a zero or
+# negative lag (clock skew) still plots.
+(( LAG < 1 )) && LAG=1
 echo "osm_db_lag.value $LAG"
+
+# Areas are optional: a missing area_version reports U rather than erroring,
+# so the osm_base value above still reaches the master.
+AREA_LAG=U
+if [[ -s "$OVERPASS_DB_DIR/area_version" ]]; then
+  AREA_TIMESTAMP=$(cat "$OVERPASS_DB_DIR/area_version")
+  AREA_TIMESTAMP="${AREA_TIMESTAMP//\\:/:}"
+  AREA_SECONDS=$(date -d "$AREA_TIMESTAMP" +%s 2>/dev/null)
+  if [[ -n "$AREA_SECONDS" ]]; then
+    AREA_LAG=$(( CURRENT_SECONDS - AREA_SECONDS ))
+    (( AREA_LAG < 1 )) && AREA_LAG=1
+  else
+    echo "Could not parse timestamp '$AREA_TIMESTAMP' from area_version" >&2
+  fi
+fi
+echo "osm_area_lag.value $AREA_LAG"

@@ -48,7 +48,7 @@ if [[ "$1" = "config" ]]; then
 multigraph osm_interpreter_runtime
 graph_title Overpass interpreter run time
 graph_vlabel seconds per minute
-graph_info Total run time and CPU time consumed by queries per minute (aggregate interpreter load). Divergence between run time and CPU time indicates queries waiting rather than computing.
+graph_info Total run time and CPU time consumed by queries per minute (aggregate interpreter load). Divergence between run time and CPU time indicates queries waiting rather than computing. CPU time subdivides into query time (evaluating the query) and collate time (formatting the output).
 wall.label run time
 wall.type DERIVE
 wall.min 0
@@ -59,11 +59,21 @@ cpu.type DERIVE
 cpu.min 0
 cpu.cdef cpu,60,*,1000,/
 cpu.draw LINE2
+query.label query time
+query.type DERIVE
+query.min 0
+query.cdef query,60,*,1000,/
+query.draw LINE1
+collate.label collate time
+collate.type DERIVE
+collate.min 0
+collate.cdef collate,60,*,1000,/
+collate.draw LINE1
 
 multigraph osm_interpreter_runtime_avg
 graph_title Overpass interpreter run time per query
 graph_vlabel seconds
-graph_info Average run time and CPU time per completed query. Divergence between run time and CPU time indicates queries waiting rather than computing.
+graph_info Average run time and CPU time per completed query. Divergence between run time and CPU time indicates queries waiting rather than computing. CPU time subdivides into query time (evaluating the query) and collate time (formatting the output).
 wall.label run time
 wall.type DERIVE
 wall.min 0
@@ -74,6 +84,16 @@ cpu.type DERIVE
 cpu.min 0
 cpu.cdef cpu,n,/,1000,/
 cpu.draw LINE2
+query.label query time
+query.type DERIVE
+query.min 0
+query.cdef query,n,/,1000,/
+query.draw LINE1
+collate.label collate time
+collate.type DERIVE
+collate.min 0
+collate.cdef collate,n,/,1000,/
+collate.draw LINE1
 wall_n.graph no
 wall_n.type DERIVE
 wall_n.min 0
@@ -120,12 +140,12 @@ fi
 
 # Prior cumulative totals and the in-flight "requesting" map come from the state
 # file; osm_logtail reads the offset/head lines itself and never writes state.
-t_queries=0 t_wall=0 t_walln=0 t_cpu=0 t_br=0
+t_queries=0 t_wall=0 t_walln=0 t_cpu=0 t_br=0 t_query=0 t_collate=0
 inflight=""
 if [[ -f "$STATE" ]]; then
   while read -r key rest; do
     case "$key" in
-      totals)   read -r t_queries t_wall t_walln t_cpu t_br <<<"$rest" ;;
+      totals)   read -r t_queries t_wall t_walln t_cpu t_br t_query t_collate <<<"$rest" ;;
       inflight) inflight="$rest" ;;
     esac
   done < "$STATE"
@@ -139,6 +159,7 @@ trap 'rm -f "$OSM_LOGTAIL_CHUNK" "$STATETMP"' EXIT
 awk \
   -v head="$OSM_LOGTAIL_HEAD" -v offset="$OSM_LOGTAIL_OFFSET" \
   -v t_queries="$t_queries" -v t_wall="$t_wall" -v t_walln="$t_walln" -v t_cpu="$t_cpu" -v t_br="$t_br" \
+  -v t_query="$t_query" -v t_collate="$t_collate" \
   -v inflight="$inflight" -v statetmp="$STATETMP" -v max_age="$INFLIGHT_MAX_AGE" '
   function to_epoch(date, time,    d, t, y, mo, dy, hr, mn, sc, days, i, mdays) {
     split(date, d, "-"); split(time, t, ":")
@@ -154,6 +175,7 @@ awk \
   }
   BEGIN {
     queries = t_queries+0; wall = t_wall+0; walln = t_walln+0; cpu = t_cpu+0; brs = t_br+0
+    query = t_query+0; collate = t_collate+0
     maxts = 0
     m = split(inflight, a, ",")
     for (i = 1; i <= m; i++) {
@@ -172,6 +194,8 @@ awk \
       queries++
       cpu += $10+0
       brs += $9+0
+      query += $11+0
+      collate += $12+0
       if (pid in start) {
         w = ts - start[pid]; if (w < 0) w = 0
         wall += w; walln++
@@ -186,7 +210,7 @@ awk \
     }
     printf "offset %s\n", offset           > statetmp
     printf "head %s\n", head               >> statetmp
-    printf "totals %.0f %.0f %.0f %.0f %.0f\n", queries, wall, walln, cpu, brs >> statetmp
+    printf "totals %.0f %.0f %.0f %.0f %.0f %.0f %.0f\n", queries, wall, walln, cpu, brs, query, collate >> statetmp
     fl = ""
     for (p in start) fl = fl (fl == "" ? "" : ",") p ":" sprintf("%.0f", start[p])
     printf "inflight %s\n", fl             >> statetmp
@@ -194,10 +218,14 @@ awk \
     print  "multigraph osm_interpreter_runtime"
     printf "wall.value %.0f\n", wall
     printf "cpu.value %.0f\n", cpu
+    printf "query.value %.0f\n", query
+    printf "collate.value %.0f\n", collate
     print  "multigraph osm_interpreter_runtime_avg"
     printf "wall.value %.0f\n", wall
     printf "wall_n.value %.0f\n", walln
     printf "cpu.value %.0f\n", cpu
+    printf "query.value %.0f\n", query
+    printf "collate.value %.0f\n", collate
     printf "n.value %.0f\n", queries
     print  "multigraph osm_interpreter_block_reads"
     printf "block_reads.value %.0f\n", brs
