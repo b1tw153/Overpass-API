@@ -63,6 +63,7 @@ RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
              /usr/share/munin/plugins/osm_db_request_count \
              /usr/share/munin/plugins/osm_dispatcher \
              /usr/share/munin/plugins/osm_interpreter \
+             /usr/share/munin/plugins/osm_interpreter_procs \
              /usr/share/munin/plugins/osm_mem_status \
              /usr/share/munin/plugins/osm_nginx_access \
              /usr/share/munin/plugins/osm_nginx_queue \
@@ -81,6 +82,7 @@ RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
                      osm_db_request_count \
                      osm_dispatcher \
                      osm_interpreter \
+                     osm_interpreter_procs \
                      osm_nginx_access \
                      osm_nginx_queue \
                      osm_nginx_status \

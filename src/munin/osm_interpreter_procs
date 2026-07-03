@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+#
+# Munin plugin: age and memory of interpreter processes currently running,
+# point-sampled from /proc.
+#
+# Multigraphs:
+#   osm_interpreter_procs_elapsed  age of the oldest running query vs the
+#                                  summed age of all running queries
+#   osm_interpreter_procs_rss      largest resident set among running queries
+#                                  vs their summed resident set
+#
+# The in-flight complement to the osm_interpreter graphs, which parse
+# transactions.log and therefore only see queries after they complete. A query
+# camping on a worker for minutes or hours never appears there until it
+# finishes, but is sampled here on every tick. Typical sub-second queries pass
+# between ticks unsampled; they contribute negligible age, so these graphs are
+# dominated by exactly the long-runners they exist to expose. In each graph
+# the max and the sum disambiguate each other: the lines touching means a
+# single query accounts for the value, a gap means it is spread across the
+# pool.
+#
+# This file is a plugin (executable, symlinked into /etc/munin/plugins). It
+# reads only /proc and needs no configuration.
+
+if [[ "$1" = "autoconf" ]]; then
+  echo yes
+  exit 0
+fi
+
+if [[ "$1" = "config" ]]; then
+  cat <<'CONFIG'
+multigraph osm_interpreter_procs_elapsed
+graph_title Overpass in-flight query age
+graph_vlabel seconds
+graph_args --lower-limit 0
+graph_info Point sample of running interpreter processes. "oldest query" is the age of the longest-running query; "all running queries" is the summed age of every running query. The lines touching means one long query; a gap means additional long-runners are accumulating age.
+total.label all running queries
+total.type GAUGE
+total.draw AREA
+oldest.label oldest query
+oldest.type GAUGE
+oldest.draw LINE2
+
+multigraph osm_interpreter_procs_rss
+graph_title Overpass in-flight query memory
+graph_vlabel bytes
+graph_args --base 1024 --lower-limit 0
+graph_info Point sample of running interpreter processes. "biggest query" is the largest resident set among running queries; "all running queries" is their summed resident set. Total tracking biggest means one query owns the footprint; total well above biggest means memory spread across the pool -- every interpreter carries some baseline RSS, so compare the executing count on the query pipeline graph.
+total.label all running queries
+total.type GAUGE
+total.draw AREA
+biggest.label biggest query
+biggest.type GAUGE
+biggest.draw LINE2
+CONFIG
+  exit 0
+fi
+
+# ---- fetch ----
+
+# USER_HZ is a fixed kernel ABI value on Linux; /proc/*/stat starttime is
+# expressed in these ticks.
+CLK_TCK=100
+
+# %.0f, not %d: mawk's printf "%d" is 32-bit and saturates at INT_MAX, so
+# uptime_ms wraps once host uptime exceeds ~24.86 days.
+UPTIME_MS=$(awk '{printf "%.0f", $1 * 1000}' /proc/uptime)
+
+OLDEST_MS=0
+TOTAL_MS=0
+BIGGEST_KB=0
+TOTAL_KB=0
+
+# Match on "cgi-bin/interpreter", not "interpreter": the osm_interpreter
+# plugin runs on the same munin tick and a bare substring match would count
+# it. Field 22 of /proc/pid/stat is safe to take positionally because the
+# interpreter's comm field contains no whitespace.
+for cmdline_file in /proc/[0-9]*/cmdline; do
+  [[ -r "$cmdline_file" ]] || continue
+  IFS= read -rd '' cmdline < "$cmdline_file" 2>/dev/null || true
+  [[ "$cmdline" == *cgi-bin/interpreter* ]] || continue
+  proc_dir="${cmdline_file%/cmdline}"
+
+  # The process may exit between the cmdline match and these reads; skip it.
+  starttime=$(awk '{print $22}' "$proc_dir/stat" 2>/dev/null)
+  [[ -n "$starttime" ]] || continue
+  rss_kb=$(awk '/^VmRSS:/ {print $2}' "$proc_dir/status" 2>/dev/null)
+  rss_kb=${rss_kb:-0}
+
+  elapsed_ms=$(( UPTIME_MS - starttime * 1000 / CLK_TCK ))
+  (( elapsed_ms < 0 )) && elapsed_ms=0
+  TOTAL_MS=$(( TOTAL_MS + elapsed_ms ))
+  if (( elapsed_ms > OLDEST_MS )); then
+    OLDEST_MS=$elapsed_ms
+  fi
+  TOTAL_KB=$(( TOTAL_KB + rss_kb ))
+  if (( rss_kb > BIGGEST_KB )); then
+    BIGGEST_KB=$rss_kb
+  fi
+done
+
+echo "multigraph osm_interpreter_procs_elapsed"
+printf 'total.value %d.%03d\n' "$(( TOTAL_MS / 1000 ))" "$(( TOTAL_MS % 1000 ))"
+printf 'oldest.value %d.%03d\n' "$(( OLDEST_MS / 1000 ))" "$(( OLDEST_MS % 1000 ))"
+
+echo "multigraph osm_interpreter_procs_rss"
+echo "total.value $(( TOTAL_KB * 1024 ))"
+echo "biggest.value $(( BIGGEST_KB * 1024 ))"
