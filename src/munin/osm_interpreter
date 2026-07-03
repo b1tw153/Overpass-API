@@ -8,6 +8,8 @@
 #   osm_interpreter_runtime_avg      average run time vs CPU time per query
 #   osm_interpreter_block_reads      database blocks read per minute
 #   osm_interpreter_block_reads_avg  average blocks read per query
+#   osm_interpreter_cpu_hist         completed queries per minute by CPU-time band
+#   osm_interpreter_cpu_hist_work    CPU-seconds per minute by CPU-time band
 #
 # Each run reads only the bytes appended to transactions.log since the previous
 # run, via the shared osm_logtail helper, which also follows a logrotate
@@ -33,6 +35,20 @@ DB_DIR="${OVERPASS_DB_DIR:-}"
 LOG="$DB_DIR/transactions.log"
 STATE="${MUNIN_PLUGSTATE:-/tmp}/$(basename "$0").state"
 INFLIGHT_MAX_AGE=3600   # drop unpaired "requesting" entries older than this (s)
+
+# CPU-time histogram buckets, shared by the count histogram and its CPU-seconds
+# work-weighted twin. Log-spaced by a factor of 4 from 0.25 s to 4096 s, with an
+# overflow band at each end (nine bands). The factor is deliberately below the
+# ~6x complexity growth seen on the public servers: a uniform 6x shift of the
+# whole population moves it log4(6) ~ 1.3 bands up, so it cannot hide inside one
+# band -- a risen mean and a fat tail read differently across the count/work
+# pair. Edges are CPU milliseconds (the transactions.log CPU column, $10), the
+# only per-query axis with sub-second resolution (wall time is whole seconds).
+# Buckets on CPU because the question is where the machine's CPU goes.
+HIST_NAMES=(le250ms le1s le4s le16s le64s le256s le1024s le4096s gt4096s)
+HIST_LABELS=("< 0.25 s" "0.25 - 1 s" "1 - 4 s" "4 - 16 s" "16 - 64 s" \
+             "64 - 256 s" "256 - 1024 s" "1024 - 4096 s" ">= 4096 s")
+HIST_EDGES="250 1000 4000 16000 64000 256000 1024000 4096000"
 
 if [[ "$1" = "autoconf" ]]; then
   if [[ -n "$DB_DIR" && -r "$LOG" ]]; then
@@ -124,6 +140,35 @@ n.graph no
 n.type DERIVE
 n.min 0
 CONFIG
+
+  # The two CPU-time histograms share the same nine bands; only the accumulated
+  # quantity (query counts vs CPU-seconds) and the cdef unit conversion differ.
+  hist_config() {   # graph title vlabel info cdef_tail
+    printf 'multigraph %s\n' "$1"
+    printf 'graph_title %s\n' "$2"
+    printf 'graph_vlabel %s\n' "$3"
+    printf 'graph_args --lower-limit 0\n'
+    printf 'graph_info %s\n' "$4"
+    local i name
+    for i in "${!HIST_NAMES[@]}"; do
+      name="${HIST_NAMES[i]}"
+      printf '%s.label %s\n' "$name" "${HIST_LABELS[i]}"
+      printf '%s.type DERIVE\n' "$name"
+      printf '%s.min 0\n' "$name"
+      printf '%s.cdef %s,%s\n' "$name" "$name" "$5"
+      printf '%s.draw AREASTACK\n' "$name"
+    done
+  }
+  hist_config osm_interpreter_cpu_hist \
+    "Overpass interpreter CPU-time histogram (query counts)" \
+    "queries per minute" \
+    "Completed queries per minute bucketed by CPU time consumed, log-spaced by a factor of 4 from 0.25 s to 4096 s with an overflow band at each end. A vertical slice is the CPU-time distribution at that instant; watch the bands' shares drift over months. Read with the CPU-seconds twin: a thin count band in a high bucket that owns a large share of CPU-seconds is a fat tail of monster queries; bands growing together is a risen mean." \
+    "60,*"
+  hist_config osm_interpreter_cpu_hist_work \
+    "Overpass interpreter CPU-time histogram (CPU-seconds)" \
+    "CPU-seconds per minute" \
+    "CPU-seconds per minute attributed to each CPU-time band (same buckets as the query-count histogram). The work-weighted twin: band height is that duration class's share of the machine's CPU, so it shows which queries actually consume it. Total height matches the aggregate CPU line on the run-time graph. Compare with the count histogram to separate a fat tail (few queries, much CPU) from a risen mean (many queries, more CPU each)." \
+    "60,*,1000,/"
   exit 0
 fi
 
@@ -142,11 +187,14 @@ fi
 # file; osm_logtail reads the offset/head lines itself and never writes state.
 t_queries=0 t_wall=0 t_walln=0 t_cpu=0 t_br=0 t_query=0 t_collate=0
 inflight=""
+hist_n="" hist_w=""
 if [[ -f "$STATE" ]]; then
   while read -r key rest; do
     case "$key" in
       totals)   read -r t_queries t_wall t_walln t_cpu t_br t_query t_collate <<<"$rest" ;;
       inflight) inflight="$rest" ;;
+      histn)    hist_n="$rest" ;;
+      histw)    hist_w="$rest" ;;
     esac
   done < "$STATE"
 fi
@@ -160,7 +208,8 @@ awk \
   -v head="$OSM_LOGTAIL_HEAD" -v offset="$OSM_LOGTAIL_OFFSET" \
   -v t_queries="$t_queries" -v t_wall="$t_wall" -v t_walln="$t_walln" -v t_cpu="$t_cpu" -v t_br="$t_br" \
   -v t_query="$t_query" -v t_collate="$t_collate" \
-  -v inflight="$inflight" -v statetmp="$STATETMP" -v max_age="$INFLIGHT_MAX_AGE" '
+  -v inflight="$inflight" -v statetmp="$STATETMP" -v max_age="$INFLIGHT_MAX_AGE" \
+  -v hist_n="$hist_n" -v hist_w="$hist_w" -v edges="$HIST_EDGES" -v names="${HIST_NAMES[*]}" '
   function to_epoch(date, time,    d, t, y, mo, dy, hr, mn, sc, days, i, mdays) {
     split(date, d, "-"); split(time, t, ":")
     y = d[1]+0; mo = d[2]+0; dy = d[3]+0
@@ -173,6 +222,12 @@ awk \
     for (i=1; i<mo; i++) days += mdays[i]
     return (days + dy - 1) * 86400 + hr*3600 + mn*60 + sc
   }
+  # Map a CPU time (ms) to a histogram band index 1..nb. edge[] holds the ne
+  # upper bounds; band nb (= ne+1) is the open-ended overflow above the last.
+  function band(c,    i) {
+    for (i = 1; i <= ne; i++) if (c < edge[i]) return i
+    return ne + 1
+  }
   BEGIN {
     queries = t_queries+0; wall = t_wall+0; walln = t_walln+0; cpu = t_cpu+0; brs = t_br+0
     query = t_query+0; collate = t_collate+0
@@ -182,6 +237,10 @@ awk \
       if (a[i] == "") continue
       split(a[i], kv, ":"); start[kv[1]] = kv[2]
     }
+    ne = split(edges, edge, " ")           # 8 upper bounds -> nb = 9 bands
+    nb = split(names, fname, " ")
+    split(hist_n, hn, " "); split(hist_w, hw, " ")
+    for (i = 1; i <= nb; i++) { cnt[i] = hn[i]+0; work[i] = hw[i]+0 }
   }
   {
     ts = to_epoch($1, $2)
@@ -196,6 +255,7 @@ awk \
       brs += $9+0
       query += $11+0
       collate += $12+0
+      b = band($10+0); cnt[b]++; work[b] += $10+0
       if (pid in start) {
         w = ts - start[pid]; if (w < 0) w = 0
         wall += w; walln++
@@ -214,6 +274,10 @@ awk \
     fl = ""
     for (p in start) fl = fl (fl == "" ? "" : ",") p ":" sprintf("%.0f", start[p])
     printf "inflight %s\n", fl             >> statetmp
+    hl = "histn"; for (i = 1; i <= nb; i++) hl = hl sprintf(" %.0f", cnt[i])
+    print hl                               >> statetmp
+    wl = "histw"; for (i = 1; i <= nb; i++) wl = wl sprintf(" %.0f", work[i])
+    print wl                               >> statetmp
 
     print  "multigraph osm_interpreter_runtime"
     printf "wall.value %.0f\n", wall
@@ -232,6 +296,10 @@ awk \
     print  "multigraph osm_interpreter_block_reads_avg"
     printf "block_reads.value %.0f\n", brs
     printf "n.value %.0f\n", queries
+    print  "multigraph osm_interpreter_cpu_hist"
+    for (i = 1; i <= nb; i++) printf "%s.value %.0f\n", fname[i], cnt[i]
+    print  "multigraph osm_interpreter_cpu_hist_work"
+    for (i = 1; i <= nb; i++) printf "%s.value %.0f\n", fname[i], work[i]
   }
 ' "$OSM_LOGTAIL_CHUNK"
 
