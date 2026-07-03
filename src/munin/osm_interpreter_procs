@@ -30,7 +30,7 @@ fi
 if [[ "$1" = "config" ]]; then
   cat <<'CONFIG'
 multigraph osm_interpreter_procs_elapsed
-graph_title Overpass in-flight query age
+graph_title Overpass interpreter query age
 graph_vlabel seconds
 graph_args --lower-limit 0
 graph_info Point sample of running interpreter processes. "oldest query" is the age of the longest-running query; "all running queries" is the summed age of every running query. The lines touching means one long query; a gap means additional long-runners are accumulating age.
@@ -42,7 +42,7 @@ oldest.type GAUGE
 oldest.draw LINE2
 
 multigraph osm_interpreter_procs_rss
-graph_title Overpass in-flight query memory
+graph_title Overpass interpreter query memory
 graph_vlabel bytes
 graph_args --base 1024 --lower-limit 0
 graph_info Point sample of running interpreter processes. "biggest query" is the largest resident set among running queries; "all running queries" is their summed resident set. Total tracking biggest means one query owns the footprint; total well above biggest means memory spread across the pool -- every interpreter carries some baseline RSS, so compare the executing count on the query pipeline graph.
