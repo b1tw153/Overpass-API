@@ -52,10 +52,10 @@ LOG_DIR="${OVERPASS_LOG_DIR:-}"
 LOG="$LOG_DIR/nginx_access.log"
 STATE="${MUNIN_PLUGSTATE:-/tmp}/$(basename "$0").state"
 
-# Endpoint buckets, in graph order. This list and its labels must match the
+# Endpoint buckets, from bottom to top. This list and its labels must match the
 # path_bucket() function in the fetch awk below, which maps a request URI to one
 # of these names from the nginx.conf.template "location" set.
-PATH_BUCKETS=(interpreter status kill api_other static liveness container_status nginx_status other)
+PATH_BUCKETS=(other liveness container_status nginx_status api_other kill status static interpreter)
 declare -A PATH_LABEL=(
   [interpreter]="/api/interpreter"
   [status]="/api/status"
