@@ -38,6 +38,7 @@ http {
     limit_conn_status 429;
 
     server {
+        server_name overpass;
         listen 8080;
 
         error_page 429 @error_429;
