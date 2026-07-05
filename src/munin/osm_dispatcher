@@ -21,41 +21,6 @@ if [[ "$1" = "autoconf" ]]; then
   exit 0
 fi
 
-if [[ "$1" = "config" ]]; then
-  DISPATCHER_BASE_SPACE=${DISPATCHER_BASE_SPACE:-12884901888}
-  if [[ ! "$DISPATCHER_BASE_SPACE" =~ ^[1-9][0-9]*$ ]]; then
-    echo "DISPATCHER_BASE_SPACE must be a positive integer, got: '$DISPATCHER_BASE_SPACE'" >&2
-    exit 1
-  fi
-
-  cat <<CONFIG
-multigraph osm_dispatcher_memory
-graph_title Dispatcher claimed memory
-graph_vlabel bytes
-graph_info Current and query-weighted average memory claimed by running queries. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
-claimed.label current
-claimed.type GAUGE
-claimed.draw LINE2
-claimed.warning ${warning:-$(( DISPATCHER_BASE_SPACE / 2 ))}
-claimed.critical ${critical:-$(( DISPATCHER_BASE_SPACE * 4 / 5 ))}
-query_weighted_avg.label query-weighted avg
-query_weighted_avg.type GAUGE
-query_weighted_avg.draw LINE1
-
-multigraph osm_dispatcher_time
-graph_title Dispatcher claimed time units
-graph_vlabel time units
-graph_info Current and query-weighted average time units claimed by running queries. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
-claimed.label current
-claimed.type GAUGE
-claimed.draw LINE2
-query_weighted_avg.label query-weighted avg
-query_weighted_avg.type GAUGE
-query_weighted_avg.draw LINE1
-CONFIG
-  exit 0
-fi
-
 if [[ -z "$OVERPASS_BIN_DIR" ]]; then
   echo "OVERPASS_BIN_DIR is not set" >&2
   exit 1
@@ -66,18 +31,81 @@ if [[ ! -x "$OVERPASS_BIN_DIR/dispatcher" ]]; then
 fi
 
 STATUS=$("$OVERPASS_BIN_DIR/dispatcher" --osm-base --status)
+STATUS_AREAS=$("$OVERPASS_BIN_DIR/dispatcher" --areas --status)
+
+if [[ "$1" = "config" ]]; then
+  base_space_limit=$(awk '/^Total available space:/ { print $4 }' <<<"$STATUS")
+  base_time_limit=$(awk '/^Total available time units:/ { print $5 }' <<<"$STATUS")
+  areas_space_limit=$(awk '/^Total available space:/ { print $4 }' <<<"$STATUS_AREAS")
+  areas_time_limit=$(awk '/^Total available time units:/ { print $5 }' <<<"$STATUS_AREAS")
+
+  base_space_crit="${base_space_limit:+base_claimed.critical $base_space_limit}"
+  base_time_crit="${base_time_limit:+base_claimed.critical $base_time_limit}"
+  areas_space_crit="${areas_space_limit:+areas_claimed.critical $areas_space_limit}"
+  areas_time_crit="${areas_time_limit:+areas_claimed.critical $areas_time_limit}"
+
+  cat <<CONFIG
+multigraph osm_dispatcher_memory
+graph_title Dispatcher claimed memory
+graph_vlabel bytes
+graph_info Current and query-weighted average memory claimed by running queries, for both the osm-base and areas dispatchers. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
+base_claimed.label base current
+base_claimed.type GAUGE
+base_claimed.draw LINE2
+$base_space_crit
+base_query_weighted_avg.label base query-weighted avg
+base_query_weighted_avg.type GAUGE
+base_query_weighted_avg.draw LINE1
+areas_claimed.label areas current
+areas_claimed.type GAUGE
+areas_claimed.draw LINE2
+$areas_space_crit
+areas_query_weighted_avg.label areas query-weighted avg
+areas_query_weighted_avg.type GAUGE
+areas_query_weighted_avg.draw LINE1
+
+multigraph osm_dispatcher_time
+graph_title Dispatcher claimed time units
+graph_vlabel time units
+graph_info Current and query-weighted average time units claimed by running queries, for both the osm-base and areas dispatchers. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
+base_claimed.label base current
+base_claimed.type GAUGE
+base_claimed.draw LINE2
+$base_time_crit
+base_query_weighted_avg.label base query-weighted avg
+base_query_weighted_avg.type GAUGE
+base_query_weighted_avg.draw LINE1
+areas_claimed.label areas current
+areas_claimed.type GAUGE
+areas_claimed.draw LINE2
+$areas_time_crit
+areas_query_weighted_avg.label areas query-weighted avg
+areas_query_weighted_avg.type GAUGE
+areas_query_weighted_avg.draw LINE1
+CONFIG
+  exit 0
+fi
 
 claimed_space=$(awk '/^Total claimed space:/ { print $4 }' <<<"$STATUS")
 avg_space=$(awk '/^Average claimed space:/ { print $4 }' <<<"$STATUS")
 claimed_time=$(awk '/^Total claimed time units:/ { print $5 }' <<<"$STATUS")
 avg_time=$(awk '/^Average claimed time units:/ { print $5 }' <<<"$STATUS")
 
+areas_claimed_space=$(awk '/^Total claimed space:/ { print $4 }' <<<"$STATUS_AREAS")
+areas_avg_space=$(awk '/^Average claimed space:/ { print $4 }' <<<"$STATUS_AREAS")
+areas_claimed_time=$(awk '/^Total claimed time units:/ { print $5 }' <<<"$STATUS_AREAS")
+areas_avg_time=$(awk '/^Average claimed time units:/ { print $5 }' <<<"$STATUS_AREAS")
+
 cat <<OUTPUT
 multigraph osm_dispatcher_memory
-claimed.value $claimed_space
-query_weighted_avg.value $avg_space
+base_claimed.value ${claimed_space:-U}
+base_query_weighted_avg.value ${avg_space:-U}
+areas_claimed.value ${areas_claimed_space:-U}
+areas_query_weighted_avg.value ${areas_avg_space:-U}
 
 multigraph osm_dispatcher_time
-claimed.value $claimed_time
-query_weighted_avg.value $avg_time
+base_claimed.value ${claimed_time:-U}
+base_query_weighted_avg.value ${avg_time:-U}
+areas_claimed.value ${areas_claimed_time:-U}
+areas_query_weighted_avg.value ${areas_avg_time:-U}
 OUTPUT

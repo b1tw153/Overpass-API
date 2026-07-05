@@ -71,8 +71,9 @@ Environment variables (no argument equivalent):
                                 Minimum free disk space on the log filesystem as a percentage;
                                 Overpass shuts down if the threshold is not met (default: 5)
   DISPATCHER_BASE_SPACE         Base dispatcher shared memory in bytes (default: 12884901888)
-  DISPATCHER_AREAS_SPACE        Areas dispatcher shared memory in bytes (default: 4294967296)
-  DISPATCHER_TIME               Dispatcher time limit (default: 262144)
+  DISPATCHER_AREAS_SPACE        Areas dispatcher shared memory in bytes (default: DISPATCHER_BASE_SPACE)
+  DISPATCHER_BASE_TIME          Base dispatcher time limit (default: 262144)
+  DISPATCHER_AREAS_TIME         Areas dispatcher time limit (default: DISPATCHER_BASE_TIME)
   DISPATCHER_RATE_LIMIT         Dispatcher rate limit; 0 means unlimited (default: 0)
   DISPATCHER_ALLOW_DUPLICATE_QUERIES
                                 Allow duplicate queries: yes|no (default: yes)
@@ -211,8 +212,9 @@ OVERPASS_BACKUP_TIME=${OVERPASS_BACKUP_TIME:-}
 OVERPASS_BACKUP_DAY=${OVERPASS_BACKUP_DAY:-}
 OVERPASS_LOG_DIR=${OVERPASS_LOG_DIR:-}
 DISPATCHER_BASE_SPACE=${DISPATCHER_BASE_SPACE:-12884901888}
-DISPATCHER_AREAS_SPACE=${DISPATCHER_AREAS_SPACE:-4294967296}
-DISPATCHER_TIME=${DISPATCHER_TIME:-262144}
+DISPATCHER_BASE_TIME=${DISPATCHER_BASE_TIME:-${DISPATCHER_TIME:-262144}}
+DISPATCHER_AREAS_SPACE=${DISPATCHER_AREAS_SPACE:-$DISPATCHER_BASE_SPACE}
+DISPATCHER_AREAS_TIME=${DISPATCHER_AREAS_TIME:-$DISPATCHER_BASE_TIME}
 DISPATCHER_RATE_LIMIT=${DISPATCHER_RATE_LIMIT:-0}
 DISPATCHER_ALLOW_DUPLICATE_QUERIES=${DISPATCHER_ALLOW_DUPLICATE_QUERIES:-yes}
 DISPATCHER_LIMIT_CLIENT_ZERO=${DISPATCHER_LIMIT_CLIENT_ZERO:-no}
@@ -282,8 +284,14 @@ if [[ ! "$DISPATCHER_AREAS_SPACE" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-if [[ ! "$DISPATCHER_TIME" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: DISPATCHER_TIME must be a positive integer, got: '$DISPATCHER_TIME'"
+if [[ ! "$DISPATCHER_BASE_TIME" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: DISPATCHER_BASE_TIME must be a positive integer, got: '$DISPATCHER_BASE_TIME'"
+  usage
+  exit 1
+fi
+
+if [[ ! "$DISPATCHER_AREAS_TIME" =~ ^[1-9][0-9]*$ ]]; then
+  message "ERROR: DISPATCHER_AREAS_TIME must be a positive integer, got: '$DISPATCHER_AREAS_TIME'"
   usage
   exit 1
 fi
@@ -460,7 +468,7 @@ start_base_dispatcher()
     --db-dir="$OVERPASS_DB_DIR" \
     --socket-dir="$OVERPASS_SOCKET_DIR" \
     --space="$DISPATCHER_BASE_SPACE" \
-    --time="$DISPATCHER_TIME" \
+    --time="$DISPATCHER_BASE_TIME" \
     --rate-limit="$DISPATCHER_RATE_LIMIT" \
     --allow-duplicate-queries="$DISPATCHER_ALLOW_DUPLICATE_QUERIES" \
     --limit-client-zero="$DISPATCHER_LIMIT_CLIENT_ZERO" \
@@ -479,7 +487,7 @@ start_areas_dispatcher()
       --db-dir="$OVERPASS_DB_DIR" \
       --socket-dir="$OVERPASS_SOCKET_DIR" \
       --space="$DISPATCHER_AREAS_SPACE" \
-      --time="$DISPATCHER_TIME" \
+      --time="$DISPATCHER_AREAS_TIME" \
       --rate-limit="$DISPATCHER_RATE_LIMIT" \
       --allow-duplicate-queries="$DISPATCHER_ALLOW_DUPLICATE_QUERIES" \
       >> "$OVERPASS_DB_DIR/areas_dispatcher.out" 2>&1 \
@@ -886,7 +894,8 @@ message "OVERPASS_CLEANUP_KEEP_HOURS        $OVERPASS_CLEANUP_KEEP_HOURS hours"
 message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
 message "DISPATCHER_BASE_SPACE              ~$((DISPATCHER_BASE_SPACE / 1048576)) MiB"
 message "DISPATCHER_AREAS_SPACE             ~$((DISPATCHER_AREAS_SPACE / 1048576)) MiB"
-message "DISPATCHER_TIME                    $DISPATCHER_TIME seconds"
+message "DISPATCHER_BASE_TIME               $DISPATCHER_BASE_TIME seconds"
+message "DISPATCHER_AREAS_TIME              $DISPATCHER_AREAS_TIME seconds"
 message "DISPATCHER_RATE_LIMIT              $DISPATCHER_RATE_LIMIT"
 message "DISPATCHER_ALLOW_DUPLICATE_QUERIES $DISPATCHER_ALLOW_DUPLICATE_QUERIES"
 message "-----------------------------------"
