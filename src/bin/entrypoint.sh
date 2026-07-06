@@ -19,7 +19,14 @@ munin_valid_cidr()
   perl -MNet::CIDR=cidrvalidate -e 'exit(defined cidrvalidate($ARGV[0]) ? 0 : 1)' "$1"
 }
 
-FCGIWRAP_WORKERS=${FCGIWRAP_WORKERS:-$(nproc)}
+CGROUP_CPU_MAX=$(cat /sys/fs/cgroup/cpu.max 2>/dev/null)
+if [[ "$CGROUP_CPU_MAX" =~ ^([0-9]+)[[:space:]]([0-9]+)$ ]]; then
+  CPU_COUNT=$(( BASH_REMATCH[1] / BASH_REMATCH[2] ))
+else
+  CPU_COUNT=$(nproc)
+fi
+
+FCGIWRAP_WORKERS=${FCGIWRAP_WORKERS:-$(( CPU_COUNT + 1 ))}
 
 if [[ ! "$FCGIWRAP_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
   message "ERROR: FCGIWRAP_WORKERS must be a positive integer, got: '$FCGIWRAP_WORKERS'"
@@ -37,7 +44,7 @@ fi
 
 export NGINX_FASTCGI_TIMEOUT
 
-NGINX_CONNECTION_QUEUE=${NGINX_CONNECTION_QUEUE:-0}
+NGINX_CONNECTION_QUEUE=${NGINX_CONNECTION_QUEUE:-$(( CPU_COUNT * 2 ))}
 
 if [[ ! "$NGINX_CONNECTION_QUEUE" =~ ^[0-9]+$ ]]; then
   message "ERROR: NGINX_CONNECTION_QUEUE must be a non-negative integer, got: '$NGINX_CONNECTION_QUEUE'"
