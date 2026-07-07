@@ -19,6 +19,14 @@ munin_valid_cidr()
   perl -MNet::CIDR=cidrvalidate -e 'exit(defined cidrvalidate($ARGV[0]) ? 0 : 1)' "$1"
 }
 
+message "-----------------------------------"
+message "Starting entrypoint ($0)"
+message "-----------------------------------"
+while IFS='=' read -r name value; do
+  message "$(printf '%-35s %s' "$name" "$value")"
+done < <(env | sort)
+message "-----------------------------------"
+
 CGROUP_CPU_MAX=$(cat /sys/fs/cgroup/cpu.max 2>/dev/null)
 if [[ "$CGROUP_CPU_MAX" =~ ^([0-9]+)[[:space:]]([0-9]+)$ ]]; then
   CPU_COUNT=$(( BASH_REMATCH[1] / BASH_REMATCH[2] ))
