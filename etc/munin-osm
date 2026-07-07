@@ -1,0 +1,31 @@
+# This file is used to configure how the plugins are invoked. Place in
+# /etc/munin/plugin-conf.d/ or corresponding directory.
+#
+# PLEASE NOTE: Changes in the plugin-conf.d directory are only read at
+# munin-node startup, so restart at any changes.
+#
+# user <user>            # Set the user to run the plugin as.
+# group <group>          # Set the group to run the plugin as.
+# command <command>      # Run <command> instead of the plugin. %c expands to
+#                          what would normally be run.
+# env.<variable> <value> # Sets <variable> in the plugin's environment, see the
+#                          individual plugins to find out which variables they
+#                          care about.
+#
+# This file is read after munin-node (in alphabetical order). It overrides
+# default configuration settings and adds local configuraction settings.
+
+[df*]
+env.exclude_re ^(/proc|/sys|/dev|/run/user)
+
+[osm_db_lag]
+# override derived values if desired
+# env.warning
+# env.critical
+
+[osm_mem_status]
+# override derived values if desired
+# env.base_warning
+# env.base_critical
+# env.areas_warning
+# env.areas_critical

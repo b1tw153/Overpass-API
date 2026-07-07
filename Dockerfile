@@ -59,6 +59,7 @@ COPY --chown=overpass:overpass static/ /opt/overpass/static/
 
 COPY etc/munin-node.conf.template /etc/munin/munin-node.conf.template
 COPY src/munin/ /usr/share/munin/plugins/
+COPY etc/munin-osm /etc/munin/plugin-conf.d/
 RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
              /usr/share/munin/plugins/osm_db_request_count \
              /usr/share/munin/plugins/osm_dispatcher \
@@ -84,6 +85,7 @@ RUN chmod +x /usr/share/munin/plugins/osm_db_lag \
                      osm_dispatcher \
                      osm_interpreter \
                      osm_interpreter_procs \
+                     osm_mem_status \
                      osm_nginx_access \
                      osm_nginx_queue \
                      osm_nginx_status \
