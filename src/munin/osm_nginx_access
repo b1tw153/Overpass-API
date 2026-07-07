@@ -55,7 +55,7 @@ STATE="${MUNIN_PLUGSTATE:-/tmp}/$(basename "$0").state"
 # Endpoint buckets, from bottom to top. This list and its labels must match the
 # path_bucket() function in the fetch awk below, which maps a request URI to one
 # of these names from the nginx.conf.template "location" set.
-PATH_BUCKETS=(other liveness container_status nginx_status api_other kill status static interpreter)
+PATH_BUCKETS=(interpreter status kill api_other static liveness container_status nginx_status other)
 declare -A PATH_LABEL=(
   [interpreter]="/api/interpreter"
   [status]="/api/status"
