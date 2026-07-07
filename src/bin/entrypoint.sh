@@ -54,6 +54,42 @@ fi
 NGINX_MAX_CONN=$(( FCGIWRAP_WORKERS + NGINX_CONNECTION_QUEUE ))
 export NGINX_MAX_CONN
 
+if [[ -n "${NGINX_CLIENT_CONN_LIMIT:-}" ]]; then
+  if [[ ! "$NGINX_CLIENT_CONN_LIMIT" =~ ^[1-9][0-9]*$ ]]; then
+    message "ERROR: NGINX_CLIENT_CONN_LIMIT must be a positive integer, got: '$NGINX_CLIENT_CONN_LIMIT'"
+    exit 1
+  fi
+  NGINX_LIMIT_CONN_ZONE="limit_conn_zone \$binary_remote_addr zone=client_conn:10m;"
+  NGINX_LIMIT_CONN_CLIENT="limit_conn client_conn ${NGINX_CLIENT_CONN_LIMIT};"
+else
+  NGINX_LIMIT_CONN_ZONE=""
+  NGINX_LIMIT_CONN_CLIENT=""
+fi
+export NGINX_LIMIT_CONN_ZONE NGINX_LIMIT_CONN_CLIENT
+
+if [[ -n "${NGINX_CLIENT_REQ_RATE:-}" ]]; then
+  if [[ ! "$NGINX_CLIENT_REQ_RATE" =~ ^[1-9][0-9]*r/[sm]$ ]]; then
+    message "ERROR: NGINX_CLIENT_REQ_RATE must be a rate like 10r/s or 30r/m, got: '$NGINX_CLIENT_REQ_RATE'"
+    exit 1
+  fi
+  NGINX_CLIENT_REQ_BURST=${NGINX_CLIENT_REQ_BURST:-0}
+  if [[ ! "$NGINX_CLIENT_REQ_BURST" =~ ^[0-9]+$ ]]; then
+    message "ERROR: NGINX_CLIENT_REQ_BURST must be a non-negative integer, got: '$NGINX_CLIENT_REQ_BURST'"
+    exit 1
+  fi
+  NGINX_CLIENT_REQ_DELAY=${NGINX_CLIENT_REQ_DELAY:-$NGINX_CLIENT_REQ_BURST}
+  if [[ ! "$NGINX_CLIENT_REQ_DELAY" =~ ^[0-9]+$ ]]; then
+    message "ERROR: NGINX_CLIENT_REQ_DELAY must be a non-negative integer, got: '$NGINX_CLIENT_REQ_DELAY'"
+    exit 1
+  fi
+  NGINX_LIMIT_REQ_ZONE="limit_req_zone \$binary_remote_addr zone=client_req:10m rate=${NGINX_CLIENT_REQ_RATE};"
+  NGINX_LIMIT_REQ_CLIENT="limit_req zone=client_req burst=${NGINX_CLIENT_REQ_BURST} delay=${NGINX_CLIENT_REQ_DELAY};"
+else
+  NGINX_LIMIT_REQ_ZONE=""
+  NGINX_LIMIT_REQ_CLIENT=""
+fi
+export NGINX_LIMIT_REQ_ZONE NGINX_LIMIT_REQ_CLIENT
+
 if [[ -z "${DISPATCHER_BASE_SPACE:-}" ]]; then
   DISPATCHER_BASE_SPACE=824633720832
   export DISPATCHER_BASE_SPACE
@@ -210,7 +246,7 @@ FCGI_PID=$!
 echo "$FCGI_PID" > /opt/overpass/run/fcgiwrap.pid
 
 # Render nginx config from template
-envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT} ${NGINX_MAX_CONN}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
+envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT} ${NGINX_MAX_CONN} ${NGINX_LIMIT_CONN_ZONE} ${NGINX_LIMIT_CONN_CLIENT} ${NGINX_LIMIT_REQ_ZONE} ${NGINX_LIMIT_REQ_CLIENT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # Start nginx
 message "Starting nginx"
