@@ -44,7 +44,7 @@ fi
 
 export NGINX_FASTCGI_TIMEOUT
 
-NGINX_CONNECTION_QUEUE=${NGINX_CONNECTION_QUEUE:-$(( CPU_COUNT * 2 ))}
+NGINX_CONNECTION_QUEUE=${NGINX_CONNECTION_QUEUE:-$(( CPU_COUNT * 7 - 1 ))}
 
 if [[ ! "$NGINX_CONNECTION_QUEUE" =~ ^[0-9]+$ ]]; then
   message "ERROR: NGINX_CONNECTION_QUEUE must be a non-negative integer, got: '$NGINX_CONNECTION_QUEUE'"
@@ -55,11 +55,8 @@ NGINX_MAX_CONN=$(( FCGIWRAP_WORKERS + NGINX_CONNECTION_QUEUE ))
 export NGINX_MAX_CONN
 
 if [[ -z "${DISPATCHER_BASE_SPACE:-}" ]]; then
-  CGROUP_MEMORY_MAX=$(cat /sys/fs/cgroup/memory.max 2>/dev/null)
-  if [[ "$CGROUP_MEMORY_MAX" =~ ^[0-9]+$ ]]; then
-    DISPATCHER_BASE_SPACE=$(( CGROUP_MEMORY_MAX * 4 / 5 ))
-    export DISPATCHER_BASE_SPACE
-  fi
+  DISPATCHER_BASE_SPACE=824633720832
+  export DISPATCHER_BASE_SPACE
 fi
 
 # Munin monitoring is opt-in: the node starts only when the operator names who
