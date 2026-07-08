@@ -44,6 +44,8 @@ This project is a fork of drolbr/Overpass-API which is an API to perform queries
 * NEW: Default `robots.txt` and `llms.txt` files in `/static` to guide bot traffic
 * NEW: Container serves HTTP 429 and HTTP 504 error responses with clear messaging on backoff and retries
 * NEW: Container has a configurable queue to hold requests in nginx when query workers are busy
+* NEW: Optional per-client connection and request-rate limiting in nginx (`NGINX_CLIENT_CONN_LIMIT`, `NGINX_CLIENT_REQ_RATE`)
+* NEW: Bundled Munin node with plugins for nginx, dispatcher, interpreter, and cgroup metrics; opt-in and disabled by default. See [`src/munin/README.md`](src/munin/README.md)
 
 ## Overview
 
@@ -92,13 +94,13 @@ The diff directory is small and transient. Under normal operation with replicati
 
 ### CPU
 
-The container runs one fcgiwrap worker per CPU core by default (`FCGIWRAP_WORKERS` defaults to `nproc`). Each worker handles one concurrent query. Provision CPU cores based on your expected concurrent query load. A single core is sufficient for light personal use; a public-facing instance benefits from more cores to handle concurrent requests without queuing or rate limiting. An optional request queue can be configured in nginx. See **Rate Limiting** below.
+The container runs one fcgiwrap worker per CPU core plus one by default (`FCGIWRAP_WORKERS` defaults to `cpu.max`/`nproc` + 1). Each worker handles one concurrent query. Provision CPU cores based on your expected concurrent query load. A single core is sufficient for light personal use; a public-facing instance benefits from more cores to handle concurrent requests without queuing or rate limiting. An optional request queue can be configured in nginx. See **Rate Limiting** below.
 
 ### Memory
 
 Baseline memory usage at idle is negligible — under 50 MiB regardless of database size. Memory pressure comes from query load: each running query allocates memory for result sets and database buffer caches, and complex queries against a full planet database can consume several GiB.
 
-The container automatically sets the dispatcher memory limit to 80% of the container memory limit, leaving headroom for OS overhead and the gap between the dispatcher's logical accounting and actual physical memory usage. (You can override this by setting `DISPATCHER_BASE_SPACE`.) Set your container memory limit based on your expected query workload and monitor actual usage under load to tune it. As a starting point:
+The dispatcher `--space` limit is mainly a concurrency limit, not a memory constraint. The container automatically sets the dispatcher memory limit to 768GiB to disable this limit and relies on the fcgiwrap worker pool in nginx to constrain concurrency. (You can override this by setting `DISPATCHER_BASE_SPACE`.) Set your container memory limit based on your expected query workload and monitor actual usage under load to tune it. As a starting point:
 
 * A minimal development instance with a small extract can run with 1-2 GiB
 * A lightly loaded personal instance can run with 4-8 GiB
@@ -487,11 +489,19 @@ The status report covers:
 * interpreter
 * Host (filesystem usage, directory sizes, memory usage, load average)
 
+### Monitoring with Munin
+
+The container image includes a Munin node, disabled by default. Munin is a resource monitoring tool that graphs time series data collected from plugins; this project bundles plugins that cover nginx, the base and areas dispatchers, the interpreter, and cgroup CPU/memory/pressure/swap metrics.
+
+The node stays stopped until you set `MUNIN_NODE_CIDR_ALLOW` to an allow-list of Munin master addresses, and does not need a Munin master running anywhere near the container to be useful on its own — it just won't be polled. See [`src/munin/README.md`](src/munin/README.md) for the full list of plugins and graphs, and instructions for running the Munin node, master, and web front end on bare metal or with the container.
+
 ### Rate Limiting
 
 Overpass performs best when each query runs on a single CPU (see **Resource Sizing** above). By default, the container will return HTTP 429 responses when the number of concurrent requests is greater than the number of available CPUs. Set the `NGINX_CONNECTION_QUEUE` environment variable to configure nginx to queue an additional number of requests above the number of CPUs. This will result in fewer HTTP 429 responses, but slower query completion times when there are requests in the queue.
 
 In either case, ngnix requests will time out after a maximum of `NGINX_FASTCGI_TIMEOUT` seconds. Nginx will return an HTTP 504 response when a query hits this limit regardless of the `[timeout:...]` setting within the query text. The default for `NGINX_FASTCGI_TIMEOUT` is 300 seconds. Adjust this by setting the environment variable as appropriate for the expected query load.
+
+In addition to the overall connection queue, you can optionally limit how much of that capacity any single client IP can consume. Set `NGINX_CLIENT_CONN_LIMIT` to cap the number of simultaneous connections (active or queued) from one client IP; requests beyond the limit receive an immediate HTTP 429. Set `NGINX_CLIENT_REQ_RATE` (e.g., `10r/s` or `30r/m`) to cap the request rate per client IP, with `NGINX_CLIENT_REQ_BURST` and `NGINX_CLIENT_REQ_DELAY` controlling how many burst requests are queued versus rejected. Both limits are unset (disabled) by default. See [`etc/overpass.env`](https://github.com/b1tw153/Overpass-API/blob/main/etc/overpass.env) for full details.
 
 ### Static Web Content
 
