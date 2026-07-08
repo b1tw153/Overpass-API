@@ -18,10 +18,28 @@
 [df*]
 env.exclude_re ^(/proc|/sys|/dev|/run/user)
 
+[osm_*]
+# must be set for Munin on bare metal
+# env.OVERPASS_DB_DIR
+# env.OVERPASS_BIN_DIR
+# env.OVERPASS_LOG_DIR
+
+[osm_nginx_queue]
+# must be set for Munin on bare metal (with nginx)
+# env.FCGIWRAP_SOCKET
+# env.FCGIWRAP_WORKERS
+# env.NGINX_MAX_CONN
+
+[osm_nginx_status]
+# must be set for Munin on bare metal (with nginx)
+# env.NGINX_STATUS_URL
+
 [osm_db_lag]
 # override derived values if desired
 # env.warning
 # env.critical
+# must be set for Munin on bare metal
+# env.OVERPASS_UPDATE_FREQUENCY
 
 [osm_mem_status]
 # override derived values if desired
