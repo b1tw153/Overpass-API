@@ -21,7 +21,8 @@
 ID=0
 BBOX=
 DEBUG=
-EXECBASE="$(realpath "$(dirname "$0")/..")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
+BIN_DIR="$(realpath "$EXEC_DIR/../bin")"
 CACHE_DIR="/tmp/osm3s_augmented_diffs_cache/"
 NUMBER_RE='-?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?'
 WS='[[:space:]]*'
@@ -46,8 +47,8 @@ for KEY_VAL in $QUERY_STRING; do
   else
     RAW_VAL=
   fi
-  KEY=$(printf '%s' "${KEY_VAL%%=*}" | "$EXECBASE"/bin/uncgi) || bad_request "Malformed query string"
-  VAL=$(printf '%s' "$RAW_VAL" | "$EXECBASE"/bin/uncgi) || bad_request "Malformed query string"
+  KEY=$(printf '%s' "${KEY_VAL%%=*}" | "$BIN_DIR"/uncgi) || bad_request "Malformed query string"
+  VAL=$(printf '%s' "$RAW_VAL" | "$BIN_DIR"/uncgi) || bad_request "Malformed query string"
   case "$KEY" in
     id)
       if [[ $VAL =~ $ID_RE ]]; then
@@ -95,7 +96,7 @@ fi
 #REQUEST_METHOD=GET
 
 if [[ -z $DEBUG ]]; then
-  ./interpreter
+  "$EXEC_DIR"/interpreter
 else
   echo "Content-Type: text/plain"
   echo
