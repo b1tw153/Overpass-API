@@ -159,7 +159,7 @@ std::map< std::string, std::string > get_xml_cgi(
 	error_output->add_encoding_remark("Only whitespace found from GET method. Trying to retrieve input by POST method.");
     }
 
-    input = cgi_post_to_text();
+    input = cgi_post_to_text(max_input_size);
     pos = 0;
     line_number = 1;
     while ((pos < input.size()) && (isspace(input[pos])))
@@ -253,7 +253,7 @@ std::string get_xml_console(Error_Output* error_output, uint32 max_input_size)
 
   // If there is nonempty input from GET method, use GET
   std::string input("");
-  input = cgi_post_to_text();
+  input = cgi_post_to_text(max_input_size);
   input = autocomplete(input, error_output, max_input_size);
   return input;
 }
