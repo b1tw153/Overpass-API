@@ -53,8 +53,8 @@ Environment variables:
   DOWNLOAD_CLONE_CONNECT_TIMEOUT  Connection timeout in seconds (default: 30)
   DOWNLOAD_CLONE_RETRY_COUNT      Retries per file (default: 240)
   DOWNLOAD_CLONE_RETRY_DELAY      Seconds between retries (default: 15)
-  DOWNLOAD_CLONE_SPEED_LIMIT      Minimum bytes/sec before stall detection (default: 1024)
-  DOWNLOAD_CLONE_SPEED_TIME       Seconds below speed limit before aborting (default: 30)
+  DOWNLOAD_CLONE_SPEED_LIMIT      Minimum bytes/sec before stall detection (default: 16)
+  DOWNLOAD_CLONE_SPEED_TIME       Seconds below speed limit before aborting (default: 60)
   OVERPASS_MIN_FREE_DISK_PERCENT  Minimum free disk space percentage (default: 5)
 EOF
 }
@@ -162,8 +162,8 @@ MAX_TIME=${DOWNLOAD_CLONE_MAX_TIME:-86400}            # 24 hours - total time li
 CONNECT_TIMEOUT=${DOWNLOAD_CLONE_CONNECT_TIMEOUT:-30} # Timeout for initial connection
 RETRY_COUNT=${DOWNLOAD_CLONE_RETRY_COUNT:-240}        # Number of retries per file
 RETRY_DELAY=${DOWNLOAD_CLONE_RETRY_DELAY:-15}         # Seconds between retries
-SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-1024}       # Minimum bytes/sec before considering stalled
-SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-30}           # Seconds below speed limit before aborting
+SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-16}       # Minimum bytes/sec before considering stalled
+SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-60}           # Seconds below speed limit before aborting
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
 if [[ ! "$PARALLEL_JOBS" =~ ^[1-9][0-9]*$ ]]; then
