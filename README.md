@@ -155,7 +155,7 @@ sudo useradd -u 10001 -s /usr/sbin/nologin overpass
 sudo usermod -aG overpass "$USER"
 mkdir -p "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
 chown -R overpass:overpass "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
-sudo chmod g+w overpass
+sudo chmod g+w "$OVERPASS_DB_DIR" "$OVERPASS_BACKUP_DIR"
 ```
 
 Mounting other host directories in the container is optional. See the *Directory Structure* section below.
