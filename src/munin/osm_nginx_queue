@@ -56,7 +56,7 @@ graph_category nginx
 graph_title Overpass query pipeline
 graph_vlabel requests
 graph_args --lower-limit 0
-graph_info Point samples of the request pipeline. "executing" counts interpreter CGI processes; "queued" is the fcgiwrap listen socket's accept queue -- requests nginx has admitted past limit_conn but no worker has picked up yet. nginx admits at most "connection limit" concurrent /api requests and rejects the rest with 429, so a queued band holding at the gap between the two reference lines means requests are being rejected.
+graph_info Point samples of the request pipeline. The "executing" count is interpreter CGI processes. The "queued" count is the fcgiwrap listen socket's accept queue, requests nginx has admitted past limit_conn but no worker has picked up yet. It is normal and healthy to have a small to moderate queue because a small queue keeps the fcgiwrap workers fully utilized by ensuring a new request is ready when a previous one completes. A moderate queue trades an increase in latency for reduced 429 rate limiting responses. A large queue means many requests are waiting without executing, increasing latency and overall query time for clients. Nginx admits at most "connection limit" concurrent /api requests and rejects the rest with 429, so a queued band that reaches the upper reference line means requests are being rejected.
 executing.label executing
 executing.type GAUGE
 executing.draw AREASTACK

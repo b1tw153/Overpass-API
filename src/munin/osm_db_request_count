@@ -13,26 +13,32 @@ if [[ "$1" = "config" ]]; then
 {
   echo 'graph_title Overpass API request count'
   echo 'graph_vlabel per minute'
+  echo 'graph_info Overpass query processing from the perspective of the dispatcher process. The dispatcher tracks queries that have been received for processing, so queries queued in the web server are not included, nor are queries pending or deferred in CGI processing or that time out before reaching the dispatcher. Compare this graph with the web server access requests to identify requests that may not have reached the dispatcher.'
   echo "overpass_request_started.label started"
   echo "overpass_request_started.type COUNTER"
   echo "overpass_request_started.cdef overpass_request_started,60,*"
   echo "overpass_request_started.max 10000"
+  echo "overpass_request_started.info Queries that have been accepted for processing and that are able to run."
   echo "overpass_request_completed.label completed"
   echo "overpass_request_completed.type COUNTER"
   echo "overpass_request_completed.cdef overpass_request_completed,60,*"
   echo "overpass_request_completed.max 10000"
+  echo "overpass_request_completed.info Queries that have finished processing and delivered results back through the CGI pipeline -- and to the client if the connection is still open."
   echo "overpass_request_shedded.label shedded"
   echo "overpass_request_shedded.type COUNTER"
   echo "overpass_request_shedded.cdef overpass_request_shedded,60,*"
   echo "overpass_request_shedded.max 10000"
+  echo "overpass_request_shedded.info Queries the dispatcher has rejected because its global resource pools for space and time are overcommitted. The status of these pools is visible in the claimed memory and claimed time graphs."
   echo "overpass_request_rate_limited.label rate_limited"
   echo "overpass_request_rate_limited.type COUNTER"
   echo "overpass_request_rate_limited.cdef overpass_request_rate_limited,60,*"
   echo "overpass_request_rate_limited.max 10000"
+  echo "overpass_request_rate_limited.info Queries rejected because the client IP address has submitted more concurrent or frequent requests than the --rate-limit setting in the dispatcher allows."
   echo "overpass_request_duplicate.label duplicate"
   echo "overpass_request_duplicate.type COUNTER"
   echo "overpass_request_duplicate.cdef overpass_request_duplicate,60,*"
   echo "overpass_request_duplicate.max 10000"
+  echo "overpass_request_duplicate.info Queries rejected because they were exact duplicates of previous queries (if --allow-duplicate-queries=no)."
   exit 0
 }; fi
 

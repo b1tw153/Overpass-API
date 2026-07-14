@@ -65,7 +65,7 @@ if [[ "$1" = "config" ]]; then
 multigraph osm_interpreter_runtime
 graph_title Overpass interpreter run time
 graph_vlabel seconds per minute
-graph_info Total run time and CPU time consumed by queries per minute (aggregate interpreter load). Divergence between run time and CPU time indicates queries waiting rather than computing. CPU time subdivides into query time (evaluating the query) and collate time (formatting the output).
+graph_info Total query run time and CPU time consumed by completed queries, summed per minute -- the aggregate load on the interpreter. CPU time splits into "query time" (evaluating the query statements) and "collate time" (assembling the out statement results). Collate time is data materialization -- collecting tag and meta data for each output element -- not text formatting. An out meta query can spend many times more collate time and block reads than the same query with out ids. Run time is normally higher than CPU time because it tracks time when the query is not executing. An increase in the ratio between run time and CPU time indicates queries are spending more time waiting rather than executing. This can happen with CPU contention or when queries are deferred by the dispatcher concurrency limits.
 wall.label run time
 wall.type DERIVE
 wall.min 0
@@ -90,7 +90,7 @@ collate.draw LINE1
 multigraph osm_interpreter_runtime_avg
 graph_title Overpass interpreter run time per query
 graph_vlabel seconds
-graph_info Average run time and CPU time per completed query. Divergence between run time and CPU time indicates queries waiting rather than computing. CPU time subdivides into query time (evaluating the query) and collate time (formatting the output).
+graph_info The same run time and CPU time breakdown as the "Overpass interpreter run time" graph, as an average per completed query rather than a per-minute total. It normalizes out changes in query volume, so it is the graph to read for whether individual queries are getting slower or faster. Rising query and collate time here indicate that queries are more complex and demand more CPU time.
 wall.label run time
 wall.type DERIVE
 wall.min 0
@@ -121,7 +121,7 @@ n.min 0
 multigraph osm_interpreter_block_reads
 graph_title Overpass interpreter block reads
 graph_vlabel blocks per minute
-graph_info Total database blocks read per minute across all queries (aggregate read load).
+graph_info Total number of database blocks read per minute, summed across all completed queries -- the aggregate I/O load on the interpreter, independent of CPU or run time. Each unit is one call into the database block-read layer, whether or not the block was served from the OS page cache, so the count reflects data accessed rather than physical disk I/O. Database block sizes vary depending on the file type, so this is not a direct view of I/O throughput.
 block_reads.label per minute
 block_reads.type DERIVE
 block_reads.min 0
@@ -131,7 +131,7 @@ block_reads.draw LINE2
 multigraph osm_interpreter_block_reads_avg
 graph_title Overpass interpreter block reads per query
 graph_vlabel blocks
-graph_info Average database blocks read per completed query (block-read cost of a typical query).
+graph_info The same block reads count as the "Overpass interpreter block reads" graph, as an average per completed query rather than a per-minute total. It factors out changes in query volume, so it is the graph to read for whether individual queries are reading more or less data, as opposed to whether more queries are running.
 block_reads.label per query
 block_reads.type DERIVE
 block_reads.min 0
@@ -145,7 +145,7 @@ multigraph osm_interpreter_rejections
 graph_title Overpass interpreter client-side rejections
 graph_vlabel rejections per minute
 graph_args --lower-limit 0
-graph_info Queries rejected before running, per minute, from the client-side reject lines that the query process writes to transactions.log. "defer timeout" is defer-exhaustion -- the dispatcher deferred the query until the client gave up -- and is counted by NOTHING in the dispatcher --status counters (osm_db_request_count), so this is the only view of it. "rate limited" (per-IP Gate A) and "duplicate query" mirror dispatcher counters for cross-check; "hash blacklisted" is an anon_hash_blacklist hit. Each rejected query also emits a "requesting" line but never "read_finished", so these queries are disjoint from the run-time and histogram graphs. Pair with osm_db_request_count to see counted vs uncounted rejections side by side.
+graph_info Queries rejected before they ran, per minute, by reason. The counts come from the interpreter side of its negotiation with the dispatcher. The "rate limited" and "duplicate query" reasons match the corresponding reasons reported by the dispatcher. A "defer timeout" is not reported anywhere else. It happens when the dispatcher defers a query -- a pending state while a rate limit or global resource limit is tripped -- and the query process gives up retrying before it is admitted or rejected. In the "defer timeout" case, none of the dispatcher counters are incremented and the query never ran, so it is invisible everywhere except here. A rising "defer timeout" count means sustained admission pressure that the dispatcher counters do not show. A "hash blacklisted" query was admitted, so it appears in the dispatcher "started" count. But it was terminated before running because it matched the query-hash blacklist in the database directory, so it never reaches "completed". This graph shows blacklisted queries directly. Read this graph alongside the "Overpass API request count" graph to compare counted and uncounted rejections.
 timeout.label defer timeout
 timeout.type DERIVE
 timeout.min 0

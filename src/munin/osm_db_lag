@@ -19,6 +19,7 @@ if [[ "$1" = "config" ]]; then
   echo 'graph_title Local database age'
   echo 'graph_args --logarithmic'
   echo 'graph_vlabel seconds'
+  echo 'graph_info Difference between the Overpass base and areas database timestamps and real time. The graph follows a sawtooth pattern based on the replication frequency and area update frequency. Some of the variation in replication lag is due to latency at the replication source. A steadily increasing value indicates that something is wrong with the database updates.'
   echo "osm_db_lag.label osm_base"
 
   UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}

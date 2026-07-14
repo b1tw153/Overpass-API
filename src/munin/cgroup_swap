@@ -37,7 +37,7 @@ if [[ "$1" = "config" ]]; then
     fi
     echo 'graph_vlabel Bytes'
     echo 'graph_category system'
-    echo 'graph_info Swap space used by this container (cgroup v2).'
+    echo 'graph_info Swap space used by this container (cgroup v2). On a well-tuned Overpass system, swap usage should normally be minimal, though area generation may drive transient increases. Consistently high swap usage indicates significant memory constraints; review the memory usage and memory pressure graphs for other indications.'
     echo 'swap.label swap'
     echo 'swap.draw AREA'
     echo 'swap.info Swap bytes currently in use.'

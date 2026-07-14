@@ -70,7 +70,7 @@ if [[ "$1" = "config" ]]; then
     fi
     echo 'graph_vlabel Bytes'
     echo 'graph_category system'
-    echo 'graph_info Memory used by this container (cgroup v2). kernel includes slab, stacks, page tables, and other kernel overhead.'
+    echo 'graph_info Memory used by this container (cgroup v2), which helps separate container memory issues from the host memory view in the default Munin memory plugin. Overpass queries typically cache hundreds of MB or even GB of data from the database, so it is normal for this graph to be dominated by cache usage. The kernel measurement includes slab, stacks, page tables, and other kernel overhead.'
     order="anon cache shmem kernel"
     [[ $have_swap -eq 1 ]] && order="$order swap"
     echo "graph_order $order"

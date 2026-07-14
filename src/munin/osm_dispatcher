@@ -48,7 +48,7 @@ if [[ "$1" = "config" ]]; then
 multigraph osm_dispatcher_memory
 graph_title Dispatcher claimed memory
 graph_vlabel bytes
-graph_info Current and query-weighted average memory claimed by running queries, for both the osm-base and areas dispatchers. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
+graph_info The "space" claimed by queries in default or [maxsize:] allocations from the --space pool in the dispatcher, with separate pools for the base and areas dispatcher processes. The "space" pool acts as a global concurrency limit and ramps up per-client rate limiting when allocations are high. When the allocated "space" nears the limit, queries are rejected as "shedded". With the default 512MB [maxsize:] allocation and the default 12GB --space setting, the effective maximum is ~24 concurrent queries. (The container sets --space to 768GB to disable this limit and constrains concurrency through the number of fcgiwrap workers instead.) The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
 base_claimed.label base current
 base_claimed.type GAUGE
 base_claimed.draw LINE2
@@ -67,7 +67,7 @@ areas_query_weighted_avg.draw LINE1
 multigraph osm_dispatcher_time
 graph_title Dispatcher claimed time units
 graph_vlabel time units
-graph_info Current and query-weighted average time units claimed by running queries, for both the osm-base and areas dispatchers. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
+graph_info The "time" claimed by queries in default or [timeout:] allocations from the --time pool in the dispatcher, with separate pools for the base and areas dispatcher processes. The "time" pool acts as a global concurrency limit and ramps up per-client rate limiting when allocations are high. When the allocated "time" nears the limit, queries are rejected as "shedded". The default 262144 second --time setting in the dispatcher is high enough that this limit is effectively disabled. The query-weighted average is a 15-second trailing window updated only when queries complete; it persists after load clears.
 base_claimed.label base current
 base_claimed.type GAUGE
 base_claimed.draw LINE2

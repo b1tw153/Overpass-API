@@ -33,7 +33,7 @@ multigraph osm_interpreter_procs_elapsed
 graph_title Overpass interpreter query age
 graph_vlabel seconds
 graph_args --lower-limit 0
-graph_info Point sample of running interpreter processes. "oldest query" is the age of the longest-running query; "all running queries" is the summed age of every running query. The lines touching means one long query; a gap means additional long-runners are accumulating age.
+graph_info Point sample of running interpreter processes. The "oldest query" is the age of the longest-running query and "all running queries" is the summed age of every running query. The lines touching means one long query; a gap means additional long-running queries are in progress.
 total.label all running queries
 total.type GAUGE
 total.draw AREA

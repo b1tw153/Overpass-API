@@ -29,7 +29,7 @@ if [[ "$1" = "config" ]]; then
     echo "graph_args --base 1000 -r --lower-limit 0 --upper-limit $((NCPU * 100))"
     echo 'graph_vlabel %'
     echo 'graph_scale no'
-    echo 'graph_info CPU time used by this container (cgroup v2). iowait, irq, softirq, steal, and idle are not available per cgroup.'
+    echo 'graph_info User and system CPU time used by this container (cgroup v2), a window into CPU usage inside the container. It is best compared with the default Munin cpu plugin for a broader view of host CPU usage. iowait, irq, softirq, steal, and idle are not available per cgroup.'
     echo 'graph_category system'
     echo 'graph_period second'
     echo 'system.label system'

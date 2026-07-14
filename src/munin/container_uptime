@@ -26,6 +26,7 @@ if [[ "$1" = "config" ]]; then
     echo 'graph_scale no'
     echo 'graph_vlabel uptime in days'
     echo 'graph_category system'
+    echo 'graph_info Container uptime, separate from the host uptime. If the container is running and healthy, Overpass is able to serve queries.'
     echo 'uptime.label uptime'
     echo 'uptime.draw AREA'
 } ; exit 0 ; fi
