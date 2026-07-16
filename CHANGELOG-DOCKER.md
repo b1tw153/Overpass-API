@@ -1,3 +1,17 @@
+=0.7.62.11-r15 (2026-07-16)=
+
+* Hardened cgi-bin scripts and binaries (`augmented_diff`, `augmented_diff_status`, `augmented_state_by_date`, `convert`, `convert_xapi`, `draw-line`, `kill_my_queries`, `map`, `sketch-line`, `sketch-options`, `sketch-route`, `template`, `xapi`, `xapi_meta`): URL query string decoding correctness, parameter/input validation, path construction, and error handling
+* Fixed URL query string parsing in the C++ frontend (`cgi-helper.cc/h`, `user_interface.cc`, `processed_input.cc`, `uncgi.cc`): off-by-one in percent-decode bounds check, delimiter search scoped to its segment, faster bounded chunked POST body read
+* Rebuilt the bbox placeholder substitution to run in a single pass over the query string
+* Rejected line breaks in the `[out:custom]` `url` parameter
+* Removed the `/container-status` nginx endpoint and its cgi-bin script; `container_status.sh` is now run from the command line only
+* Removed `osm_mem_status` from the default Munin plugin set; updated other Munin graph descriptions
+* Guarded the `operates_*` opening-hours parse against values too short for its fixed-offset substrings
+* Made `download_clone.sh` speed-limit stall detection more forgiving (`DOWNLOAD_CLONE_SPEED_LIMIT` default 1024→16 bytes/sec, `DOWNLOAD_CLONE_SPEED_TIME` default 30→60s)
+* Added `pull: true` to the CI build step so the image always builds against the latest `debian:bookworm`/`debian:bookworm-slim` base images
+* Corrected the documented default value for `NGINX_CONNECTION_QUEUE` in `overpass.env`
+* Added `CHANGELOG-DOCKER.md` to track changes in container releases
+
 =0.7.62.11-r14 (2026-07-08)=
 
 * Integrated Munin monitoring into the container build: new plugins for cgroup CPU/memory/swap/pressure, container uptime, the dispatcher, the interpreter (including query time histograms and client rejection logging), and nginx (access, request queue, status); expanded `osm_db_lag` and `osm_mem_status`; added `etc/munin-node.conf.template`, `etc/munin-osm`, and `src/munin/README.md`
