@@ -39,6 +39,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
+          pull: true
           push: true
           tags: |
             b1tw153/overpass-api:${{ steps.version.outputs.upstream }}-r${{ github.run_number }}
