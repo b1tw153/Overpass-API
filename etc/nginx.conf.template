@@ -54,7 +54,7 @@ http {
         location / {
             root /opt/overpass/static;
             try_files $uri $uri/ =404;
-            add_header Cache-Control "public, max-age=3600";
+            add_header Cache-Control "public, max-age=300";
         }
 
         location ~ ^/api/(.*)$ {
@@ -79,6 +79,7 @@ http {
 
         location /liveness {
             add_header Content-Type text/plain;
+            expires -1;
             return 200 'OK';
         }
 
