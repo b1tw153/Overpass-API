@@ -460,15 +460,9 @@ After the restore completes, start Overpass normally.
 ### Container Status Endpoint
 
 The container image includes a `container_status.sh` script that reports the current operational
-status of all Overpass components. When running as a container, it is served by nginx at
-`/container-status`:
+status of all Overpass components.
 
-```bash
-curl http://localhost/container-status
-curl http://localhost/container-status?format=json
-```
-
-You can also run it directly from the command line inside the container:
+You can run it directly from the command line inside the container:
 
 ```bash
 /opt/overpass/bin/container_status.sh
