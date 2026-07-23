@@ -43,7 +43,7 @@ if [[ -n "$1" ]]; then
   usage
 fi
 
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir) || { echo "ERROR: dispatcher --show-dir failed"; exit 1; }
 if ! [[ -d $DB_DIR && -w $DB_DIR ]]; then

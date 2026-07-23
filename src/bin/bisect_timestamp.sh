@@ -100,7 +100,7 @@ LOCAL_DIR="$(realpath "$LOCAL_DIR")"
 
 # Validate/default target_time
 if [[ -z "$TARGET_TIME" ]]; then
-  EXEC_DIR="$(realpath "$(dirname "$0")")"
+  EXEC_DIR="$(dirname "$(realpath "$0")")"
 
   if [[ -n "$OVERPASS_DB_DIR" ]]; then
     OVERPASS_DB_DIR="$(realpath "$OVERPASS_DB_DIR")"

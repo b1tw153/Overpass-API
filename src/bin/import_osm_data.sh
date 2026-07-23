@@ -181,7 +181,7 @@ fi
 # TOOL DETECTION
 # ============================================================================
 
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 if [[ ! -x "$EXEC_DIR/update_database" ]]; then
   message "ERROR: update_database not found in $EXEC_DIR"

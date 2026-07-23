@@ -97,7 +97,7 @@ LAST_UPDATE_TIME=
 CHILD_PID=
 
 # Get execution directory
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 # Get database directory
 DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)

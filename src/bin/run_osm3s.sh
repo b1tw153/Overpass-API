@@ -195,7 +195,7 @@ if [[ $AREAS != "yes" && $AREAS != "no" ]]; then
   exit 1
 fi
 
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 OVERPASS_DIFF_DIR="$(realpath "$OVERPASS_DIFF_DIR")"
 OVERPASS_DB_DIR="$(realpath "$OVERPASS_DB_DIR")"
 

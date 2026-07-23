@@ -5,7 +5,7 @@
 
 GO_ZOMBIE=false
 
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 message()
 {

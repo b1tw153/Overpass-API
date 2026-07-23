@@ -26,7 +26,7 @@
 
 set -euo pipefail
 
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 # ============================================================================
 # ARGUMENT PARSING

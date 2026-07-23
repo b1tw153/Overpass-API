@@ -72,7 +72,7 @@ use rsync while the Overpass processes are stopped.
 EOF
 }
 
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir) || { echo "ERROR: dispatcher --show-dir failed"; exit 1; }
 DB_DIR="$(realpath "$DB_DIR")"

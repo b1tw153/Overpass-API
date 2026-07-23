@@ -41,7 +41,7 @@ if [[ -z "${2:-}" ]]; then
   exit 1
 fi
 
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 DB_DIR="$(realpath "$2")"
 

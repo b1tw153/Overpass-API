@@ -130,7 +130,7 @@ LATEST_AVAILABLE_ID=   # Result of get_latest_available_id
 LATEST_ROOT_LM=        # Last-Modified epoch of root state.txt from last get_latest_available_id
 
 # Get execution directory
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 # Get database directory from dispatcher
 DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)

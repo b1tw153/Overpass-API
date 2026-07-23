@@ -79,7 +79,7 @@ CHILD_PID=                                        # PID of running migrate_datab
 INOTIFY_PID=                                      # PID of running inotifywait process
 
 # Get execution directory
-EXEC_DIR="$(realpath "$(dirname "$0")")"
+EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 # Convert replicate dir to absolute path
 REPLICATE_DIR="$(realpath "$REPLICATE_DIR")"
