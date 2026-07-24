@@ -619,9 +619,6 @@ verify_globals
 echo >> "$LOG_FILE"
 log_message "Starting fetch and apply from $SOURCE_URL"
 
-# This may be legacy code for an unused directory
-mkdir -p "$DB_DIR/augmented_diffs/"
-
 CURRENT_ID=$(($(read_current_state) + 0))
 
 if [[ $CURRENT_ID -lt 0 ]]; then
