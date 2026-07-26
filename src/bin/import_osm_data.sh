@@ -278,25 +278,12 @@ message "Downloading $FILENAME ..."
 cd "$DB_DIR" || exit 1
 
 if [[ $USE_TORRENT -eq 1 ]]; then
-  aria2c --allow-overwrite=true -o "$FILENAME.md5" "$MD5_URL" \
-    || { message "ERROR: Download failed"; exit 1; }
   aria2c --allow-overwrite=true --seed-time=0 -o "$FILENAME" "$DATA_SOURCE" \
     || { message "ERROR: Download failed"; exit 1; }
 elif [[ $HAS_ARIA2C -eq 1 ]]; then
-  aria2c --allow-overwrite=true -o "$FILENAME.md5" "$MD5_URL" \
-    || { message "ERROR: Download failed"; exit 1; }
   aria2c --allow-overwrite=true -x 16 -s 16 -o "$FILENAME" "$FILE_URL" \
     || { message "ERROR: Download failed"; exit 1; }
 else
-  curl -f -S -L \
-    --retry 10 \
-    --retry-delay 30 \
-    --speed-limit 1024 \
-    --speed-time 60 \
-    -o "$FILENAME.md5" \
-    "$MD5_URL" \
-  || { message "ERROR: Download failed"; exit 1; }
-
   curl -f -S -L \
     --retry 10 \
     --retry-delay 30 \
@@ -309,17 +296,43 @@ fi
 
 message "Download complete"
 
+# Fetch the MD5 checksum.  The .md5 is tiny, so always use curl (a guaranteed
+# dependency) rather than aria2c, which lets us inspect the HTTP status code.
+# Some extract providers (e.g. download.openstreetmap.fr) do not publish .md5
+# files; a 404 there is expected and only a warning.  Any other failure is an
+# error.
+HTTP_CODE=$(curl -s -S -L \
+  --retry 10 \
+  --retry-delay 30 \
+  --speed-limit 1024 \
+  --speed-time 60 \
+  -o "$FILENAME.md5" \
+  -w '%{http_code}' \
+  "$MD5_URL")
+CURL_STATUS=$?
+
 # ============================================================================
 # MD5 VERIFICATION
 # ============================================================================
 
-message "Verifying MD5 checksum ..."
-if ! md5sum -c "${FILENAME}.md5"; then
-  message "ERROR: MD5 verification failed for $FILENAME"
+if [[ $CURL_STATUS -ne 0 ]]; then
+  message "ERROR: Failed to download MD5 checksum from $MD5_URL (curl exit $CURL_STATUS)"
   exit 1
+elif [[ "$HTTP_CODE" == 404 ]]; then
+  rm -f "$FILENAME.md5"
+  message "WARNING: No MD5 checksum available for $FILENAME (HTTP 404); skipping verification"
+elif [[ "$HTTP_CODE" != 200 ]]; then
+  rm -f "$FILENAME.md5"
+  message "ERROR: Failed to download MD5 checksum from $MD5_URL (HTTP $HTTP_CODE)"
+  exit 1
+else
+  message "Verifying MD5 checksum ..."
+  if ! md5sum -c "${FILENAME}.md5"; then
+    message "ERROR: MD5 verification failed for $FILENAME"
+    exit 1
+  fi
+  message "Verified MD5 checksum"
 fi
-
-message "Verified MD5 checksum"
 
 # ============================================================================
 # IMPORT
