@@ -1,3 +1,13 @@
+=0.7.62.11-r16 (2026-07-26)=
+
+* Added Access-Control-Allow-Origin header on API requests to avoid CORS issues
+* Adjusted cache headers in nginx
+* Updated README.md with /container-status change (see r15)
+* Added templates directory to container build
+* Corrected dirname/realpath usage when resolving script directories
+* Removed unused augmented_diffs directory
+* Made .md5 checks on planet/extract downloads optional if the source does not supply .md5 files (for compatibility with OSM-FR extracts)
+
 =0.7.62.11-r15 (2026-07-16)=
 
 * Hardened cgi-bin scripts and binaries (`augmented_diff`, `augmented_diff_status`, `augmented_state_by_date`, `convert`, `convert_xapi`, `draw-line`, `kill_my_queries`, `map`, `sketch-line`, `sketch-options`, `sketch-route`, `template`, `xapi`, `xapi_meta`): URL query string decoding correctness, parameter/input validation, path construction, and error handling
