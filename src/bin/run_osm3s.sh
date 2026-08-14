@@ -598,6 +598,7 @@ stop_base_dispatcher()
       wait "$DISPATCHER_BASE_PID"
     else
       message "ERROR: Unable to safely terminate base dispatcher"
+      message "Check $OVERPASS_DB_DIR/base_dispatcher.out"
       message "Attempting to forcefully terminate base dispatcher"
       kill_child "base dispatcher" "$DISPATCHER_BASE_PID"
     fi
@@ -614,6 +615,7 @@ stop_areas_dispatcher()
       wait "$DISPATCHER_AREAS_PID"
     else
       message "ERROR: Unable to safely terminate areas dispatcher"
+      message "Check $OVERPASS_DB_DIR/areas_dispatcher.out"
       message "Attempting to forcefully terminate areas dispatcher"
       kill_child "areas dispatcher" "$DISPATCHER_AREAS_PID"
     fi
@@ -690,6 +692,7 @@ check_base_dispatcher()
   DB_DIR="$(realpath "$DB_DIR")"
   if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
     message "ERROR: base dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR)"
+    message "Check $OVERPASS_DB_DIR/database.log and $OVERPASS_DB_DIR/base_dispatcher.out"
     return 1
   fi
   return 0
@@ -705,6 +708,7 @@ check_areas_dispatcher()
   DB_DIR="$(realpath "$DB_DIR")"
   if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
     message "ERROR: areas dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR)"
+    message "Check $OVERPASS_DB_DIR/areas_dispatcher.out"
     return 1
   fi
   return 0
@@ -716,6 +720,7 @@ check_apply_osc()
     return 0
   else
     message "ERROR: apply_osc_to_db.sh is not running (PID $APPLY_OSC_PID)"
+    message "Check $OVERPASS_DB_DIR/apply_osc_to_db.log and $OVERPASS_DB_DIR/apply_osc_to_db.out"
     return 1
   fi
 }
@@ -726,6 +731,7 @@ check_fetch_osc()
     return 0
   else
     message "ERROR: fetch_osc.sh is not running (PID $FETCH_OSC_PID)"
+    message "Check $OVERPASS_DIFF_DIR/fetch_osc.log and $OVERPASS_DIFF_DIR/fetch_osc.out"
     return 1
   fi
 }
@@ -737,6 +743,7 @@ check_rules_loop()
     return 0
   else
     message "ERROR: rules_loop.sh is not running (PID $RULES_LOOP_PID)"
+    message "Check $OVERPASS_DB_DIR/rules_loop.log and $OVERPASS_DB_DIR/rules_loop.out"
     return 1
   fi
 }
@@ -748,6 +755,7 @@ check_backup()
     return 0
   else
     message "ERROR: backup.sh is not running (PID $BACKUP_PID)"
+    message "Check $OVERPASS_DB_DIR/backup.log and $OVERPASS_DB_DIR/backup.out"
     return 1
   fi
 }
@@ -918,6 +926,7 @@ start_base_dispatcher
 
 if ! check_base_dispatcher; then
   message "ERROR: Unable to start base dispatcher"
+  message "Check $OVERPASS_DB_DIR/database.log and $OVERPASS_DB_DIR/base_dispatcher.out"
   stop_overpass
   exit 1
 fi
@@ -926,6 +935,7 @@ start_areas_dispatcher
 
 if ! check_areas_dispatcher; then
   message "ERROR: Unable to start areas dispatcher"
+  message "Check $OVERPASS_DB_DIR/areas_dispatcher.out"
   stop_overpass
   exit 1
 fi
@@ -934,6 +944,7 @@ start_apply_osc
 
 if ! check_apply_osc; then
   message "ERROR: Unable to start apply_osc_to_db.sh"
+  message "Check $OVERPASS_DB_DIR/apply_osc_to_db.log and $OVERPASS_DB_DIR/apply_osc_to_db.out"
   stop_overpass
   exit 1
 fi
@@ -942,6 +953,7 @@ start_fetch_osc
 
 if ! check_fetch_osc; then
   message "ERROR: Unable to start fetch_osc.sh"
+  message "Check $OVERPASS_DIFF_DIR/fetch_osc.log and $OVERPASS_DIFF_DIR/fetch_osc.out"
   stop_overpass
   exit 1
 fi
@@ -950,6 +962,7 @@ start_rules_loop
 
 if ! check_rules_loop; then
   message "ERROR: Unable to start rules_loop.sh"
+  message "Check $OVERPASS_DB_DIR/rules_loop.log and $OVERPASS_DB_DIR/rules_loop.out"
   stop_overpass
   exit 1
 fi
@@ -958,6 +971,7 @@ start_backup
 
 if ! check_backup; then
   message "ERROR: Unable to start backup.sh"
+  message "Check $OVERPASS_DB_DIR/backup.log and $OVERPASS_DB_DIR/backup.out"
   stop_overpass
   exit 1
 fi

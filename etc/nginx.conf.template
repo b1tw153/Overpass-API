@@ -62,8 +62,6 @@ http {
             ${NGINX_LIMIT_CONN_CLIENT}
             ${NGINX_LIMIT_REQ_CLIENT}
 
-            add_header Access-Control-Allow-Origin "*" always;
-
             fastcgi_pass unix:/opt/overpass/run/fcgiwrap.socket;
             fastcgi_param SCRIPT_FILENAME /opt/overpass/cgi-bin/$1;
             fastcgi_read_timeout ${NGINX_FASTCGI_TIMEOUT}s;
