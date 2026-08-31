@@ -1,3 +1,9 @@
+=0.7.62.11-r17 and -r18 (2026-08-31)=
+
+* Remove duplicate access-control-allow-origin header since the interpreter already emits it
+* Add pointers to additional output files for debugging when there are operational issues
+* 0.7.62.11-r18 is the same release as 0.7.62.11-r17 but with an updated CHANGELOG-DOCKER.md file
+
 =0.7.62.11-r16 (2026-07-26)=
 
 * Added Access-Control-Allow-Origin header on API requests to avoid CORS issues
