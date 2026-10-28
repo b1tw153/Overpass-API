@@ -125,7 +125,8 @@ MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
 SOURCE_VERIFIED=false  # Flag to track if source URL has been verified
 
-LAST_SCHEDULED=        # Last-Modified epoch of root state.txt when last new sequence was found
+LAST_SCHEDULED=        # Epoch that anchors the next expected file: local time of the check that first returned the newest sequence, else its root state.txt Last-Modified
+FIRST_SIGHTING=        # Local epoch of the check that first returned the newest sequence
 LATEST_AVAILABLE_ID=   # Result of get_latest_available_id
 LATEST_ROOT_LM=        # Last-Modified epoch of root state.txt from last get_latest_available_id
 
@@ -716,8 +717,16 @@ while true; do
     exit 1
   fi
   MAX_AVAILABLE=$LATEST_AVAILABLE_ID
-  LAST_SCHEDULED=$LATEST_ROOT_LM
-  
+  # Last-Modified can precede availability by a minute or more on some
+  # sources. When we waited for the file, our own sighting time is a better
+  # anchor. Otherwise (startup, or files already waiting) use Last-Modified.
+  if [[ -n "$FIRST_SIGHTING" && $MAX_AVAILABLE -le $CURRENT_ID ]]; then
+    LAST_SCHEDULED=$FIRST_SIGHTING
+  else
+    LAST_SCHEDULED=$LATEST_ROOT_LM
+  fi
+  FIRST_SIGHTING=
+
   # Mark source as verified after first successful fetch
   if [[ "$SOURCE_VERIFIED" != "true" ]]; then
     SOURCE_VERIFIED=true
@@ -733,6 +742,7 @@ while true; do
       MAX_AVAILABLE=$LATEST_AVAILABLE_ID
 
       if [[ $MAX_AVAILABLE -gt $CURRENT_ID ]]; then
+        FIRST_SIGHTING=$(date +%s)
         break
       fi
 
