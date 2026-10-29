@@ -1,3 +1,7 @@
+=0.7.62.11-r21=
+
+* Correct download polling in `fetch_osc.sh` for `download.openstreetmap.fr`.
+
 =0.7.62.11-r19 and -r20 (2026-10-12)=
 
 * Stop the OverpassQL parser looping past the nesting limit. Fixes [drolbr/Overpass-API#807](https://github.com/drolbr/Overpass-API/issues/807).
