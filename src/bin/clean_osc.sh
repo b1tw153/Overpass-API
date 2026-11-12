@@ -117,11 +117,13 @@ fi
 
 LOCAL_DIR="$(realpath "$LOCAL_DIR")"
 
-# Validate KEEP_COUNT
-if [[ ! "$KEEP_COUNT" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: keep_count must be a positive integer, got: '$KEEP_COUNT'"
-  usage
-  exit 1
+# Validate KEEP_COUNT (skip if in --all mode)
+if [[ "$ALL_MODE" == "false" ]]; then
+  if [[ ! "$KEEP_COUNT" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: keep_count must be a positive integer, got: '$KEEP_COUNT'"
+    usage
+    exit 1
+  fi
 fi
 
 # ============================================================================
