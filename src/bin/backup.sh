@@ -173,7 +173,7 @@ fi
 # ============================================================================
 
 IN_TERMINAL="false"
-[ -t 1 ] && IN_TERMINAL="true"
+[[ -t 1 ]] && IN_TERMINAL="true"
 
 log_message()
 {
