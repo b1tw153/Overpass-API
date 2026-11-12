@@ -137,7 +137,7 @@ if ! [[ "$COMPRESSION" =~ ^(no|gz|lz4)$ ]]; then
   exit 1
 fi
 
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
   message "ERROR: Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
   exit 1
 fi
@@ -239,7 +239,7 @@ fi
 FILE_SIZE=$(curl -sIL --max-time 30 "$FILE_URL" 2>/dev/null \
   | grep -i "^content-length:" | tail -1 | tr -d ' \r' | cut -d: -f2)
 
-if [[ -z "$FILE_SIZE" || ! "$FILE_SIZE" =~ ^[0-9]+$ ]]; then
+if [[ -z "$FILE_SIZE" || ! "$FILE_SIZE" =~ ^[1-9][0-9]*$ ]]; then
   message "WARNING: Unable to determine source file size; skipping disk space check"
 elif [[ $USE_OSMIUM -eq 0 && $USE_BUNZIP2 -eq 0 ]]; then
   message "WARNING: Cannot estimate disk space for .osm format; skipping disk space check"

@@ -296,7 +296,7 @@ if [[ ! "$DISPATCHER_AREAS_TIME" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-if [[ ! "$DISPATCHER_RATE_LIMIT" =~ ^[0-9]+$ ]]; then
+if [[ ! "$DISPATCHER_RATE_LIMIT" =~ ^(0|[1-9][0-9]*)$ ]]; then
   message "ERROR: DISPATCHER_RATE_LIMIT must be a non-negative integer, got: '$DISPATCHER_RATE_LIMIT'"
   usage
   exit 1
@@ -315,7 +315,7 @@ if [[ "$DISPATCHER_LIMIT_CLIENT_ZERO" != "yes" && "$DISPATCHER_LIMIT_CLIENT_ZERO
 fi
 
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
   message "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
   usage
   exit 1

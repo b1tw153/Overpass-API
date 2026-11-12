@@ -184,17 +184,17 @@ if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-if [[ ! "$RETRY_COUNT" =~ ^[0-9]+$ ]]; then
+if [[ ! "$RETRY_COUNT" =~ ^(0|[1-9][0-9]*)$ ]]; then
   log_error "Invalid value for DOWNLOAD_CLONE_RETRY_COUNT: $RETRY_COUNT"
   exit 1
 fi
 
-if [[ ! "$RETRY_DELAY" =~ ^[0-9]+$ ]]; then
+if [[ ! "$RETRY_DELAY" =~ ^(0|[1-9][0-9]*)$ ]]; then
   log_error "Invalid value for DOWNLOAD_CLONE_RETRY_DELAY: $RETRY_DELAY"
   exit 1
 fi
 
-if [[ ! "$SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
+if [[ ! "$SPEED_LIMIT" =~ ^(0|[1-9][0-9]*)$ ]]; then
   log_error "Invalid value for DOWNLOAD_CLONE_SPEED_LIMIT: $SPEED_LIMIT"
   exit 1
 fi
@@ -204,7 +204,7 @@ if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^[0-9]+$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
   log_error "Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
   exit 1
 fi

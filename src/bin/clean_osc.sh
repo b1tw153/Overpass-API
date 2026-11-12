@@ -181,8 +181,8 @@ read_current_state()
     return 1
   fi
 
-  # Validate that it's a number
-  if ! [[ "$STATE_VALUE" =~ ^[0-9]+$ ]]; then
+  # Validate that it's a positive number without leading zeros
+  if ! [[ "$STATE_VALUE" =~ ^[1-9][0-9]*$ ]]; then
     log_error "State file '$STATE_PATH' contains invalid data: '$STATE_VALUE'"
     echo "0"
     return 1
@@ -352,11 +352,6 @@ READ_EXIT=$?
 
 if [[ $READ_EXIT -ne 0 ]]; then
   log_error "Failed to read current database state"
-  exit 1
-fi
-
-if [[ $CURRENT_STATE -eq 0 ]]; then
-  log_error "Database state is 0, cannot determine what to clean"
   exit 1
 fi
 

@@ -193,7 +193,7 @@ verify_globals()
     die 1
   fi
 
-  if [[ ! "$UPDATE_TRIM" =~ ^-?[0-9]+$ ]]; then
+  if [[ ! "$UPDATE_TRIM" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
     log_error "Invalid FETCH_OSC_UPDATE_TRIM: $UPDATE_TRIM"
     die 1
   fi
@@ -218,7 +218,7 @@ verify_globals()
     die 1
   fi
 
-  if [[ ! "$CURL_MAX_RETRIES" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$CURL_MAX_RETRIES" =~ ^(0|[1-9][0-9]*)$ ]]; then
     log_error "Invalid FETCH_OSC_MAX_RETRIES: $CURL_MAX_RETRIES"
     die 1
   fi
@@ -228,7 +228,7 @@ verify_globals()
     die 1
   fi
 
-  if [[ ! "$CURL_SPEED_LIMIT" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$CURL_SPEED_LIMIT" =~ ^(0|[1-9][0-9]*)$ ]]; then
     log_error "Invalid FETCH_OSC_SPEED_LIMIT: $CURL_SPEED_LIMIT"
     die 1
   fi

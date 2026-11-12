@@ -54,7 +54,7 @@ export NGINX_FASTCGI_TIMEOUT
 
 NGINX_CONNECTION_QUEUE=${NGINX_CONNECTION_QUEUE:-$(( CPU_COUNT * 7 - 1 ))}
 
-if [[ ! "$NGINX_CONNECTION_QUEUE" =~ ^[0-9]+$ ]]; then
+if [[ ! "$NGINX_CONNECTION_QUEUE" =~ ^(0|[1-9][0-9]*)$ ]]; then
   message "ERROR: NGINX_CONNECTION_QUEUE must be a non-negative integer, got: '$NGINX_CONNECTION_QUEUE'"
   exit 1
 fi
@@ -81,12 +81,12 @@ if [[ -n "${NGINX_CLIENT_REQ_RATE:-}" ]]; then
     exit 1
   fi
   NGINX_CLIENT_REQ_BURST=${NGINX_CLIENT_REQ_BURST:-0}
-  if [[ ! "$NGINX_CLIENT_REQ_BURST" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$NGINX_CLIENT_REQ_BURST" =~ ^(0|[1-9][0-9]*)$ ]]; then
     message "ERROR: NGINX_CLIENT_REQ_BURST must be a non-negative integer, got: '$NGINX_CLIENT_REQ_BURST'"
     exit 1
   fi
   NGINX_CLIENT_REQ_DELAY=${NGINX_CLIENT_REQ_DELAY:-$NGINX_CLIENT_REQ_BURST}
-  if [[ ! "$NGINX_CLIENT_REQ_DELAY" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$NGINX_CLIENT_REQ_DELAY" =~ ^(0|[1-9][0-9]*)$ ]]; then
     message "ERROR: NGINX_CLIENT_REQ_DELAY must be a non-negative integer, got: '$NGINX_CLIENT_REQ_DELAY'"
     exit 1
   fi
@@ -110,7 +110,7 @@ MUNIN_NODE_CIDR_DENY=${MUNIN_NODE_CIDR_DENY:-}
 
 if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
   MUNIN_NODE_LOG_LEVEL=${MUNIN_NODE_LOG_LEVEL:-4}
-  if [[ ! "$MUNIN_NODE_LOG_LEVEL" =~ ^[0-9]+$ ]]; then
+  if [[ ! "$MUNIN_NODE_LOG_LEVEL" =~ ^(0|[1-9][0-9]*)$ ]]; then
     message "ERROR: MUNIN_NODE_LOG_LEVEL must be a non-negative integer, got: '$MUNIN_NODE_LOG_LEVEL'"
     exit 1
   fi
