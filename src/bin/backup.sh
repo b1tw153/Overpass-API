@@ -197,57 +197,61 @@ log_error()
 # BACKUP FILES
 # ============================================================================
 
-FILES_BASE="\
-nodes.bin nodes.bin.idx nodes.map nodes.map.idx \
-node_tags_local.bin node_tags_local.bin.idx node_tags_global.bin node_tags_global.bin.idx \
-node_frequent_tags.bin node_frequent_tags.bin.idx node_keys.bin node_keys.bin.idx \
-ways.bin ways.bin.idx ways.map ways.map.idx \
-way_tags_local.bin way_tags_local.bin.idx way_tags_global.bin way_tags_global.bin.idx \
-way_frequent_tags.bin way_frequent_tags.bin.idx way_keys.bin way_keys.bin.idx \
-relations.bin relations.bin.idx relations.map relations.map.idx \
-relation_roles.bin relation_roles.bin.idx \
-relation_tags_local.bin relation_tags_local.bin.idx relation_tags_global.bin relation_tags_global.bin.idx \
-relation_frequent_tags.bin relation_frequent_tags.bin.idx relation_keys.bin relation_keys.bin.idx \
-base-url osm_base_version replicate_id"
+FILES_BASE=(
+  nodes.bin nodes.bin.idx nodes.map nodes.map.idx
+  node_tags_local.bin node_tags_local.bin.idx node_tags_global.bin node_tags_global.bin.idx
+  node_frequent_tags.bin node_frequent_tags.bin.idx node_keys.bin node_keys.bin.idx
+  ways.bin ways.bin.idx ways.map ways.map.idx
+  way_tags_local.bin way_tags_local.bin.idx way_tags_global.bin way_tags_global.bin.idx
+  way_frequent_tags.bin way_frequent_tags.bin.idx way_keys.bin way_keys.bin.idx
+  relations.bin relations.bin.idx relations.map relations.map.idx
+  relation_roles.bin relation_roles.bin.idx
+  relation_tags_local.bin relation_tags_local.bin.idx relation_tags_global.bin relation_tags_global.bin.idx
+  relation_frequent_tags.bin relation_frequent_tags.bin.idx relation_keys.bin relation_keys.bin.idx
+  base-url osm_base_version replicate_id
+)
 
-FILES_META="\
-nodes_meta.bin nodes_meta.bin.idx \
-ways_meta.bin ways_meta.bin.idx \
-relations_meta.bin relations_meta.bin.idx \
-user_data.bin user_data.bin.idx user_indices.bin user_indices.bin.idx"
+FILES_META=(
+  nodes_meta.bin nodes_meta.bin.idx
+  ways_meta.bin ways_meta.bin.idx
+  relations_meta.bin relations_meta.bin.idx
+  user_data.bin user_data.bin.idx user_indices.bin user_indices.bin.idx
+)
 
-FILES_ATTIC="\
-nodes_attic.bin nodes_attic.bin.idx nodes_attic.map nodes_attic.map.idx \
-node_attic_indexes.bin node_attic_indexes.bin.idx \
-nodes_attic_undeleted.bin nodes_attic_undeleted.bin.idx \
-nodes_meta_attic.bin nodes_meta_attic.bin.idx \
-node_changelog.bin node_changelog.bin.idx \
-node_tags_local_attic.bin node_tags_local_attic.bin.idx \
-node_tags_global_attic.bin node_tags_global_attic.bin.idx \
-node_frequent_tags_attic.bin node_frequent_tags_attic.bin.idx \
-ways_attic.bin ways_attic.bin.idx ways_attic.map ways_attic.map.idx \
-way_attic_indexes.bin way_attic_indexes.bin.idx \
-ways_attic_undeleted.bin ways_attic_undeleted.bin.idx \
-ways_meta_attic.bin ways_meta_attic.bin.idx \
-way_changelog.bin way_changelog.bin.idx \
-way_tags_local_attic.bin way_tags_local_attic.bin.idx \
-way_tags_global_attic.bin way_tags_global_attic.bin.idx \
-way_frequent_tags_attic.bin way_frequent_tags_attic.bin.idx \
-relations_attic.bin relations_attic.bin.idx relations_attic.map relations_attic.map.idx \
-relation_attic_indexes.bin relation_attic_indexes.bin.idx \
-relations_attic_undeleted.bin relations_attic_undeleted.bin.idx \
-relations_meta_attic.bin relations_meta_attic.bin.idx \
-relation_changelog.bin relation_changelog.bin.idx \
-relation_tags_local_attic.bin relation_tags_local_attic.bin.idx \
-relation_tags_global_attic.bin relation_tags_global_attic.bin.idx \
-relation_frequent_tags_attic.bin relation_frequent_tags_attic.bin.idx"
+FILES_ATTIC=(
+  nodes_attic.bin nodes_attic.bin.idx nodes_attic.map nodes_attic.map.idx
+  node_attic_indexes.bin node_attic_indexes.bin.idx
+  nodes_attic_undeleted.bin nodes_attic_undeleted.bin.idx
+  nodes_meta_attic.bin nodes_meta_attic.bin.idx
+  node_changelog.bin node_changelog.bin.idx
+  node_tags_local_attic.bin node_tags_local_attic.bin.idx
+  node_tags_global_attic.bin node_tags_global_attic.bin.idx
+  node_frequent_tags_attic.bin node_frequent_tags_attic.bin.idx
+  ways_attic.bin ways_attic.bin.idx ways_attic.map ways_attic.map.idx
+  way_attic_indexes.bin way_attic_indexes.bin.idx
+  ways_attic_undeleted.bin ways_attic_undeleted.bin.idx
+  ways_meta_attic.bin ways_meta_attic.bin.idx
+  way_changelog.bin way_changelog.bin.idx
+  way_tags_local_attic.bin way_tags_local_attic.bin.idx
+  way_tags_global_attic.bin way_tags_global_attic.bin.idx
+  way_frequent_tags_attic.bin way_frequent_tags_attic.bin.idx
+  relations_attic.bin relations_attic.bin.idx relations_attic.map relations_attic.map.idx
+  relation_attic_indexes.bin relation_attic_indexes.bin.idx
+  relations_attic_undeleted.bin relations_attic_undeleted.bin.idx
+  relations_meta_attic.bin relations_meta_attic.bin.idx
+  relation_changelog.bin relation_changelog.bin.idx
+  relation_tags_local_attic.bin relation_tags_local_attic.bin.idx
+  relation_tags_global_attic.bin relation_tags_global_attic.bin.idx
+  relation_frequent_tags_attic.bin relation_frequent_tags_attic.bin.idx
+)
 
-FILES_AREAS="\
-area_blocks.bin area_blocks.bin.idx \
-areas.bin areas.bin.idx \
-area_tags_global.bin area_tags_global.bin.idx \
-area_tags_local.bin area_tags_local.bin.idx \
-area_version"
+FILES_AREAS=(
+  area_blocks.bin area_blocks.bin.idx
+  areas.bin areas.bin.idx
+  area_tags_global.bin area_tags_global.bin.idx
+  area_tags_local.bin area_tags_local.bin.idx
+  area_version
+)
 
 # ============================================================================
 # LOCK MANAGEMENT
@@ -542,19 +546,16 @@ while true; do
   TICKLE_PID=$!
 
   log_message "Backing up base files"
-  # shellcheck disable=SC2086
-  copy_files $FILES_BASE || shutdown 1
+  copy_files "${FILES_BASE[@]}" || shutdown 1
 
   if [[ "$META_STATE" == "yes" || "$META_STATE" == "attic" ]]; then
     log_message "Backing up meta files"
-    # shellcheck disable=SC2086
-    copy_files $FILES_META || shutdown 1
+    copy_files "${FILES_META[@]}" || shutdown 1
   fi
 
   if [[ "$META_STATE" == "attic" ]]; then
     log_message "Backing up attic files"
-    # shellcheck disable=SC2086
-    copy_files $FILES_ATTIC || shutdown 1
+    copy_files "${FILES_ATTIC[@]}" || shutdown 1
   fi
 
   stop_tickle
@@ -563,8 +564,7 @@ while true; do
   if [[ "$AREAS" == "yes" ]]; then
     acquire_lock areas || shutdown 1
     log_message "Backing up area files"
-    # shellcheck disable=SC2086
-    copy_files $FILES_AREAS || shutdown 1
+    copy_files "${FILES_AREAS[@]}" || shutdown 1
     release_lock areas || shutdown 1
   fi
 

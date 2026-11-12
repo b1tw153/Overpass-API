@@ -59,24 +59,27 @@ Environment variables:
 EOF
 }
 
-FILES_BASE="\
-nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin \
-ways.bin ways.map way_tags_local.bin way_tags_global.bin way_frequent_tags.bin way_keys.bin \
-relations.bin relations.map relation_roles.bin relation_tags_local.bin relation_tags_global.bin relation_frequent_tags.bin relation_keys.bin"
+FILES_BASE=(
+  nodes.bin nodes.map node_tags_local.bin node_tags_global.bin node_frequent_tags.bin node_keys.bin
+  ways.bin ways.map way_tags_local.bin way_tags_global.bin way_frequent_tags.bin way_keys.bin
+  relations.bin relations.map relation_roles.bin relation_tags_local.bin relation_tags_global.bin relation_frequent_tags.bin relation_keys.bin
+)
 
-FILES_META="\
-nodes_meta.bin \
-ways_meta.bin \
-relations_meta.bin \
-user_data.bin user_indices.bin"
+FILES_META=(
+  nodes_meta.bin
+  ways_meta.bin
+  relations_meta.bin
+  user_data.bin user_indices.bin
+)
 
-FILES_ATTIC="\
-nodes_attic.bin nodes_attic.map node_attic_indexes.bin nodes_attic_undeleted.bin nodes_meta_attic.bin \
-node_changelog.bin node_tags_local_attic.bin node_tags_global_attic.bin node_frequent_tags_attic.bin \
-ways_attic.bin ways_attic.map way_attic_indexes.bin ways_attic_undeleted.bin ways_meta_attic.bin \
-way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequent_tags_attic.bin \
-relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin \
-relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin"
+FILES_ATTIC=(
+  nodes_attic.bin nodes_attic.map node_attic_indexes.bin nodes_attic_undeleted.bin nodes_meta_attic.bin
+  node_changelog.bin node_tags_local_attic.bin node_tags_global_attic.bin node_frequent_tags_attic.bin
+  ways_attic.bin ways_attic.map way_attic_indexes.bin ways_attic_undeleted.bin ways_meta_attic.bin
+  way_changelog.bin way_tags_local_attic.bin way_tags_global_attic.bin way_frequent_tags_attic.bin
+  relations_attic.bin relations_attic.map relation_attic_indexes.bin relations_attic_undeleted.bin relations_meta_attic.bin
+  relation_changelog.bin relation_tags_local_attic.bin relation_tags_global_attic.bin relation_frequent_tags_attic.bin
+)
 
 # Log error
 log_error()
@@ -334,20 +337,21 @@ acquire_lock()
 # Skips files already verified complete by is_file_complete().
 check_clone_disk_space()
 {
-  local files file data_url idx_url size total_bytes threshold free_bytes
+  local files=()
+  local file data_url idx_url size total_bytes threshold free_bytes
 
   log_message "Checking file sizes and free disk space..."
 
-  files="$FILES_BASE"
+  files+=("${FILES_BASE[@]}")
   if [[ "$META" == "yes" || "$META" == "attic" ]]; then
-    files="$files $FILES_META"
+    files+=("${FILES_META[@]}")
   fi
   if [[ "$META" == "attic" ]]; then
-    files="$files $FILES_ATTIC"
+    files+=("${FILES_ATTIC[@]}")
   fi
 
   total_bytes=0
-  for file in $files; do
+  for file in "${files[@]}"; do
   {
     data_url="$REMOTE_DIR/$file"
     idx_url="$REMOTE_DIR/$file.idx"
@@ -377,10 +381,10 @@ check_clone_disk_space()
 }
 
 # Download multiple files in parallel using curl's built-in parallel support
-# Takes a space-separated list of filenames
+# Takes the filenames as arguments
 download_files_parallel()
 {
-  local files="$1"
+  local files=("$@")
   local curl_args
   local CURL_ERROR_LOG="$CLONE_DIR/curl_error_$$.log"
 
@@ -393,7 +397,7 @@ download_files_parallel()
     curl_args=()
 
     # Build list of files that need downloading
-    for file in $files; do
+    for file in "${files[@]}"; do
     {
       local data_file="$CLONE_DIR/$file"
       local idx_file="$CLONE_DIR/$file.idx"
@@ -515,7 +519,7 @@ download_files_parallel()
 
         # Non-recoverable: delete .tmp files and exit
         if [[ $recoverable -eq 0 ]]; then
-          for file in $files; do
+          for file in "${files[@]}"; do
             rm -f "$CLONE_DIR/$file.tmp" "$CLONE_DIR/$file.idx.tmp"
           done
           rm -f "$CURL_ERROR_LOG"
@@ -526,7 +530,7 @@ download_files_parallel()
       rm -f "$CURL_ERROR_LOG"
 
       # Move complete .tmp files to final destinations
-      for file in $files; do
+      for file in "${files[@]}"; do
       {
         local data_tmp="$CLONE_DIR/$file.tmp"
         local idx_tmp="$CLONE_DIR/$file.idx.tmp"
@@ -566,12 +570,12 @@ download_files_parallel()
 
 download_files_with_aria2c()
 {
-  local files="$1"
+  local files=("$@")
   local ARIA2C_INPUT
   ARIA2C_INPUT="$CLONE_DIR/aria2c_batch_$$.txt"
   rm -f "$ARIA2C_INPUT"
 
-  for file in $files; do
+  for file in "${files[@]}"; do
   {
     local data_url="$REMOTE_DIR/$file"
     local idx_url="$REMOTE_DIR/$file.idx"
@@ -628,7 +632,7 @@ download_files_with_aria2c()
 
   echo "aria2c command completed"
 
-  for file in $files; do
+  for file in "${files[@]}"; do
   {
     local data_tmp="$CLONE_DIR/$file.tmp"
     local idx_tmp="$CLONE_DIR/$file.idx.tmp"
@@ -647,11 +651,10 @@ download_files_with_aria2c()
 
 download_files()
 {
-  local files="$1"
   if [[ "$USE_ARIA2C" == "true" ]]; then
-    download_files_with_aria2c "$files"
+    download_files_with_aria2c "$@"
   else
-    download_files_parallel "$files"
+    download_files_parallel "$@"
   fi
 }
 
@@ -725,16 +728,16 @@ main()
   acquire_lock
 
   # Download files
-  download_files "$FILES_BASE"
+  download_files "${FILES_BASE[@]}"
 
   if [[ $META == "yes" || $META == "attic" ]]; then
   {
-    download_files "$FILES_META"
+    download_files "${FILES_META[@]}"
   }; fi
 
   if [[ $META == "attic" ]]; then
   {
-    download_files "$FILES_ATTIC"
+    download_files "${FILES_ATTIC[@]}"
   }; fi
 
   log_message "Database ready"

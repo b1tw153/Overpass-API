@@ -460,7 +460,7 @@ download_batch_with_curl()
     --retry-delay "$RETRY_DELAY" \
     --parallel \
     --parallel-max "$PARALLEL_MAX" \
-    $PARALLEL_IMMEDIATE \
+    ${PARALLEL_IMMEDIATE:+"$PARALLEL_IMMEDIATE"} \
     --speed-limit "$SPEED_LIMIT" \
     --speed-time "$SPEED_TIME" \
     --config "$CURL_CONFIG" \
