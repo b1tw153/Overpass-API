@@ -107,7 +107,15 @@ FILES_BASE=(
   relation_roles.bin relation_roles.bin.idx
   relation_tags_local.bin relation_tags_local.bin.idx relation_tags_global.bin relation_tags_global.bin.idx
   relation_frequent_tags.bin relation_frequent_tags.bin.idx relation_keys.bin relation_keys.bin.idx
-  osm_base_version replicate_id
+  osm_base_version
+)
+
+# Files that a valid backup may omit. The restore copies each one that the
+# backup has and removes each one that it omits, so that the database matches
+# the backup. The `base-url` file exists only in a database made by
+# download_clone.sh. The `replicate_id` file is written by apply_osc_to_db.sh.
+FILES_OPTIONAL=(
+  base-url replicate_id
 )
 
 FILES_META=(
@@ -233,6 +241,68 @@ restore_files()
   fi
 }
 
+# Make the optional files in DB_DIR match the backup. Copy each file that
+# BACKUP_DIR has. Remove each file that BACKUP_DIR omits.
+# $@: names of the files
+# Returns 1 if a file can't be removed or the copy fails.
+restore_optional_files()
+{
+  local files=()
+  local f
+  for f in "$@"; do
+    if [[ -e "$BACKUP_DIR/$f" ]]; then
+      files+=("$f")
+    elif [[ -e "$DB_DIR/$f" ]]; then
+      log_message "Removing '$f' because the backup omits it"
+      rm -f "$DB_DIR/$f" || { log_error "Unable to remove '$DB_DIR/$f'"; return 1; }
+    fi
+  done
+  [[ ${#files[@]} -gt 0 ]] || return 0
+  restore_files "${files[@]}"
+}
+
+# Check that the backup holds every file in the list.
+# $@: names of the files in BACKUP_DIR
+# Returns 1 and logs each missing file if any is absent.
+check_backup_complete()
+{
+  local missing=0
+  local f
+  for f in "$@"; do
+    if [[ ! -e "$BACKUP_DIR/$f" ]]; then
+      log_error "Backup is incomplete: required file '$f' is missing from '$BACKUP_DIR'"
+      missing=1
+    fi
+  done
+  [[ $missing -eq 0 ]]
+}
+
+# ============================================================================
+# TRANSACTION LEFTOVERS
+# ============================================================================
+
+# Remove the files that a write transaction or a migration leaves behind when
+# it doesn't finish. A dispatcher that finds a commit marker copies the shadow
+# index files over the main index files, which would overwrite the restored
+# files. Leave the `.status` file alone. It is not a transaction file.
+# Returns 1 if a file can't be removed.
+remove_transaction_leftovers()
+{
+  local leftovers=()
+  local f
+  mapfile -t leftovers < <(find "$DB_DIR" -maxdepth 1 -type f \( \
+    -name 'osm_base_shadow' -o -name 'areas_shadow' \
+    -o -name 'osm_base_shadow.lock' -o -name 'areas_shadow.lock' \
+    -o -name 'osm_base_shadow.next' -o -name 'areas_shadow.next' \
+    -o -name '*.shadow' \
+    -o -name '*.next.bin' -o -name '*.next.bin.idx' \
+    -o -name '*.next.map' -o -name '*.next.map.idx' \))
+  for f in "${leftovers[@]}"; do
+    log_message "Removing transaction leftover '$f'"
+    rm -f "$f" || { log_error "Unable to remove '$f'"; return 1; }
+  done
+}
+
 # ============================================================================
 # COMPATIBILITY CHECK
 # ============================================================================
@@ -276,10 +346,30 @@ META_STATE=$(detect_database_meta_state "$BACKUP_DIR") \
 
 check_db_compatible "$META_STATE" || exit 1
 
+RESTORE_AREAS="false"
+detect_database_areas "$BACKUP_DIR" && RESTORE_AREAS="true"
+
+# Check the whole backup before changing the database. A restore that fails
+# partway leaves the database with a mix of old and new files.
+REQUIRED_FILES=("${FILES_BASE[@]}")
+if [[ "$META_STATE" == "yes" || "$META_STATE" == "attic" ]]; then
+  REQUIRED_FILES+=("${FILES_META[@]}")
+fi
+if [[ "$META_STATE" == "attic" ]]; then
+  REQUIRED_FILES+=("${FILES_ATTIC[@]}")
+fi
+if [[ "$RESTORE_AREAS" == "true" ]]; then
+  REQUIRED_FILES+=("${FILES_AREAS[@]}")
+fi
+check_backup_complete "${REQUIRED_FILES[@]}" || exit 1
+
 log_message "Restore started (meta=$META_STATE)"
+
+remove_transaction_leftovers || exit 1
 
 log_message "Restoring base files"
 restore_files "${FILES_BASE[@]}" || exit 1
+restore_optional_files "${FILES_OPTIONAL[@]}" || exit 1
 
 if [[ "$META_STATE" == "yes" || "$META_STATE" == "attic" ]]; then
   log_message "Restoring meta files"
@@ -291,7 +381,7 @@ if [[ "$META_STATE" == "attic" ]]; then
   restore_files "${FILES_ATTIC[@]}" || exit 1
 fi
 
-if detect_database_areas "$BACKUP_DIR"; then
+if [[ "$RESTORE_AREAS" == "true" ]]; then
   log_message "Restoring area files"
   restore_files "${FILES_AREAS[@]}" || exit 1
 fi

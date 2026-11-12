@@ -208,7 +208,14 @@ FILES_BASE=(
   relation_roles.bin relation_roles.bin.idx
   relation_tags_local.bin relation_tags_local.bin.idx relation_tags_global.bin relation_tags_global.bin.idx
   relation_frequent_tags.bin relation_frequent_tags.bin.idx relation_keys.bin relation_keys.bin.idx
-  base-url osm_base_version replicate_id
+  osm_base_version
+)
+
+# Files that a valid database may omit. The backup copies them when present.
+# The `base-url` file exists only in a database made by download_clone.sh.
+# The `replicate_id` file is written by apply_osc_to_db.sh.
+FILES_OPTIONAL=(
+  base-url replicate_id
 )
 
 FILES_META=(
@@ -410,15 +417,12 @@ stop_tickle()
 # COPY FILES
 # ============================================================================
 
-copy_files()
+# Run rsync on database files and wait for it, so that a signal can interrupt.
+# $@: absolute paths of the files to copy to BACKUP_DIR
+run_rsync()
 {
   local exit_code
-  local files=()
-  local f
-  for f in "$@"; do
-    files+=("$DB_DIR/$f")
-  done
-  timeout "$BACKUP_TIMEOUT" rsync -a --ignore-missing-args "${files[@]}" "$BACKUP_DIR/" &
+  timeout "$BACKUP_TIMEOUT" rsync -a "$@" "$BACKUP_DIR/" &
   RSYNC_PID=$!
   wait "$RSYNC_PID"
   exit_code=$?
@@ -430,6 +434,47 @@ copy_files()
     log_error "rsync failed (exit $exit_code)"
     return 1
   fi
+}
+
+# Check that the database holds every file in the list.
+# $@: names of the files in DB_DIR
+# Returns 1 and logs each missing file if any is absent.
+check_files_present()
+{
+  local missing=0
+  local f
+  for f in "$@"; do
+    if [[ ! -e "$DB_DIR/$f" ]]; then
+      log_error "Required file '$f' is missing from '$DB_DIR'"
+      missing=1
+    fi
+  done
+  [[ $missing -eq 0 ]]
+}
+
+# Copy database files to BACKUP_DIR.
+# $@: names of the files in DB_DIR
+copy_files()
+{
+  local files=()
+  local f
+  for f in "$@"; do
+    files+=("$DB_DIR/$f")
+  done
+  run_rsync "${files[@]}"
+}
+
+# Copy optional database files to BACKUP_DIR, skipping any that don't exist.
+# $@: names of the files in DB_DIR
+copy_optional_files()
+{
+  local files=()
+  local f
+  for f in "$@"; do
+    [[ -e "$DB_DIR/$f" ]] && files+=("$DB_DIR/$f")
+  done
+  [[ ${#files[@]} -gt 0 ]] || return 0
+  run_rsync "${files[@]}"
 }
 
 # ============================================================================
@@ -539,6 +584,23 @@ while true; do
     exit 1
   fi
 
+  # Check the whole database before copying anything. A backup that fails
+  # partway leaves the previous backup overwritten with a mix of old and new
+  # files.
+  REQUIRED_FILES=("${FILES_BASE[@]}")
+  if [[ "$META_STATE" == "yes" || "$META_STATE" == "attic" ]]; then
+    REQUIRED_FILES+=("${FILES_META[@]}")
+  fi
+  if [[ "$META_STATE" == "attic" ]]; then
+    REQUIRED_FILES+=("${FILES_ATTIC[@]}")
+  fi
+  if [[ "$AREAS" == "yes" ]]; then
+    REQUIRED_FILES+=("${FILES_AREAS[@]}")
+  fi
+  if ! check_files_present "${REQUIRED_FILES[@]}"; then
+    exit 1
+  fi
+
   log_message "Backup started (meta=$META_STATE, areas=$AREAS)"
 
   acquire_lock base || shutdown 1
@@ -547,6 +609,7 @@ while true; do
 
   log_message "Backing up base files"
   copy_files "${FILES_BASE[@]}" || shutdown 1
+  copy_optional_files "${FILES_OPTIONAL[@]}" || shutdown 1
 
   if [[ "$META_STATE" == "yes" || "$META_STATE" == "attic" ]]; then
     log_message "Backing up meta files"
