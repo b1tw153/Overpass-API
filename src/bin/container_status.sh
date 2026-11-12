@@ -24,8 +24,6 @@
 #          /container_status using fcgiwrap.
 # ============================================================================
 
-set -euo pipefail
-
 EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 # ============================================================================
@@ -33,7 +31,7 @@ EXEC_DIR="$(dirname "$(realpath "$0")")"
 # ============================================================================
 
 FORMAT=$(printf '%s' "${QUERY_STRING:-}" | tr '[:upper:]' '[:lower:]' | tr '&' '\n' \
-    | grep '^format=' | cut -d= -f2 | head -1 || true)
+    | grep '^format=' | cut -d= -f2 | head -1)
 FORMAT="${FORMAT:-text}"
 
 PARSED=$(getopt --options '' --longoptions 'format:' --name "$0" -- "$@") \
@@ -156,7 +154,23 @@ socket_status() {
 }
 
 read_log() {
-    cat "$1.1" "$1" 2>/dev/null || true
+    cat "$1.1" "$1" 2>/dev/null
+}
+
+# Prints the combined size, in megabytes, of the files under /opt/overpass
+# whose names match the glob in $1. Prints "?" if the search fails.
+sum_file_sizes() {
+    local sizes
+    sizes=$(find /opt/overpass -maxdepth 2 -name "$1" -type f -printf '%s\n' 2>/dev/null) \
+        || { echo "?"; return; }
+    awk '{s+=$1} END {printf "%.1fM\n", s/1048576}' <<< "$sizes"
+}
+
+# Prints the human-readable size of the directory in $1. Prints "?" if du fails.
+dir_size() {
+    local output
+    output=$(du -sh "$1" 2>/dev/null) || { echo "?"; return; }
+    echo "${output%%[[:space:]]*}"
 }
 
 find_proc_pid() {
@@ -184,7 +198,7 @@ find_all_proc_pids() {
         pid="${cmdline_file%/cmdline}"
         pid="${pid##*proc/}"
         [[ "$pid" == "$$" ]] && continue
-        IFS= read -rd '' cmdline < "$cmdline_file" 2>/dev/null || true
+        IFS= read -rd '' cmdline < "$cmdline_file" 2>/dev/null
         cmdlines[$pid]="$cmdline"
     done
 
@@ -254,10 +268,10 @@ FCGI_PID_FILE=/opt/overpass/run/fcgiwrap.pid
 FCGI_SOCKET=/opt/overpass/run/fcgiwrap.socket
 ACCESS_LOG=/opt/overpass/log/nginx_access.log
 
-NGINX_PID=$(cat "$NGINX_PID_FILE" 2>/dev/null || true)
+NGINX_PID=$(cat "$NGINX_PID_FILE" 2>/dev/null)
 kv "nginx" "$(pid_status "$NGINX_PID")"
 
-FCGI_PID=$(cat "$FCGI_PID_FILE" 2>/dev/null || true)
+FCGI_PID=$(cat "$FCGI_PID_FILE" 2>/dev/null)
 kv "fcgiwrap" "$(pid_status "$FCGI_PID")"
 
 if [[ -S "$FCGI_SOCKET" ]]; then
@@ -266,7 +280,7 @@ else
     kv "socket" "missing"
 fi
 
-NGINX_STATUS=$(curl -sf http://127.0.0.1:8080/nginx-status 2>/dev/null || true)
+NGINX_STATUS=$(curl -sf http://127.0.0.1:8080/nginx-status 2>/dev/null)
 if [[ -n "$NGINX_STATUS" ]]; then
     kv "active connections" "$(echo "$NGINX_STATUS" | awk '/^Active/ {print $3}')"
     kv "in progress" "$(echo "$NGINX_STATUS" | awk '/Reading/ {print $4}')"
@@ -332,7 +346,7 @@ lock_status() {
         return
     fi
     local pid
-    pid=$(cat "$lock_file" 2>/dev/null || true)
+    pid=$(cat "$lock_file" 2>/dev/null)
     if [[ -z "$pid" ]]; then
         echo "unknown (empty lock file)"
     elif kill -0 "$pid" 2>/dev/null; then
@@ -346,7 +360,7 @@ DB_DIR=""
 if DISPATCHER_OUTPUT=$("$EXEC_DIR/dispatcher" --show-dir 2>&1); then
     DB_DIR="$(realpath "$DISPATCHER_OUTPUT")"
     kv "status" "running"
-    kv "db_dir" "$DB_DIR"
+    kv "db_dir" "${DB_DIR:-unknown}"
 else
     kv "status" "not running"
 fi
@@ -364,7 +378,7 @@ if [[ -n "$DB_DIR" ]]; then
         kv "database type" "unknown (not initialized?)"
     fi
 
-    REPLICATE_ID=$(cat "$DB_DIR/replicate_id" 2>/dev/null || true)
+    REPLICATE_ID=$(cat "$DB_DIR/replicate_id" 2>/dev/null)
     kv "replicate_id" "${REPLICATE_ID:-unknown}"
     kv "socket" "$(socket_status "$DB_DIR/osm3s_osm_base")"
 fi
@@ -396,9 +410,9 @@ if [[ -n "$DB_DIR" ]]; then
     area_present=0
     area_total=${#area_files[@]}
     for f in "${area_files[@]}"; do
-        if [[ -f "$DB_DIR/$f" ]]; then (( area_present++ )) || true; fi
+        if [[ -f "$DB_DIR/$f" ]]; then (( ++area_present )); fi
     done
-    AREA_VERSION=$(cat "$DB_DIR/area_version" 2>/dev/null || true)
+    AREA_VERSION=$(cat "$DB_DIR/area_version" 2>/dev/null)
     if (( area_present == area_total )); then
         kv "area files" "present ($area_present/$area_total)"
     elif (( area_present == 0 )); then
@@ -419,28 +433,28 @@ end_section
 begin_section "apply_osc_to_db.sh"
 
 if [[ -n "$DB_DIR" ]]; then
-    APPLY_PID=$(cat "$DB_DIR/apply_osc.pid" 2>/dev/null || true)
+    APPLY_PID=$(cat "$DB_DIR/apply_osc.pid" 2>/dev/null)
     kv "status" "$(pid_status "$APPLY_PID")"
 
     APPLY_LOG="$DB_DIR/apply_osc_to_db.log"
     if [[ -f "$APPLY_LOG" ]]; then
-        LAST_APPLY=$(read_log "$APPLY_LOG" | grep "Successfully applied batch up to" | tail -1 || true)
+        LAST_APPLY=$(read_log "$APPLY_LOG" | grep "Successfully applied batch up to" | tail -1)
         if [[ -n "$LAST_APPLY" ]]; then
             LAST_APPLY_TIME=$(echo "$LAST_APPLY" | awk '{print $1, substr($2, 1, length($2)-1)}')
             LAST_APPLY_ID=$(echo "$LAST_APPLY" | grep -o '[0-9]*$')
-            kv "last replicate_id" "$LAST_APPLY_ID"
+            kv "last replicate_id" "${LAST_APPLY_ID:-unknown}"
             kv "last update" "$LAST_APPLY_TIME"
         else
             kv "last update" "not found in log"
         fi
 
-        NEXT_BATCH=$(read_log "$APPLY_LOG" | grep "Next batch expected" | tail -1 || true)
+        NEXT_BATCH=$(read_log "$APPLY_LOG" | grep "Next batch expected" | tail -1)
         if [[ -n "$NEXT_BATCH" ]]; then
             NEXT_BATCH_TIME=$(echo "$NEXT_BATCH" | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}' | tail -1)
-            kv "next update" "$NEXT_BATCH_TIME"
+            kv "next update" "${NEXT_BATCH_TIME:-unknown}"
         fi
 
-        PHASE_LINE=$(read_log "$APPLY_LOG" | grep -E "Successfully applied batch|Applying batch to database|Collected (one file|batch)|Decompressing|Next batch expected" | tail -1 || true)
+        PHASE_LINE=$(read_log "$APPLY_LOG" | grep -E "Successfully applied batch|Applying batch to database|Collected (one file|batch)|Decompressing|Next batch expected" | tail -1)
         if [[ -n "$PHASE_LINE" ]]; then
             if echo "$PHASE_LINE" | grep -q "Successfully applied"; then
                 PHASE="idle"
@@ -491,7 +505,7 @@ if [[ -n "$DB_DIR" ]]; then
                 else
                     printf "%ds avg  +/-%ds  (%d samples)\n", int(mean), int(stddev), n
             }
-        ' || true)
+        ')
         [[ -n "$INTERVAL_STATS" ]] && kv "update interval" "$INTERVAL_STATS"
     else
         kv "log" "not found"
@@ -514,22 +528,22 @@ kv "status" "$(pid_status "${FETCH_PID:-}")"
 
 DIFF_DIR=""
 if [[ -n "$FETCH_PID" ]]; then
-    DIFF_DIR=$(tr '\0' '\n' < "/proc/$FETCH_PID/cmdline" 2>/dev/null | awk '/^http/{found=1; next} found && /^\// {print; exit}' || true)
+    DIFF_DIR=$(tr '\0' '\n' < "/proc/$FETCH_PID/cmdline" 2>/dev/null | awk '/^http/{found=1; next} found && /^\// {print; exit}')
 fi
 DIFF_DIR="${DIFF_DIR:-/opt/overpass/diff}"
 
-FETCH_STATE=$(cat "$DIFF_DIR/replicate_id" 2>/dev/null || true)
+FETCH_STATE=$(cat "$DIFF_DIR/replicate_id" 2>/dev/null)
 kv "replicate_id" "${FETCH_STATE:-unknown}"
 
 FETCH_LOG="$DIFF_DIR/fetch_osc.log"
 if [[ -f "$FETCH_LOG" ]]; then
-    LAST_DL=$(read_log "$FETCH_LOG" | grep "Downloaded" | tail -1 || true)
+    LAST_DL=$(read_log "$FETCH_LOG" | grep "Downloaded" | tail -1)
     if [[ -n "$LAST_DL" ]]; then
         LAST_DL_TIME=$(echo "$LAST_DL" | awk '{print $1, substr($2, 1, length($2)-1)}')
         kv "last download" "$LAST_DL_TIME"
     fi
 
-    PHASE_LINE=$(read_log "$FETCH_LOG" | grep -E "Downloaded|Fetching|Waiting for file|Sleeping until" | tail -1 || true)
+    PHASE_LINE=$(read_log "$FETCH_LOG" | grep -E "Downloaded|Fetching|Waiting for file|Sleeping until" | tail -1)
     if [[ -n "$PHASE_LINE" ]]; then
         if echo "$PHASE_LINE" | grep -q "Downloaded"; then
             PHASE="idle"
@@ -539,7 +553,7 @@ if [[ -f "$FETCH_LOG" ]]; then
             PHASE="waiting for next file"
         elif echo "$PHASE_LINE" | grep -q "Sleeping until"; then
             NEXT_TIME=$(echo "$PHASE_LINE" | grep -o '[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}' | tail -1)
-            PHASE="sleeping until $NEXT_TIME"
+            PHASE="sleeping until ${NEXT_TIME:-unknown}"
         fi
         kv "phase" "$PHASE"
     fi
@@ -580,7 +594,7 @@ if [[ -f "$FETCH_LOG" ]]; then
             else
                 printf "%ds avg  +/-%ds  (%d samples)\n", int(mean), int(stddev), n
         }
-    ' || true)
+    ')
     [[ -n "$INTERVAL_STATS" ]] && kv "download interval" "$INTERVAL_STATS"
 else
     kv "log" "not found"
@@ -610,10 +624,10 @@ kv "status" "$(pid_status "${BACKUP_PID:-}")"
 if [[ -n "$DB_DIR" ]]; then
     BACKUP_LOG="$DB_DIR/backup.log"
     if [[ -f "$BACKUP_LOG" ]]; then
-        LAST_STARTED=$(read_log "$BACKUP_LOG" | grep "Backup started" | tail -1 || true)
+        LAST_STARTED=$(read_log "$BACKUP_LOG" | grep "Backup started" | tail -1)
         [[ -n "$LAST_STARTED" ]] && kv "last backup started" "$(echo "$LAST_STARTED" | awk '{print $1, substr($2, 1, length($2)-1)}')"
 
-        LAST_COMPLETE=$(read_log "$BACKUP_LOG" | grep "Backup complete" | tail -1 || true)
+        LAST_COMPLETE=$(read_log "$BACKUP_LOG" | grep "Backup complete" | tail -1)
         [[ -n "$LAST_COMPLETE" ]] && kv "last backup complete" "$(echo "$LAST_COMPLETE" | awk '{print $1, substr($2, 1, length($2)-1)}')"
     else
         kv "log" "not found"
@@ -646,13 +660,13 @@ kv "status" "$(pid_status "${RULES_PID:-}")"
 if [[ -n "$DB_DIR" ]]; then
     RULES_LOG="$DB_DIR/rules_loop.log"
     if [[ -f "$RULES_LOG" ]]; then
-        LAST_STARTED=$(read_log "$RULES_LOG" | grep "Area update started" | tail -1 || true)
+        LAST_STARTED=$(read_log "$RULES_LOG" | grep "Area update started" | tail -1)
         [[ -n "$LAST_STARTED" ]] && kv "last area gen started" "$(echo "$LAST_STARTED" | awk '{print $1, substr($2, 1, length($2)-1)}')"
 
-        LAST_FINISHED=$(read_log "$RULES_LOG" | grep -E "Area update finished|Area update failed" | tail -1 || true)
+        LAST_FINISHED=$(read_log "$RULES_LOG" | grep -E "Area update finished|Area update failed" | tail -1)
         [[ -n "$LAST_FINISHED" ]] && kv "last area gen finished" "$(echo "$LAST_FINISHED" | awk '{print $1, substr($2, 1, length($2)-1)}')"
 
-        PHASE_LINE=$(read_log "$RULES_LOG" | grep -E "Area update started|Area update finished|Area update failed|Sleeping for" | tail -1 || true)
+        PHASE_LINE=$(read_log "$RULES_LOG" | grep -E "Area update started|Area update finished|Area update failed|Sleeping for" | tail -1)
         if [[ -n "$PHASE_LINE" ]]; then
             if echo "$PHASE_LINE" | grep -q "Area update started"; then
                 PHASE="generating areas"
@@ -692,15 +706,8 @@ while IFS= read -r f; do
 done < <(find /opt/overpass -maxdepth 2 \( -name "*.log.1" -o -name "*.out.1" \) -type f 2>/dev/null)
 kv "last rotation" "$LAST_ROTATION"
 
-LOG_SIZE=$(find /opt/overpass -maxdepth 2 -name "*.log*" -type f -print0 2>/dev/null \
-    | xargs -r -0 stat -c %s 2>/dev/null \
-    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}') || LOG_SIZE="?"
-kv "log files (.log*)" "${LOG_SIZE:-0}"
-
-OUT_SIZE=$(find /opt/overpass -maxdepth 2 -name "*.out*" -type f -print0 2>/dev/null \
-    | xargs -r -0 stat -c %s 2>/dev/null \
-    | awk '{s+=$1} END {printf "%.1fM\n", s/1048576}') || OUT_SIZE="?"
-kv "out files (.out*)" "${OUT_SIZE:-0}"
+kv "log files (.log*)" "$(sum_file_sizes "*.log*")"
+kv "out files (.out*)" "$(sum_file_sizes "*.out*")"
 
 end_section
 
@@ -715,12 +722,12 @@ kv "status" "$(pid_status "${CLEAN_PID:-}")"
 
 CLEAN_LOG="$DIFF_DIR/clean_osc.out"
 if [[ -f "$CLEAN_LOG" ]]; then
-    LAST_RUN=$(read_log "$CLEAN_LOG" | grep "Starting Cleanup Process" | tail -1 || true)
+    LAST_RUN=$(read_log "$CLEAN_LOG" | grep "Starting Cleanup Process" | tail -1)
     if [[ -n "$LAST_RUN" ]]; then
         kv "last run" "$(echo "$LAST_RUN" | awk '{print $1, substr($2, 1, length($2)-1)}')"
     fi
 
-    LAST_RESULT=$(read_log "$CLEAN_LOG" | grep -E "Cleaned up|No files needed cleaning|nothing to clean" | tail -1 || true)
+    LAST_RESULT=$(read_log "$CLEAN_LOG" | grep -E "Cleaned up|No files needed cleaning|nothing to clean" | tail -1)
     if [[ -n "$LAST_RESULT" ]]; then
         kv "last result" "${LAST_RESULT##*: }"
     fi
@@ -728,9 +735,8 @@ else
     kv "log" "not found"
 fi
 
-OSC_COUNT=$(find "$DIFF_DIR" -name "*.osc.gz" 2>/dev/null | wc -l) || OSC_COUNT=0
-OSC_SIZE=$(du -sh "$DIFF_DIR" 2>/dev/null | awk '{print $1}') || OSC_SIZE="?"
-kv "diff cache" "$OSC_COUNT files  ($OSC_SIZE)"
+OSC_COUNT=$(find "$DIFF_DIR" -name "*.osc.gz" 2>/dev/null | wc -l)
+kv "diff cache" "$OSC_COUNT files  ($(dir_size "$DIFF_DIR"))"
 
 end_section
 
@@ -740,7 +746,7 @@ end_section
 
 begin_section "interpreter"
 
-RATE_LIMIT=$(curl -sf http://127.0.0.1:8080/api/status 2>/dev/null | awk '/^Rate limit:/ {print $3}' || true)
+RATE_LIMIT=$(curl -sf http://127.0.0.1:8080/api/status 2>/dev/null | awk '/^Rate limit:/ {print $3}')
 kv "rate limit" "${RATE_LIMIT:-unavailable}"
 
 mapfile -t QUERY_PIDS < <(find_all_proc_pids "interpreter")
@@ -853,7 +859,7 @@ end_section
 begin_section "directories"
 for dir in /opt/overpass/backup /opt/overpass/db /opt/overpass/diff /opt/overpass/log /opt/overpass/run; do
     [[ -d "$dir" ]] || continue
-    kv "$dir" "$(du -sh "$dir" 2>/dev/null | awk '{print $1}' || echo "?")"
+    kv "$dir" "$(dir_size "$dir")"
 done
 end_section
 
