@@ -25,7 +25,7 @@
 
 usage()
 {
-  cat << EOF
+  cat >&2 << EOF
 Usage: $0 diff_url
 
   diff_url     Replication source URL
@@ -57,7 +57,7 @@ if [[ -z "$1" ]]; then
 fi
 
 if [[ -n "$2" ]]; then
-  echo "ERROR: Too many arguments"
+  echo "ERROR: Too many arguments" >&2
   usage
   exit 1
 fi
@@ -89,6 +89,7 @@ APPLY_MAX_RETRIES=${APPLY_OSC_APPLY_MAX_RETRIES:-5}
 
 # Network state tracking
 SOURCE_VERIFIED=false
+LATEST_AVAILABLE_ID=   # Result of get_latest_available_id
 
 # Timestamp tracking
 LAST_UPDATE_TIME=
@@ -104,17 +105,17 @@ DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
 DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -d "$DB_DIR" ]]; then
-  echo "ERROR: Database directory '$DB_DIR' does not exist"
+  echo "ERROR: Database directory '$DB_DIR' does not exist" >&2
   exit 1
 fi
 
 if [[ ! -f "$DB_DIR/replicate_id" || ! -s "$DB_DIR/replicate_id" ]]; then
-  echo "ERROR: $DB_DIR/replicate_id is not a regular file or is empty"
+  echo "ERROR: $DB_DIR/replicate_id is not a regular file or is empty" >&2
   exit 1
 fi
 
 if ! touch "$DB_DIR/replicate_id"; then
-  echo "ERROR: $DB_DIR/replicate_id is not writeable"
+  echo "ERROR: $DB_DIR/replicate_id is not writeable" >&2
   exit 1
 fi
 
@@ -126,7 +127,7 @@ LOG_FILE="$DB_DIR/fetch_osc_and_apply.log"
 
 # PID file
 PID_FILE="$DB_DIR/apply_osc.pid"
-echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE"; exit 1; }
+echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE" >&2; exit 1; }
 
 # Temp directories for this session
 TEMP_SOURCE_DIR=
@@ -161,12 +162,9 @@ die()
 # LOGGING
 # ============================================================================
 
-IN_TERMINAL="false"
-[[ -t 1 ]] && IN_TERMINAL="true"
-
 log_message()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
+  if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
     echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
@@ -175,8 +173,8 @@ log_message()
 
 log_error()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
-    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  if [[ -t 2 ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
     echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
   fi
@@ -300,6 +298,7 @@ get_replicate_path()
 
 get_latest_available_id()
 {
+  LATEST_AVAILABLE_ID=
   local REMOTE_STATE="$TEMP_SOURCE_DIR/state.txt"
   local REMOTE_STATE_TMP="$REMOTE_STATE.tmp"
 
@@ -323,7 +322,7 @@ get_latest_available_id()
       SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE_TMP")
       if [[ -n "$SEQ_LINE" ]]; then
         mv "$REMOTE_STATE_TMP" "$REMOTE_STATE"
-        echo "$((${SEQ_LINE#*=} + 0))"
+        LATEST_AVAILABLE_ID=$((${SEQ_LINE#*=} + 0))
         return 0
       else
         log_error "Downloaded state.txt missing sequenceNumber"
@@ -655,12 +654,11 @@ while true; do
     die 1
   fi
 
-  MAX_AVAILABLE=$(get_latest_available_id)
-
-  if [[ -z "$MAX_AVAILABLE" ]]; then
+  if ! get_latest_available_id; then
     log_error "Fatal: Cannot reach replication source"
     die 1
   fi
+  MAX_AVAILABLE=$LATEST_AVAILABLE_ID
 
   if [[ "$SOURCE_VERIFIED" != "true" ]]; then
     SOURCE_VERIFIED=true

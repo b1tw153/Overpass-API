@@ -12,6 +12,11 @@ message()
   echo "$(date -u '+%F %T'): $1"
 }
 
+error()
+{
+  echo "$(date -u '+%F %T'): ERROR: $1" >&2
+}
+
 # Validate an IP address or CIDR netblock with the same library (Net::CIDR) that
 # munin-node uses to enforce its access-control list.
 munin_valid_cidr()
@@ -37,7 +42,7 @@ fi
 FCGIWRAP_WORKERS=${FCGIWRAP_WORKERS:-$(( CPU_COUNT + 1 ))}
 
 if [[ ! "$FCGIWRAP_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: FCGIWRAP_WORKERS must be a positive integer, got: '$FCGIWRAP_WORKERS'"
+  error "FCGIWRAP_WORKERS must be a positive integer, got: '$FCGIWRAP_WORKERS'"
   exit 1
 fi
 
@@ -46,7 +51,7 @@ export FCGIWRAP_WORKERS
 NGINX_FASTCGI_TIMEOUT=${NGINX_FASTCGI_TIMEOUT:-300}
 
 if [[ ! "$NGINX_FASTCGI_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: NGINX_FASTCGI_TIMEOUT must be a positive integer, got: '$NGINX_FASTCGI_TIMEOUT'"
+  error "NGINX_FASTCGI_TIMEOUT must be a positive integer, got: '$NGINX_FASTCGI_TIMEOUT'"
   exit 1
 fi
 
@@ -55,7 +60,7 @@ export NGINX_FASTCGI_TIMEOUT
 NGINX_CONNECTION_QUEUE=${NGINX_CONNECTION_QUEUE:-$(( CPU_COUNT * 7 - 1 ))}
 
 if [[ ! "$NGINX_CONNECTION_QUEUE" =~ ^(0|[1-9][0-9]*)$ ]]; then
-  message "ERROR: NGINX_CONNECTION_QUEUE must be a non-negative integer, got: '$NGINX_CONNECTION_QUEUE'"
+  error "NGINX_CONNECTION_QUEUE must be a non-negative integer, got: '$NGINX_CONNECTION_QUEUE'"
   exit 1
 fi
 
@@ -64,7 +69,7 @@ export NGINX_MAX_CONN
 
 if [[ -n "${NGINX_CLIENT_CONN_LIMIT:-}" ]]; then
   if [[ ! "$NGINX_CLIENT_CONN_LIMIT" =~ ^[1-9][0-9]*$ ]]; then
-    message "ERROR: NGINX_CLIENT_CONN_LIMIT must be a positive integer, got: '$NGINX_CLIENT_CONN_LIMIT'"
+    error "NGINX_CLIENT_CONN_LIMIT must be a positive integer, got: '$NGINX_CLIENT_CONN_LIMIT'"
     exit 1
   fi
   NGINX_LIMIT_CONN_ZONE="limit_conn_zone \$binary_remote_addr zone=client_conn:10m;"
@@ -77,17 +82,17 @@ export NGINX_LIMIT_CONN_ZONE NGINX_LIMIT_CONN_CLIENT
 
 if [[ -n "${NGINX_CLIENT_REQ_RATE:-}" ]]; then
   if [[ ! "$NGINX_CLIENT_REQ_RATE" =~ ^[1-9][0-9]*r/[sm]$ ]]; then
-    message "ERROR: NGINX_CLIENT_REQ_RATE must be a rate like 10r/s or 30r/m, got: '$NGINX_CLIENT_REQ_RATE'"
+    error "NGINX_CLIENT_REQ_RATE must be a rate like 10r/s or 30r/m, got: '$NGINX_CLIENT_REQ_RATE'"
     exit 1
   fi
   NGINX_CLIENT_REQ_BURST=${NGINX_CLIENT_REQ_BURST:-0}
   if [[ ! "$NGINX_CLIENT_REQ_BURST" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    message "ERROR: NGINX_CLIENT_REQ_BURST must be a non-negative integer, got: '$NGINX_CLIENT_REQ_BURST'"
+    error "NGINX_CLIENT_REQ_BURST must be a non-negative integer, got: '$NGINX_CLIENT_REQ_BURST'"
     exit 1
   fi
   NGINX_CLIENT_REQ_DELAY=${NGINX_CLIENT_REQ_DELAY:-$NGINX_CLIENT_REQ_BURST}
   if [[ ! "$NGINX_CLIENT_REQ_DELAY" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    message "ERROR: NGINX_CLIENT_REQ_DELAY must be a non-negative integer, got: '$NGINX_CLIENT_REQ_DELAY'"
+    error "NGINX_CLIENT_REQ_DELAY must be a non-negative integer, got: '$NGINX_CLIENT_REQ_DELAY'"
     exit 1
   fi
   NGINX_LIMIT_REQ_ZONE="limit_req_zone \$binary_remote_addr zone=client_req:10m rate=${NGINX_CLIENT_REQ_RATE};"
@@ -111,19 +116,19 @@ MUNIN_NODE_CIDR_DENY=${MUNIN_NODE_CIDR_DENY:-}
 if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
   MUNIN_NODE_LOG_LEVEL=${MUNIN_NODE_LOG_LEVEL:-4}
   if [[ ! "$MUNIN_NODE_LOG_LEVEL" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    message "ERROR: MUNIN_NODE_LOG_LEVEL must be a non-negative integer, got: '$MUNIN_NODE_LOG_LEVEL'"
+    error "MUNIN_NODE_LOG_LEVEL must be a non-negative integer, got: '$MUNIN_NODE_LOG_LEVEL'"
     exit 1
   fi
 
   MUNIN_NODE_PORT=${MUNIN_NODE_PORT:-4949}
   if [[ ! "$MUNIN_NODE_PORT" =~ ^[1-9][0-9]*$ ]]; then
-    message "ERROR: MUNIN_NODE_PORT must be a positive integer, got: '$MUNIN_NODE_PORT'"
+    error "MUNIN_NODE_PORT must be a positive integer, got: '$MUNIN_NODE_PORT'"
     exit 1
   fi
 
   MUNIN_NODE_HOST_NAME=${MUNIN_NODE_HOST_NAME:-$HOSTNAME}
   if [[ ! "$MUNIN_NODE_HOST_NAME" =~ ^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$ ]]; then
-    message "ERROR: MUNIN_NODE_HOST_NAME must be a hostname or FQDN, got: '$MUNIN_NODE_HOST_NAME'"
+    error "MUNIN_NODE_HOST_NAME must be a hostname or FQDN, got: '$MUNIN_NODE_HOST_NAME'"
     exit 1
   fi
 
@@ -131,7 +136,7 @@ if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
   MUNIN_NODE_HOST=${MUNIN_NODE_HOST:-0.0.0.0}
   if [[ "$MUNIN_NODE_HOST" == *[[:space:]]* || "$MUNIN_NODE_HOST" == *:* \
         || "$MUNIN_NODE_HOST" == */* ]] || ! munin_valid_cidr "$MUNIN_NODE_HOST"; then
-    message "ERROR: MUNIN_NODE_HOST must be a single IPv4 address, got: '$MUNIN_NODE_HOST'"
+    error "MUNIN_NODE_HOST must be a single IPv4 address, got: '$MUNIN_NODE_HOST'"
     exit 1
   fi
 
@@ -140,7 +145,7 @@ if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
   read -ra MUNIN_ALLOW_CIDRS <<< "$MUNIN_NODE_CIDR_ALLOW"
   for cidr in "${MUNIN_ALLOW_CIDRS[@]}"; do
     if ! munin_valid_cidr "$cidr"; then
-      message "ERROR: MUNIN_NODE_CIDR_ALLOW entries must be CIDR netblocks, got: '$cidr'"
+      error "MUNIN_NODE_CIDR_ALLOW entries must be CIDR netblocks, got: '$cidr'"
       exit 1
     fi
   done
@@ -148,7 +153,7 @@ if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
   read -ra MUNIN_DENY_CIDRS <<< "$MUNIN_NODE_CIDR_DENY"
   for cidr in "${MUNIN_DENY_CIDRS[@]}"; do
     if ! munin_valid_cidr "$cidr"; then
-      message "ERROR: MUNIN_NODE_CIDR_DENY entries must be CIDR netblocks, got: '$cidr'"
+      error "MUNIN_NODE_CIDR_DENY entries must be CIDR netblocks, got: '$cidr'"
       exit 1
     fi
   done
@@ -292,4 +297,5 @@ while true; do
   esac
 done
 
-shutdown "$EXIT_CODE" "$EXITED_CHILD exited unexpectedly with code $EXIT_CODE"
+error "$EXITED_CHILD exited unexpectedly with code $EXIT_CODE"
+shutdown "$EXIT_CODE" "$EXITED_CHILD exited"

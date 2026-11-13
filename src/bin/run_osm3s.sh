@@ -19,7 +19,7 @@
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
 usage() {
-  cat <<EOF
+  cat >&2 <<EOF
 Usage: $0
     --run=REPLICATE_ID 
     --db-dir=DB_DIR 
@@ -103,6 +103,11 @@ message()
   echo "$(date -u '+%F %T'): $1"
 }
 
+error()
+{
+  echo "$(date -u '+%F %T'): ERROR: $1" >&2
+}
+
 # ============================================================================
 # ARGUMENT PARAMETERS
 # ============================================================================
@@ -136,61 +141,61 @@ while true; do
 done
 
 if [[ -z $START_ID ]]; then
-  message "ERROR: --run is required"
+  error "--run is required"
   usage
   exit 1
 fi
 
 if [[ "$START_ID" != "auto" && ! "$START_ID" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: Invalid --run value '$START_ID': must be a positive integer or 'auto'"
+  error "Invalid --run value '$START_ID': must be a positive integer or 'auto'"
   usage
   exit 1
 fi
 
 if [[ -z $OVERPASS_DB_DIR ]]; then
-  message "ERROR: --db-dir is required"
+  error "--db-dir is required"
   usage
   exit 1
 fi
 
 if ! [[ -d $OVERPASS_DB_DIR && -w $OVERPASS_DB_DIR ]]; then
-  message "ERROR: --db-dir '$OVERPASS_DB_DIR' is not a writeable directory"
+  error "--db-dir '$OVERPASS_DB_DIR' is not a writeable directory"
   usage
   exit 1
 fi
     
 if [[ -z $OVERPASS_DIFF_DIR ]]; then
-  message "ERROR: --diff-dir is required"
+  error "--diff-dir is required"
   usage
   exit 1
 fi
 
 if ! [[ -d "$OVERPASS_DIFF_DIR" && -w "$OVERPASS_DIFF_DIR" ]]; then
-  message "ERROR: --diff-dir '$OVERPASS_DIFF_DIR' is not a writeable directory"
+  error "--diff-dir '$OVERPASS_DIFF_DIR' is not a writeable directory"
   usage
   exit 1
 fi
 
 if [[ -z $OVERPASS_DIFF_URL ]]; then
-  message "ERROR: --diff-url is required"
+  error "--diff-url is required"
   usage
   exit 1
 fi
 
 if [[ ! "$OVERPASS_DIFF_URL" =~ ^https?:// ]]; then
-  message "ERROR: Invalid OVERPASS_DIFF_URL '$OVERPASS_DIFF_URL': must start with http:// or https://"
+  error "Invalid OVERPASS_DIFF_URL '$OVERPASS_DIFF_URL': must start with http:// or https://"
   usage
   exit 1
 fi
 
 if [[ $OVERPASS_META_MODE != "attic" && $OVERPASS_META_MODE != "yes" && $OVERPASS_META_MODE != "no" ]]; then
-  message "ERROR: --meta must be 'attic', 'yes', or 'no'"
+  error "--meta must be 'attic', 'yes', or 'no'"
   usage
   exit 1
 fi
 
 if [[ $AREAS != "yes" && $AREAS != "no" ]]; then
-  message "ERROR: --areas must be 'yes' or 'no'"
+  error "--areas must be 'yes' or 'no'"
   usage
   exit 1
 fi
@@ -220,7 +225,7 @@ DISPATCHER_ALLOW_DUPLICATE_QUERIES=${DISPATCHER_ALLOW_DUPLICATE_QUERIES:-yes}
 DISPATCHER_LIMIT_CLIENT_ZERO=${DISPATCHER_LIMIT_CLIENT_ZERO:-no}
 
 if ! [[ -d "$OVERPASS_SOCKET_DIR" && -w "$OVERPASS_SOCKET_DIR" ]]; then
-  message "ERROR: OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
+  error "OVERPASS_SOCKET_DIR '$OVERPASS_SOCKET_DIR' is not a writeable directory"
   usage
   exit 1
 fi
@@ -228,19 +233,19 @@ fi
 OVERPASS_SOCKET_DIR="$(realpath "$OVERPASS_SOCKET_DIR")"
 
 if [[ -n "$OVERPASS_STALL_MULTIPLIER" && ! "$OVERPASS_STALL_MULTIPLIER" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
+  error "OVERPASS_STALL_MULTIPLIER must be a positive integer, got: '$OVERPASS_STALL_MULTIPLIER'"
   usage
   exit 1
 fi
 
 if [[ ! "$OVERPASS_CLEANUP_INTERVAL" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_CLEANUP_INTERVAL must be a positive integer, got: '$OVERPASS_CLEANUP_INTERVAL'"
+  error "OVERPASS_CLEANUP_INTERVAL must be a positive integer, got: '$OVERPASS_CLEANUP_INTERVAL'"
   usage
   exit 1
 fi
 
 if [[ ! "$OVERPASS_CLEANUP_KEEP_HOURS" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: OVERPASS_CLEANUP_KEEP_HOURS must be a positive integer, got: '$OVERPASS_CLEANUP_KEEP_HOURS'"
+  error "OVERPASS_CLEANUP_KEEP_HOURS must be a positive integer, got: '$OVERPASS_CLEANUP_KEEP_HOURS'"
   usage
   exit 1
 fi
@@ -248,7 +253,7 @@ fi
 BACKUP="no"
 if [[ -n "$OVERPASS_BACKUP_DIR" ]]; then
   if ! [[ -d "$OVERPASS_BACKUP_DIR" && -w "$OVERPASS_BACKUP_DIR" ]]; then
-    message "ERROR: OVERPASS_BACKUP_DIR '$OVERPASS_BACKUP_DIR' is not a writeable directory"
+    error "OVERPASS_BACKUP_DIR '$OVERPASS_BACKUP_DIR' is not a writeable directory"
     usage
     exit 1
   fi
@@ -264,7 +269,7 @@ fi
 
 if [[ -n "$OVERPASS_LOG_DIR" ]]; then
   if ! [[ -d "$OVERPASS_LOG_DIR" && -w "$OVERPASS_LOG_DIR" ]]; then
-    message "ERROR: OVERPASS_LOG_DIR '$OVERPASS_LOG_DIR' is not a writeable directory"
+    error "OVERPASS_LOG_DIR '$OVERPASS_LOG_DIR' is not a writeable directory"
     usage
     exit 1
   fi
@@ -273,50 +278,50 @@ if [[ -n "$OVERPASS_LOG_DIR" ]]; then
 fi
 
 if [[ ! "$DISPATCHER_BASE_SPACE" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: DISPATCHER_BASE_SPACE must be a positive integer, got: '$DISPATCHER_BASE_SPACE'"
+  error "DISPATCHER_BASE_SPACE must be a positive integer, got: '$DISPATCHER_BASE_SPACE'"
   usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_AREAS_SPACE" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: DISPATCHER_AREAS_SPACE must be a positive integer, got: '$DISPATCHER_AREAS_SPACE'"
+  error "DISPATCHER_AREAS_SPACE must be a positive integer, got: '$DISPATCHER_AREAS_SPACE'"
   usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_BASE_TIME" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: DISPATCHER_BASE_TIME must be a positive integer, got: '$DISPATCHER_BASE_TIME'"
+  error "DISPATCHER_BASE_TIME must be a positive integer, got: '$DISPATCHER_BASE_TIME'"
   usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_AREAS_TIME" =~ ^[1-9][0-9]*$ ]]; then
-  message "ERROR: DISPATCHER_AREAS_TIME must be a positive integer, got: '$DISPATCHER_AREAS_TIME'"
+  error "DISPATCHER_AREAS_TIME must be a positive integer, got: '$DISPATCHER_AREAS_TIME'"
   usage
   exit 1
 fi
 
 if [[ ! "$DISPATCHER_RATE_LIMIT" =~ ^(0|[1-9][0-9]*)$ ]]; then
-  message "ERROR: DISPATCHER_RATE_LIMIT must be a non-negative integer, got: '$DISPATCHER_RATE_LIMIT'"
+  error "DISPATCHER_RATE_LIMIT must be a non-negative integer, got: '$DISPATCHER_RATE_LIMIT'"
   usage
   exit 1
 fi
 
 if [[ "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "yes" && "$DISPATCHER_ALLOW_DUPLICATE_QUERIES" != "no" ]]; then
-  message "ERROR: DISPATCHER_ALLOW_DUPLICATE_QUERIES must be 'yes' or 'no', got: '$DISPATCHER_ALLOW_DUPLICATE_QUERIES'"
+  error "DISPATCHER_ALLOW_DUPLICATE_QUERIES must be 'yes' or 'no', got: '$DISPATCHER_ALLOW_DUPLICATE_QUERIES'"
   usage
   exit 1
 fi
 
 if [[ "$DISPATCHER_LIMIT_CLIENT_ZERO" != "yes" && "$DISPATCHER_LIMIT_CLIENT_ZERO" != "no" ]]; then
-  message "ERROR: DISPATCHER_LIMIT_CLIENT_ZERO must be 'yes' or 'no', got: '$DISPATCHER_LIMIT_CLIENT_ZERO'"
+  error "DISPATCHER_LIMIT_CLIENT_ZERO must be 'yes' or 'no', got: '$DISPATCHER_LIMIT_CLIENT_ZERO'"
   usage
   exit 1
 fi
 
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
-  message "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
+  error "OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
   usage
   exit 1
 fi
@@ -364,15 +369,13 @@ validate_meta_mode()
   # Detect actual database state
   local DB_STATE
   if ! DB_STATE=$(detect_database_meta_state); then
-    message "ERROR: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
-    message "The database may not be properly initialized"
-    message "See README.md for initialization instructions"
+    error "Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin). The database may not be properly initialized. See README.md for initialization instructions"
     exit 1
   fi
 
   # Compare user mode with database state
   if [[ "$OVERPASS_META_MODE" != "$DB_STATE" ]]; then
-    message "ERROR: Meta mode mismatch. Argument: --meta=$OVERPASS_META_MODE; Database: --meta=$DB_STATE"
+    error "Meta mode mismatch. Argument: --meta=$OVERPASS_META_MODE; Database: --meta=$DB_STATE"
     exit 1
   fi
 }
@@ -426,16 +429,16 @@ detect_update_frequency()
   CURRENT_SEQ=$(curl -sL "${OVERPASS_DIFF_URL%/}/state.txt" \
     | grep '^sequenceNumber=' | cut -d= -f2 | tr -d '\r')
   if [[ ! "$CURRENT_SEQ" =~ ^[1-9][0-9]*$ ]]; then
-    message "ERROR: Failed to read sequence number from ${OVERPASS_DIFF_URL%/}/state.txt"
+    error "Failed to read sequence number from ${OVERPASS_DIFF_URL%/}/state.txt"
     return 1
   fi
 
   LAST_MODIFIED_0=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$CURRENT_SEQ").state.txt") \
-    || { message "ERROR: Failed to get Last-Modified time for $(get_path "$CURRENT_SEQ").state.txt"; return 1; }
+    || { error "Failed to get Last-Modified time for $(get_path "$CURRENT_SEQ").state.txt"; return 1; }
   LAST_MODIFIED_1=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$((CURRENT_SEQ - 1))").state.txt") \
-    || { message "ERROR: Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 1))").state.txt"; return 1; }
+    || { error "Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 1))").state.txt"; return 1; }
   LAST_MODIFIED_2=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$((CURRENT_SEQ - 2))").state.txt") \
-    || { message "ERROR: Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 2))").state.txt"; return 1; }
+    || { error "Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 2))").state.txt"; return 1; }
 
   INTERVAL_1=$(( LAST_MODIFIED_0 - LAST_MODIFIED_1 ))
   INTERVAL_2=$(( LAST_MODIFIED_1 - LAST_MODIFIED_2 ))
@@ -584,7 +587,7 @@ kill_child()
     ((++WAIT_COUNT))
   done
   if kill -0 "$CHILD_PID" 2>/dev/null; then
-    message "ERROR: Unable to forcefully terminate $CHILD_NAME, killing"
+    error "Unable to forcefully terminate $CHILD_NAME, killing"
     kill -9 "$CHILD_PID" 2>/dev/null
   fi
   wait "$CHILD_PID" 2>/dev/null
@@ -597,8 +600,7 @@ stop_base_dispatcher()
     if "$EXEC_DIR/dispatcher" --osm-base --terminate; then
       wait "$DISPATCHER_BASE_PID"
     else
-      message "ERROR: Unable to safely terminate base dispatcher"
-      message "Check $OVERPASS_DB_DIR/base_dispatcher.out"
+      error "Unable to safely terminate base dispatcher. Check $OVERPASS_DB_DIR/base_dispatcher.out."
       message "Attempting to forcefully terminate base dispatcher"
       kill_child "base dispatcher" "$DISPATCHER_BASE_PID"
     fi
@@ -614,8 +616,7 @@ stop_areas_dispatcher()
     if "$EXEC_DIR/dispatcher" --areas --terminate; then
       wait "$DISPATCHER_AREAS_PID"
     else
-      message "ERROR: Unable to safely terminate areas dispatcher"
-      message "Check $OVERPASS_DB_DIR/areas_dispatcher.out"
+      error "Unable to safely terminate areas dispatcher. Check $OVERPASS_DB_DIR/areas_dispatcher.out."
       message "Attempting to forcefully terminate areas dispatcher"
       kill_child "areas dispatcher" "$DISPATCHER_AREAS_PID"
     fi
@@ -691,8 +692,7 @@ check_base_dispatcher()
   EXIT_CODE=$?
   DB_DIR="$(realpath "$DB_DIR")"
   if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
-    message "ERROR: base dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR)"
-    message "Check $OVERPASS_DB_DIR/database.log and $OVERPASS_DB_DIR/base_dispatcher.out"
+    error "base dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR). Check $OVERPASS_DB_DIR/database.log and $OVERPASS_DB_DIR/base_dispatcher.out"
     return 1
   fi
   return 0
@@ -707,8 +707,7 @@ check_areas_dispatcher()
   EXIT_CODE=$?
   DB_DIR="$(realpath "$DB_DIR")"
   if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
-    message "ERROR: areas dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR)"
-    message "Check $OVERPASS_DB_DIR/areas_dispatcher.out"
+    error "areas dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR). Check $OVERPASS_DB_DIR/areas_dispatcher.out."
     return 1
   fi
   return 0
@@ -719,8 +718,7 @@ check_apply_osc()
   if [[ -n "$APPLY_OSC_PID" ]] && kill -0 "$APPLY_OSC_PID" 2>/dev/null; then
     return 0
   else
-    message "ERROR: apply_osc_to_db.sh is not running (PID $APPLY_OSC_PID)"
-    message "Check $OVERPASS_DB_DIR/apply_osc_to_db.log and $OVERPASS_DB_DIR/apply_osc_to_db.out"
+    error "apply_osc_to_db.sh is not running (PID $APPLY_OSC_PID). Check $OVERPASS_DB_DIR/apply_osc_to_db.log and $OVERPASS_DB_DIR/apply_osc_to_db.out"
     return 1
   fi
 }
@@ -730,8 +728,7 @@ check_fetch_osc()
   if [[ -n "$FETCH_OSC_PID" ]] && kill -0 "$FETCH_OSC_PID" 2>/dev/null; then
     return 0
   else
-    message "ERROR: fetch_osc.sh is not running (PID $FETCH_OSC_PID)"
-    message "Check $OVERPASS_DIFF_DIR/fetch_osc.log and $OVERPASS_DIFF_DIR/fetch_osc.out"
+    error "fetch_osc.sh is not running (PID $FETCH_OSC_PID). Check $OVERPASS_DIFF_DIR/fetch_osc.log and $OVERPASS_DIFF_DIR/fetch_osc.out"
     return 1
   fi
 }
@@ -742,8 +739,7 @@ check_rules_loop()
   if [[ -n "$RULES_LOOP_PID" ]] && kill -0 "$RULES_LOOP_PID" 2>/dev/null; then
     return 0
   else
-    message "ERROR: rules_loop.sh is not running (PID $RULES_LOOP_PID)"
-    message "Check $OVERPASS_DB_DIR/rules_loop.log and $OVERPASS_DB_DIR/rules_loop.out"
+    error "rules_loop.sh is not running (PID $RULES_LOOP_PID). Check $OVERPASS_DB_DIR/rules_loop.log and $OVERPASS_DB_DIR/rules_loop.out."
     return 1
   fi
 }
@@ -754,8 +750,7 @@ check_backup()
   if [[ -n "$BACKUP_PID" ]] && kill -0 "$BACKUP_PID" 2>/dev/null; then
     return 0
   else
-    message "ERROR: backup.sh is not running (PID $BACKUP_PID)"
-    message "Check $OVERPASS_DB_DIR/backup.log and $OVERPASS_DB_DIR/backup.out"
+    error "backup.sh is not running (PID $BACKUP_PID). Check $OVERPASS_DB_DIR/backup.log and $OVERPASS_DB_DIR/backup.out"
     return 1
   fi
 }
@@ -807,7 +802,7 @@ check_lock_files()
       is_overpass_process "$PID" && continue
     fi
 
-    message "ERROR: Orphaned lock file detected: $LOCK_FILE (PID: $PID)"
+    error "Orphaned lock file detected: $LOCK_FILE (PID: $PID)"
     return 1
   done
 
@@ -822,7 +817,7 @@ check_disk_space()
   USED_PCT=$(df --output=pcent "$OVERPASS_LOG_DIR" | tail -1 | tr -d ' %')
   FREE_PCT=$(( 100 - USED_PCT ))
   if [[ $FREE_PCT -lt $MIN_FREE_DISK_PERCENT ]]; then
-    message "ERROR: Insufficient free disk space on log filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
+    error "Insufficient free disk space on log filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
     return 1
   fi
   return 0
@@ -913,7 +908,7 @@ validate_meta_mode
 delete_stale_socket_files
 
 if ! OVERPASS_UPDATE_FREQUENCY=$(detect_update_frequency); then
-  message "ERROR: Unable to detect update frequency from $OVERPASS_DIFF_URL"
+  error "Unable to detect update frequency from $OVERPASS_DIFF_URL"
   exit 1
 else
   message "Detected update frequency: ${OVERPASS_UPDATE_FREQUENCY}s"
@@ -925,8 +920,7 @@ generate_logrotate_config
 start_base_dispatcher
 
 if ! check_base_dispatcher; then
-  message "ERROR: Unable to start base dispatcher"
-  message "Check $OVERPASS_DB_DIR/database.log and $OVERPASS_DB_DIR/base_dispatcher.out"
+  error "Unable to start base dispatcher. Check $OVERPASS_DB_DIR/database.log and $OVERPASS_DB_DIR/base_dispatcher.out."
   stop_overpass
   exit 1
 fi
@@ -934,8 +928,7 @@ fi
 start_areas_dispatcher
 
 if ! check_areas_dispatcher; then
-  message "ERROR: Unable to start areas dispatcher"
-  message "Check $OVERPASS_DB_DIR/areas_dispatcher.out"
+  error "Unable to start areas dispatcher. Check $OVERPASS_DB_DIR/areas_dispatcher.out."
   stop_overpass
   exit 1
 fi
@@ -943,8 +936,7 @@ fi
 start_apply_osc
 
 if ! check_apply_osc; then
-  message "ERROR: Unable to start apply_osc_to_db.sh"
-  message "Check $OVERPASS_DB_DIR/apply_osc_to_db.log and $OVERPASS_DB_DIR/apply_osc_to_db.out"
+  error "Unable to start apply_osc_to_db.sh. Check $OVERPASS_DB_DIR/apply_osc_to_db.log and $OVERPASS_DB_DIR/apply_osc_to_db.out."
   stop_overpass
   exit 1
 fi
@@ -952,8 +944,7 @@ fi
 start_fetch_osc
 
 if ! check_fetch_osc; then
-  message "ERROR: Unable to start fetch_osc.sh"
-  message "Check $OVERPASS_DIFF_DIR/fetch_osc.log and $OVERPASS_DIFF_DIR/fetch_osc.out"
+  error "Unable to start fetch_osc.sh. Check $OVERPASS_DIFF_DIR/fetch_osc.log and $OVERPASS_DIFF_DIR/fetch_osc.out."
   stop_overpass
   exit 1
 fi
@@ -961,8 +952,7 @@ fi
 start_rules_loop
 
 if ! check_rules_loop; then
-  message "ERROR: Unable to start rules_loop.sh"
-  message "Check $OVERPASS_DB_DIR/rules_loop.log and $OVERPASS_DB_DIR/rules_loop.out"
+  error "Unable to start rules_loop.sh. Check $OVERPASS_DB_DIR/rules_loop.log and $OVERPASS_DB_DIR/rules_loop.out."
   stop_overpass
   exit 1
 fi
@@ -970,8 +960,7 @@ fi
 start_backup
 
 if ! check_backup; then
-  message "ERROR: Unable to start backup.sh"
-  message "Check $OVERPASS_DB_DIR/backup.log and $OVERPASS_DB_DIR/backup.out"
+  error "Unable to start backup.sh. Check $OVERPASS_DB_DIR/backup.log and $OVERPASS_DB_DIR/backup.out."
   stop_overpass
   exit 1
 fi
@@ -980,7 +969,7 @@ message "Checking startup ..."
 if check_overpass; then
   message "Startup complete"
 else
-  message "ERROR: Startup failed, shutting down"
+  error "Startup failed, shutting down"
   stop_overpass
   exit 1
 fi
@@ -1008,13 +997,13 @@ while true; do
   NOW=$(date +%s)
 
   if ! check_overpass; then
-    message "ERROR: Health check failed, shutting down"
+    error "Health check failed, shutting down"
     stop_overpass
     exit 1
   fi
 
   if ! check_disk_space; then
-    message "ERROR: Disk space check failed, shutting down"
+    error "Disk space check failed, shutting down"
     stop_overpass
     exit 1
   fi

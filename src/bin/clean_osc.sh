@@ -26,20 +26,22 @@
 
 usage()
 {
-  echo "Usage: $0 db_dir diff_dir keep_count"
-  echo "       $0 --all diff_dir"
-  echo ""
-  echo "  db_dir:      Database directory (contains replicate_id file)"
-  echo "  diff_dir:    Directory containing downloaded OSC files"
-  echo "  keep_count:  Number of additional files to keep beyond database state"
-  echo ""
-  echo "  --all:       Delete ALL downloaded OSC files (for recovery scenarios)"
-  echo ""
-  echo "This script removes .osc.gz and .state.txt files older than the current"
-  echo "database state minus keep_count, helping to reclaim disk space."
-  echo ""
-  echo "The --all flag is used for recovery scenarios where you want to delete"
-  echo "all downloaded files and start fresh."
+  cat >&2 << EOF
+Usage: $0 db_dir diff_dir keep_count
+       $0 --all diff_dir
+
+  db_dir:      Database directory (contains replicate_id file)
+  diff_dir:    Directory containing downloaded OSC files
+  keep_count:  Number of additional files to keep beyond database state
+
+  --all:       Delete ALL downloaded OSC files (for recovery scenarios)
+
+This script removes .osc.gz and .state.txt files older than the current
+database state minus keep_count, helping to reclaim disk space.
+
+The --all flag is used for recovery scenarios where you want to delete
+all downloaded files and start fresh.
+EOF
 }
 
 # ============================================================================
@@ -62,23 +64,23 @@ fi
 # Validate DB_DIR (skip if in --all mode)
 if [[ "$ALL_MODE" == "false" ]]; then
   if [[ -z "$DB_DIR" ]]; then
-    echo "ERROR: Database directory parameter is required"
+    echo "ERROR: Database directory parameter is required" >&2
     usage
     exit 1
   fi
 
   if [[ ! -e "$DB_DIR" ]]; then
-    echo "ERROR: Database directory '$DB_DIR' does not exist"
+    echo "ERROR: Database directory '$DB_DIR' does not exist" >&2
     exit 1
   fi
 
   if [[ ! -d "$DB_DIR" ]]; then
-    echo "ERROR: '$DB_DIR' exists but is not a directory"
+    echo "ERROR: '$DB_DIR' exists but is not a directory" >&2
     exit 1
   fi
 
   if [[ ! -r "$DB_DIR" ]]; then
-    echo "ERROR: Database directory '$DB_DIR' is not readable (check permissions)"
+    echo "ERROR: Database directory '$DB_DIR' is not readable (check permissions)" >&2
     exit 1
   fi
 
@@ -90,28 +92,28 @@ fi
 
 # Validate LOCAL_DIR
 if [[ -z "$LOCAL_DIR" ]]; then
-  echo "ERROR: Local directory parameter is required"
+  echo "ERROR: Local directory parameter is required" >&2
   usage
   exit 1
 fi
 
 if [[ ! -e "$LOCAL_DIR" ]]; then
-  echo "ERROR: Local directory '$LOCAL_DIR' does not exist"
+  echo "ERROR: Local directory '$LOCAL_DIR' does not exist" >&2
   exit 1
 fi
 
 if [[ ! -d "$LOCAL_DIR" ]]; then
-  echo "ERROR: '$LOCAL_DIR' exists but is not a directory"
+  echo "ERROR: '$LOCAL_DIR' exists but is not a directory" >&2
   exit 1
 fi
 
 if [[ ! -r "$LOCAL_DIR" ]]; then
-  echo "ERROR: Local directory '$LOCAL_DIR' is not readable (check permissions)"
+  echo "ERROR: Local directory '$LOCAL_DIR' is not readable (check permissions)" >&2
   exit 1
 fi
 
 if [[ ! -w "$LOCAL_DIR" ]]; then
-  echo "ERROR: Local directory '$LOCAL_DIR' is not writable (check permissions)"
+  echo "ERROR: Local directory '$LOCAL_DIR' is not writable (check permissions)" >&2
   exit 1
 fi
 
@@ -120,7 +122,7 @@ LOCAL_DIR="$(realpath "$LOCAL_DIR")"
 # Validate KEEP_COUNT (skip if in --all mode)
 if [[ "$ALL_MODE" == "false" ]]; then
   if [[ ! "$KEEP_COUNT" =~ ^[1-9][0-9]*$ ]]; then
-    echo "ERROR: keep_count must be a positive integer, got: '$KEEP_COUNT'"
+    echo "ERROR: keep_count must be a positive integer, got: '$KEEP_COUNT'" >&2
     usage
     exit 1
   fi
@@ -137,7 +139,7 @@ log_message()
 
 log_error()
 {
-  echo "$(date -u '+%F %T'): ERROR: $1"
+  echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 
 # ============================================================================
@@ -150,25 +152,21 @@ read_current_state()
 
   if [[ ! -e "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' does not exist"
-    echo "0"
     return 1
   fi
 
   if [[ ! -f "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' exists but is not a regular file"
-    echo "0"
     return 1
   fi
 
   if [[ ! -r "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' is not readable (check permissions)"
-    echo "0"
     return 1
   fi
 
   if [[ ! -s "$STATE_PATH" ]]; then
     log_error "State file '$STATE_PATH' is empty"
-    echo "0"
     return 1
   fi
 
@@ -177,14 +175,12 @@ read_current_state()
 
   if [[ -z "$STATE_VALUE" ]]; then
     log_error "Failed to read state file '$STATE_PATH'"
-    echo "0"
     return 1
   fi
 
   # Validate that it's a positive number without leading zeros
   if ! [[ "$STATE_VALUE" =~ ^[1-9][0-9]*$ ]]; then
     log_error "State file '$STATE_PATH' contains invalid data: '$STATE_VALUE'"
-    echo "0"
     return 1
   fi
 

@@ -25,7 +25,7 @@
 # ============================================================================
 
 if [[ -z $3 ]]; then
-  cat << EOF
+  cat >&2 << EOF
 Usage: $0 replicate_id diff_url diff_dir [sleep]
 
   replicate_id   Starting replicate ID or 'auto' to resume from last fetch
@@ -62,19 +62,19 @@ LOCAL_DIR="$3"
 
 # Validate replicate_id: must be a positive integer or 'auto'
 if [[ "$START_ID" != "auto" && ! "$START_ID" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: Invalid replicate_id '$START_ID': must be a positive integer or 'auto'"
+  echo "ERROR: Invalid replicate_id '$START_ID': must be a positive integer or 'auto'" >&2
   exit 1
 fi
 
 # Validate source_url: must be an HTTP or HTTPS URL
 if [[ ! "$SOURCE_URL" =~ ^https?:// ]]; then
-  echo "ERROR: Invalid source_url '$SOURCE_URL': must start with http:// or https://"
+  echo "ERROR: Invalid source_url '$SOURCE_URL': must start with http:// or https://" >&2
   exit 1
 fi
 
 # Validate local_dir: must be usable as a directory
 if ! mkdir -p "$LOCAL_DIR" 2>/dev/null; then
-  echo "ERROR: local_dir '$LOCAL_DIR' is not writable or cannot be created"
+  echo "ERROR: local_dir '$LOCAL_DIR' is not writable or cannot be created" >&2
   exit 1
 fi
 
@@ -85,7 +85,7 @@ fi
 
 # Check for curl
 if ! command -v curl > /dev/null 2>&1; then
-  echo "ERROR: curl is not available"
+  echo "ERROR: curl is not available" >&2
   exit 1
 fi
 
@@ -138,7 +138,7 @@ DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
 DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -d "$DB_DIR" ]]; then
-  echo "ERROR: Database directory '$DB_DIR' does not exist"
+  echo "ERROR: Database directory '$DB_DIR' does not exist" >&2
   exit 1
 fi
 
@@ -155,12 +155,9 @@ FETCH_STATE_FILE="$LOCAL_DIR/replicate_id"
 # LOGGING
 # ============================================================================
 
-IN_TERMINAL="false"
-[[ -t 1 ]] && IN_TERMINAL="true"
-
 log_message()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
+  if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
     echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
@@ -169,8 +166,8 @@ log_message()
 
 log_error()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
-    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  if [[ -t 2 ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
     echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
   fi
@@ -525,7 +522,7 @@ download_batch()
     DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
     if ! mkdir -p "$DIR_PATH"; then
     {
-      log_error "Fatal error: unable to create $DIR_PATH directory."
+      log_error "Unable to create $DIR_PATH directory."
       exit 1
     }; fi
 

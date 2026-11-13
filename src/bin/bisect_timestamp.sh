@@ -26,7 +26,7 @@
 
 usage()
 {
-  cat << EOF
+  cat >&2 << EOF
 Usage: $0 [diff_url [diff_dir [target_time [lower [upper]]]]]
 
   diff_url     Replication source URL
@@ -54,6 +54,16 @@ number of the last diff that would have been applied to the database.
 EOF
 }
 
+warning()
+{
+  echo "$(date -u '+%F %T'): WARNING: $1" >&2
+}
+
+error()
+{
+  echo "$(date -u '+%F %T'): ERROR: $1" >&2
+}
+
 if [[ $# -eq 0 && -z "$OVERPASS_DIFF_URL" ]]; then
   usage
   exit 1
@@ -71,13 +81,13 @@ UPPER="${5:-${BISECT_TIMESTAMP_UPPER:-}}"
 
 # Validate source_url
 if [[ -z "$SOURCE_URL" ]]; then
-  echo "ERROR: source_url is required (or set OVERPASS_DIFF_URL)"
+  error "source_url is required (or set OVERPASS_DIFF_URL)"
   usage
   exit 1
 fi
 
 if [[ ! "$SOURCE_URL" =~ ^https?:// ]]; then
-  echo "ERROR: Invalid source_url '$SOURCE_URL': must start with http:// or https://"
+  error "Invalid source_url '$SOURCE_URL': must start with http:// or https://"
   usage
   exit 1
 fi
@@ -86,13 +96,13 @@ SOURCE_URL="${SOURCE_URL%/}"
 
 # Validate local_dir
 if [[ -z "$LOCAL_DIR" ]]; then
-  echo "ERROR: local_dir is required (or set OVERPASS_DIFF_DIR)"
+  error "local_dir is required (or set OVERPASS_DIFF_DIR)"
   usage
   exit 1
 fi
 
 if ! mkdir -p "$LOCAL_DIR" 2>/dev/null; then
-  echo "ERROR: local_dir '$LOCAL_DIR' is not writable or cannot be created"
+  error "local_dir '$LOCAL_DIR' is not writable or cannot be created"
   exit 1
 fi
 
@@ -107,8 +117,7 @@ if [[ -z "$TARGET_TIME" ]]; then
     if [[ -s "$OVERPASS_DB_DIR/osm_base_version" ]]; then
       TARGET_TIME=$(cat "$OVERPASS_DB_DIR/osm_base_version")
     else
-      echo "ERROR: OVERPASS_DB_DIR is set but $OVERPASS_DB_DIR/osm_base_version is missing or empty"
-      echo "       Set target_time or OVERPASS_DB_VERSION explicitly"
+      error "OVERPASS_DB_DIR is set but $OVERPASS_DB_DIR/osm_base_version is missing or empty. Set target_time or OVERPASS_DB_VERSION explicitly."
       usage
       exit 1
     fi
@@ -117,41 +126,40 @@ if [[ -z "$TARGET_TIME" ]]; then
     if [[ -n "$DB_DIR" && -s "$DB_DIR/osm_base_version" ]]; then
       TARGET_TIME=$(cat "$DB_DIR/osm_base_version")
     else
-      echo "ERROR: Could not read osm_base_version from dispatcher database directory"
-      echo "       Set target_time, OVERPASS_DB_VERSION, or OVERPASS_DB_DIR explicitly"
+      error "Could not read osm_base_version from dispatcher database directory. Set target_time, OVERPASS_DB_VERSION, or OVERPASS_DB_DIR explicitly."
       usage
       exit 1
     fi
   else
-    echo "ERROR: target_time is required (or set OVERPASS_DB_VERSION or OVERPASS_DB_DIR)"
+    error "target_time is required (or set OVERPASS_DB_VERSION or OVERPASS_DB_DIR)"
     usage
     exit 1
   fi
 fi
 
 if [[ ! "$TARGET_TIME" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}\\:[0-9]{2}\\:[0-9]{2}Z$ ]]; then
-  echo "ERROR: Invalid target_time '$TARGET_TIME': expected format 2026-03-20T19\:46\:25Z"
+  error "Invalid target_time '$TARGET_TIME': expected format 2026-03-20T19\:46\:25Z"
   usage
   exit 1
 fi
 
 # Validate lower bound
 if [[ ! "$LOWER" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: Invalid lower bound '$LOWER': must be a positive integer"
+  error "Invalid lower bound '$LOWER': must be a positive integer"
   usage
   exit 1
 fi
 
 # Check for curl
 if ! command -v curl > /dev/null 2>&1; then
-  echo "ERROR: curl is not available"
+  error "curl is not available"
   exit 1
 fi
 
 # Fetch upper bound from source if not specified
 if [[ -z "$UPPER" ]]; then
   if ! STATE_TMP=$(mktemp); then
-    echo "ERROR: Failed to create temporary file"
+    error "Failed to create temporary file"
     exit 1
   fi
   if curl -fsSL \
@@ -169,20 +177,20 @@ if [[ -z "$UPPER" ]]; then
   rm -f "$STATE_TMP"
 
   if [[ -z "$UPPER" ]]; then
-    echo "ERROR: Unable to fetch upper bound from $SOURCE_URL/state.txt"
+    error "Unable to fetch upper bound from $SOURCE_URL/state.txt"
     exit 1
   fi
 fi
 
 # Validate upper bound
 if [[ ! "$UPPER" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: Invalid upper bound '$UPPER': must be a positive integer"
+  error "Invalid upper bound '$UPPER': must be a positive integer"
   usage
   exit 1
 fi
 
 if [[ $LOWER -ge $UPPER ]]; then
-  echo "ERROR: lower bound ($LOWER) must be less than upper bound ($UPPER)"
+  error "lower bound ($LOWER) must be less than upper bound ($UPPER)"
   usage
   exit 1
 fi
@@ -223,7 +231,7 @@ fetch_state()
 
   if [[ ! -s "$LOCAL_FILE" ]]; then
     if ! mkdir -p "$LOCAL_PATH"; then
-      echo "ERROR: Failed to create directory $LOCAL_PATH"
+      error "Failed to create directory $LOCAL_PATH"
       DATA_VERSION=
       return 2
     fi
@@ -238,12 +246,12 @@ fetch_state()
       "$REMOTE_URL" 2>/dev/null)
 
     if [[ "$HTTP_CODE" == "404" ]]; then
-      echo "WARNING: Failed to download $REMOTE_URL" >&2
+      warning "Failed to download $REMOTE_URL"
       rm -f "$TMP_FILE"
       DATA_VERSION=
       return 1
     elif [[ "$HTTP_CODE" != "200" || ! -s "$TMP_FILE" ]]; then
-      echo "ERROR: Failed to download $REMOTE_URL"
+      error "Failed to download $REMOTE_URL"
       rm -f "$TMP_FILE"
       DATA_VERSION=
       return 2
@@ -256,7 +264,7 @@ fetch_state()
   DATA_VERSION="${TIMESTAMP_LINE:10}"
 
   if [[ ! "$DATA_VERSION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}\\:[0-9]{2}\\:[0-9]{2}Z$ ]]; then
-    echo "ERROR: Invalid or missing timestamp in $LOCAL_FILE"
+    error "Invalid or missing timestamp in $LOCAL_FILE"
     DATA_VERSION=
     return 2
   fi
@@ -273,7 +281,7 @@ while ((LOWER + 1 < UPPER )); do
   fetch_state "$TARGET"
   FETCH_STATUS=$?
   if [[ $FETCH_STATUS -eq 2 ]]; then
-    echo "ERROR: Aborting bisect due to download failure"
+    error "Aborting bisect due to download failure"
     exit 1
   elif [[ $FETCH_STATUS -eq 1 ]]; then
     # assume that 404 means that LOWER is less than the starting sequence number

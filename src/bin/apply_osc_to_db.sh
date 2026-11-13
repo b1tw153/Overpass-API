@@ -25,7 +25,7 @@
 # ============================================================================
 
 if [[ -z $3 ]]; then
-  cat << EOF
+  cat >&2 << EOF
 Usage: $0 diff_dir replicate_id --meta=(attic|yes|no)
 
   diff_dir        Directory containing downloaded .osc.gz files
@@ -59,7 +59,7 @@ elif [[ $META_ARG == "--meta=yes" || $META_ARG == "--meta" ]]; then
 elif [[ $META_ARG == "--meta=no" ]]; then
   META=
 else
-  echo "ERROR: You must specify --meta=attic, --meta=yes, or --meta=no"
+  echo "ERROR: You must specify --meta=attic, --meta=yes, or --meta=no" >&2
   exit 1
 fi
 
@@ -89,15 +89,15 @@ DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir)
 DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -d "$DB_DIR" ]]; then
-  echo "ERROR: Database directory '$DB_DIR' does not exist"
+  echo "ERROR: Database directory '$DB_DIR' does not exist" >&2
   exit 1
 fi
 
 # Check for buggy date implementation
 DATE_CHECK=$(date -d "2026-01-31T20:00:30Z" +%s 2>/dev/null)
 if [[ "$?" -ne 0 || "$DATE_CHECK" -ne 1769889630 ]]; then
-  echo "ERROR: The 'date' command on this system cannot parse ISO-8601 timestamps (e.g., 2026-01-31T20:00:30Z) used in OSM data."
-  echo "Update your system packages, install GNU date, or use the Docker container instead."
+  echo "ERROR: The 'date' command on this system cannot parse ISO-8601 timestamps (e.g., 2026-01-31T20:00:30Z) used in OSM data." >&2
+  echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
   exit 1
 fi
 
@@ -109,7 +109,7 @@ LOG_FILE="$DB_DIR/apply_osc_to_db.log"
 
 # PID file
 PID_FILE="$DB_DIR/apply_osc.pid"
-echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE"; exit 1; }
+echo "$$" > "$PID_FILE" || { echo "ERROR: Unable to write PID file: $PID_FILE" >&2; exit 1; }
 
 # Working directory for decompressed files (created in main execution section)
 WORK_DIR=
@@ -138,12 +138,9 @@ die()
 # LOGGING
 # ============================================================================
 
-IN_TERMINAL="false"
-[[ -t 1 ]] && IN_TERMINAL="true"
-
 log_message()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
+  if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
     echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
@@ -152,8 +149,8 @@ log_message()
 
 log_error()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
-    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  if [[ -t 2 ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
     echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
   fi

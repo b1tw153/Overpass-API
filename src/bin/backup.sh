@@ -25,7 +25,7 @@
 
 usage()
 {
-  cat << EOF
+  cat >&2 << EOF
 Usage: $0 [--time HH:MM] [--day DAY] backup_dir
 
   backup_dir        Target directory for backup files
@@ -64,7 +64,7 @@ fi
 
 print_corruption_warning()
 {
-  cat << EOF
+  cat >&2 << EOF
 WARNING: Backup could not confirm that the database is valid. No files will be
 copied to prevent overwriting the backup with corrupt data. To proceed, the
 dispatcher and apply_osc_to_db.sh must be running. To perform a manual backup,
@@ -74,30 +74,30 @@ EOF
 
 EXEC_DIR="$(dirname "$(realpath "$0")")"
 
-DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir) || { echo "ERROR: dispatcher --show-dir failed"; exit 1; }
+DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir) || { echo "ERROR: dispatcher --show-dir failed" >&2; exit 1; }
 DB_DIR="$(realpath "$DB_DIR")"
 
 if ! [[ -d $DB_DIR && -w $DB_DIR ]]; then
-  echo "ERROR: Database directory '$DB_DIR' is not a writeable directory"
+  echo "ERROR: Database directory '$DB_DIR' is not a writeable directory" >&2
   exit 1
 fi
 
 BACKUP_DIR="$(realpath "$1")"
 
-mkdir -p "$BACKUP_DIR" || { echo "ERROR: Unable to acccess backup directory '$BACKUP_DIR'"; exit 1; }
+mkdir -p "$BACKUP_DIR" || { echo "ERROR: Unable to acccess backup directory '$BACKUP_DIR'" >&2; exit 1; }
 if [[ ! -w $BACKUP_DIR ]]; then
-  echo "ERROR: Backup directory '$BACKUP_DIR' is not writeable"
+  echo "ERROR: Backup directory '$BACKUP_DIR' is not writeable" >&2
   exit 1
 fi
 
 APPLY_OSC_PID=$(cat "$DB_DIR/apply_osc.pid") 2>/dev/null
 if [[ -z "$APPLY_OSC_PID" ]]; then
-  echo "ERROR: apply_osc.pid is missing or empty"
+  echo "ERROR: apply_osc.pid is missing or empty" >&2
   print_corruption_warning
   exit 1
 fi
 if ! kill -0 "$APPLY_OSC_PID" 2>/dev/null; then
-  echo "ERROR: apply_osc_to_db.sh is not running"
+  echo "ERROR: apply_osc_to_db.sh is not running" >&2
   print_corruption_warning
   exit 1
 fi
@@ -122,7 +122,7 @@ BACKUP_DAY="${BACKUP_DAY^^}"
 if [[ -n "$BACKUP_DAY" ]]; then
   if [[ ! "$BACKUP_DAY" =~ ^(MON|TUE|WED|THU|FRI|SAT|SUN)$ ]] && \
      [[ ! "$BACKUP_DAY" =~ ^([1-9]|[12][0-9]|3[01])$ ]]; then
-    echo "ERROR: --day / OVERPASS_BACKUP_DAY must be a day of week (MON-SUN) or day of month (1-31), got: '$BACKUP_DAY'"
+    echo "ERROR: --day / OVERPASS_BACKUP_DAY must be a day of week (MON-SUN) or day of month (1-31), got: '$BACKUP_DAY'" >&2
     exit 1
   fi
   if [[ -z "$BACKUP_TIME" ]]; then
@@ -136,25 +136,25 @@ fi
 
 if [[ -n "$BACKUP_TIME" ]] && \
    [[ ! "$BACKUP_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
-  echo "ERROR: --time / OVERPASS_BACKUP_TIME must be in HH:MM format (00:00-23:59), got: '$BACKUP_TIME'"
+  echo "ERROR: --time / OVERPASS_BACKUP_TIME must be in HH:MM format (00:00-23:59), got: '$BACKUP_TIME'" >&2
   exit 1
 fi
 
 if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'"
+  echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'" >&2
   exit 1
 fi
 
 if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
-  echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
+  echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)" >&2
   exit 1
 fi
 
 if [[ -n "$BACKUP_TIME" ]]; then
   DATE_CHECK=$(date -d "today $BACKUP_TIME" +%s 2>/dev/null)
   if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')."
-    echo "Update your system packages, install GNU date, or use the Docker container instead."
+    echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')." >&2
+    echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
     exit 1
   fi
 fi
@@ -162,8 +162,8 @@ fi
 if [[ "$BACKUP_DAY" =~ ^[0-9]+$ ]]; then
   DATE_CHECK=$(date +%-d 2>/dev/null)
   if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: The 'date' command on this system does not support the '%-d' format specifier."
-    echo "Update your system packages, install GNU date, or use the Docker container instead."
+    echo "ERROR: The 'date' command on this system does not support the '%-d' format specifier." >&2
+    echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
     exit 1
   fi
 fi
@@ -172,12 +172,9 @@ fi
 # LOGGING
 # ============================================================================
 
-IN_TERMINAL="false"
-[[ -t 1 ]] && IN_TERMINAL="true"
-
 log_message()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
+  if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
     echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
@@ -186,8 +183,8 @@ log_message()
 
 log_error()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
-    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  if [[ -t 2 ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
     echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
   fi

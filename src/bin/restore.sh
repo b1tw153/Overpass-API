@@ -25,7 +25,7 @@
 
 usage()
 {
-  cat << EOF
+  cat >&2 << EOF
 Usage: $0 backup_dir db_dir
 
   backup_dir    Source directory containing backup files
@@ -46,19 +46,19 @@ EXEC_DIR="$(dirname "$(realpath "$0")")"
 DB_DIR="$(realpath "$2")"
 
 if ! [[ -d $DB_DIR && -w $DB_DIR ]]; then
-  echo "ERROR: Database directory '$DB_DIR' is not a writeable directory"
+  echo "ERROR: Database directory '$DB_DIR' is not a writeable directory" >&2
   exit 1
 fi
 
 BACKUP_DIR="$(realpath "$1")"
 
 if ! [[ -d $BACKUP_DIR && -r $BACKUP_DIR ]]; then
-  echo "ERROR: Backup directory '$BACKUP_DIR' is not a readable directory"
+  echo "ERROR: Backup directory '$BACKUP_DIR' is not a readable directory" >&2
   exit 1
 fi
 
 if "$EXEC_DIR/dispatcher" --show-dir > /dev/null 2>&1; then
-  echo "ERROR: Dispatcher is running; stop all Overpass processes before restoring"
+  echo "ERROR: Dispatcher is running; stop all Overpass processes before restoring" >&2
   exit 1
 fi
 
@@ -71,12 +71,9 @@ LOG_FILE="$DB_DIR/backup.log"
 # LOGGING
 # ============================================================================
 
-IN_TERMINAL="false"
-[[ -t 1 ]] && IN_TERMINAL="true"
-
 log_message()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
+  if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
     echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
@@ -85,8 +82,8 @@ log_message()
 
 log_error()
 {
-  if [[ "$IN_TERMINAL" == "true" ]]; then
-    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE"
+  if [[ -t 2 ]]; then
+    echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
     echo "$(date -u '+%F %T'): ERROR: $1" >> "$LOG_FILE"
   fi

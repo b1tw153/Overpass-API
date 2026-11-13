@@ -66,6 +66,11 @@ message()
   echo "$(date -u '+%F %T'): $1"
 }
 
+error()
+{
+  echo "$(date -u '+%F %T'): ERROR: $1" >&2
+}
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -88,7 +93,7 @@ PARSED=$(getopt \
   --options '' \
   --longoptions 'db-dir:,diff-dir:,data-source:,diff-url:,meta:,compression-method:,help' \
   --name "$0" \
-  -- "$@") || { usage; exit 1; }
+  -- "$@") || { usage >&2; exit 1; }
 
 eval set -- "$PARSED"
 
@@ -110,14 +115,14 @@ done
 # ============================================================================
 
 if [[ -z "$DB_DIR" ]]; then
-  message "ERROR: --db-dir is required (or set OVERPASS_DB_DIR)"
-  usage
+  error "--db-dir is required (or set OVERPASS_DB_DIR)"
+  usage >&2
   exit 1
 fi
 
 if [[ -z "$DIFF_DIR" ]]; then
-  message "ERROR: --diff-dir is required (or set OVERPASS_DIFF_DIR)"
-  usage
+  error "--diff-dir is required (or set OVERPASS_DIFF_DIR)"
+  usage >&2
   exit 1
 fi
 
@@ -127,23 +132,23 @@ DB_DIR="$(realpath -m "$DB_DIR")"
 DIFF_DIR="$(realpath -m "$DIFF_DIR")"
 
 if [[ -z "$REPLICATION_SOURCE" ]]; then
-  message "ERROR: --diff-url is required (or set OVERPASS_DIFF_URL)"
-  usage
+  error "--diff-url is required (or set OVERPASS_DIFF_URL)"
+  usage >&2
   exit 1
 fi
 
 if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
-  message "ERROR: Invalid value for --meta: $META (expected yes, no, or attic)"
+  error "Invalid value for --meta: $META (expected yes, no, or attic)"
   exit 1
 fi
 
 if ! [[ "$COMPRESSION" =~ ^(no|gz|lz4)$ ]]; then
-  message "ERROR: Invalid value for --compression-method: $COMPRESSION (expected no, gz, or lz4)"
+  error "Invalid value for --compression-method: $COMPRESSION (expected no, gz, or lz4)"
   exit 1
 fi
 
 if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
-  message "ERROR: Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
+  error "Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
   exit 1
 fi
 
@@ -177,8 +182,7 @@ if [[ "$FORMAT_EXT" == *.pbf ]]; then
 elif [[ "$FORMAT_EXT" == *.osm ]]; then
   : # no conversion needed
 else
-  message "ERROR: Unrecognized file format in URL: $DATA_SOURCE"
-  message "       Expected .osm, .osm.bz2, .pbf, .osm.bz2.torrent, or .pbf.torrent"
+  error "Unrecognized file format in URL: $DATA_SOURCE - expected .osm, .osm.bz2, .pbf, .osm.bz2.torrent, or .pbf.torrent"
   exit 1
 fi
 
@@ -189,12 +193,12 @@ fi
 EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 if [[ ! -x "$EXEC_DIR/update_database" ]]; then
-  message "ERROR: update_database not found in $EXEC_DIR"
+  error "update_database not found in $EXEC_DIR"
   exit 1
 fi
 
 if [[ ! -x "$EXEC_DIR/bisect_timestamp.sh" ]]; then
-  message "ERROR: bisect_timestamp.sh not found in $EXEC_DIR"
+  error "bisect_timestamp.sh not found in $EXEC_DIR"
   exit 1
 fi
 
@@ -204,17 +208,17 @@ if command -v aria2c > /dev/null 2>&1; then
 fi
 
 if [[ $USE_TORRENT -eq 1 && $HAS_ARIA2C -eq 0 ]]; then
-  message "ERROR: aria2c is required for torrent downloads but is not installed"
+  error "aria2c is required for torrent downloads but is not installed"
   exit 1
 fi
 
 if [[ $USE_OSMIUM -eq 1 ]] && ! command -v osmium > /dev/null 2>&1; then
-  message "ERROR: osmium is required for .pbf imports but is not installed"
+  error "osmium is required for .pbf imports but is not installed"
   exit 1
 fi
 
 if ! command -v md5sum > /dev/null 2>&1; then
-  message "ERROR: md5sum is not available"
+  error "md5sum is not available"
   exit 1
 fi
 
@@ -223,12 +227,12 @@ fi
 # ============================================================================
 
 if ! mkdir -p "$DB_DIR"; then
-  message "ERROR: Failed to create or access database directory: $DB_DIR"
+  error "Failed to create or access database directory: $DB_DIR"
   exit 1
 fi
 
 if ! mkdir -p "$DIFF_DIR"; then
-  message "ERROR: Failed to create or access diff directory: $DIFF_DIR"
+  error "Failed to create or access diff directory: $DIFF_DIR"
   exit 1
 fi
 
@@ -269,7 +273,7 @@ else
   THRESHOLD=$(( FILE_SIZE * (100 + DB_RATIO) * (100 + MIN_FREE_DISK_PERCENT) / 100 / 100 ))
   FREE_BYTES=$(df --output=avail -B1 "$DB_DIR" | tail -1 | tr -d ' ')
   if [[ $FREE_BYTES -lt $THRESHOLD ]]; then
-    message "ERROR: Insufficient free disk space on database filesystem: ${FREE_BYTES} bytes free (minimum: ${THRESHOLD} bytes)"
+    error "Insufficient free disk space on database filesystem: ${FREE_BYTES} bytes free (minimum: ${THRESHOLD} bytes)"
     exit 1
   fi
 fi
@@ -284,10 +288,10 @@ cd "$DB_DIR" || exit 1
 
 if [[ $USE_TORRENT -eq 1 ]]; then
   aria2c --allow-overwrite=true --seed-time=0 -o "$FILENAME" "$DATA_SOURCE" \
-    || { message "ERROR: Download failed"; exit 1; }
+    || { error "Download failed"; exit 1; }
 elif [[ $HAS_ARIA2C -eq 1 ]]; then
   aria2c --allow-overwrite=true -x 16 -s 16 -o "$FILENAME" "$FILE_URL" \
-    || { message "ERROR: Download failed"; exit 1; }
+    || { error "Download failed"; exit 1; }
 else
   curl -f -S -L \
     --retry 10 \
@@ -296,7 +300,7 @@ else
     --speed-time 60 \
     -o "$FILENAME" \
     "$FILE_URL" \
-    || { message "ERROR: Download failed"; exit 1; }
+    || { error "Download failed"; exit 1; }
 fi
 
 message "Download complete"
@@ -321,19 +325,19 @@ CURL_STATUS=$?
 # ============================================================================
 
 if [[ $CURL_STATUS -ne 0 ]]; then
-  message "ERROR: Failed to download MD5 checksum from $MD5_URL (curl exit $CURL_STATUS)"
+  error "Failed to download MD5 checksum from $MD5_URL (curl exit $CURL_STATUS)"
   exit 1
 elif [[ "$HTTP_CODE" == 404 ]]; then
   rm -f "$FILENAME.md5"
   message "WARNING: No MD5 checksum available for $FILENAME (HTTP 404); skipping verification"
 elif [[ "$HTTP_CODE" != 200 ]]; then
   rm -f "$FILENAME.md5"
-  message "ERROR: Failed to download MD5 checksum from $MD5_URL (HTTP $HTTP_CODE)"
+  error "Failed to download MD5 checksum from $MD5_URL (HTTP $HTTP_CODE)"
   exit 1
 else
   message "Verifying MD5 checksum ..."
   if ! md5sum -c "${FILENAME}.md5"; then
-    message "ERROR: MD5 verification failed for $FILENAME"
+    error "MD5 verification failed for $FILENAME"
     exit 1
   fi
   message "Verified MD5 checksum"
@@ -378,19 +382,19 @@ PIPE_STATUS=("${PIPESTATUS[@]}")
 if [[ $USE_BUNZIP2 -eq 1 || $USE_OSMIUM -eq 1 ]]; then
   if [[ ${PIPE_STATUS[0]:-0} -ne 0 ]]; then
     if [[ $USE_BUNZIP2 -eq 1 ]]; then
-      message "ERROR: bunzip2 failed (exit code ${PIPE_STATUS[0]})"
+      error "bunzip2 failed (exit code ${PIPE_STATUS[0]})"
     else
-      message "ERROR: osmium failed (exit code ${PIPE_STATUS[0]})"
+      error "osmium failed (exit code ${PIPE_STATUS[0]})"
     fi
     exit 1
   fi
   if [[ ${PIPE_STATUS[1]:-0} -ne 0 ]]; then
-    message "ERROR: update_database failed (exit code ${PIPE_STATUS[1]})"
+    error "update_database failed (exit code ${PIPE_STATUS[1]})"
     exit 1
   fi
 else
   if [[ ${PIPE_STATUS[0]:-0} -ne 0 ]]; then
-    message "ERROR: update_database failed (exit code ${PIPE_STATUS[0]})"
+    error "update_database failed (exit code ${PIPE_STATUS[0]})"
     exit 1
   fi
 fi
@@ -407,8 +411,7 @@ if OUTPUT=$(OVERPASS_DB_DIR="$DB_DIR" "$EXEC_DIR/bisect_timestamp.sh" "$REPLICAT
   message "REPLICATE_ID=$OUTPUT"
   echo "$OUTPUT" > "$DB_DIR/replicate_id"
 else
-  message "ERROR: Unable to determine replicate_id:"
-  message "$OUTPUT"
+  error "Unable to determine replicate_id"
   exit 1
 fi
 

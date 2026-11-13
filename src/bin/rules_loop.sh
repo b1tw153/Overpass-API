@@ -20,7 +20,7 @@
 
 usage()
 {
-  cat << EOF
+  cat >&2 << EOF
 Usage: $0 [db_dir]
 
   db_dir   (Optional, deprecated) Database directory; ignored if provided
@@ -40,28 +40,27 @@ EOF
 
 if [[ -n "$1" ]]; then
   echo "INFO: The DB_DIR argument is deprecated and is no longer used"
-  usage
 fi
 
 EXEC_DIR="$(dirname "$(realpath "$0")")"
 
-DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir) || { echo "ERROR: dispatcher --show-dir failed"; exit 1; }
+DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir) || { echo "ERROR: dispatcher --show-dir failed" >&2; exit 1; }
 if ! [[ -d $DB_DIR && -w $DB_DIR ]]; then
-  echo "ERROR: Database directory '$DB_DIR' is not a writeable directory"
+  echo "ERROR: Database directory '$DB_DIR' is not a writeable directory" >&2
   exit 1
 fi
 
 DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -f "$DB_DIR/nodes.bin" || ! -f "$DB_DIR/ways.bin" || ! -f "$DB_DIR/relations.bin" ]]; then
-  echo "ERROR: Database is not initialized (missing nodes.bin, ways.bin, or relations.bin)"
+  echo "ERROR: Database is not initialized (missing nodes.bin, ways.bin, or relations.bin)" >&2
   exit 1
 fi
 
 OVERPASS_UPDATE_FREQUENCY="${OVERPASS_UPDATE_FREQUENCY:-60}"
 
 if [[ ! "$OVERPASS_UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$OVERPASS_UPDATE_FREQUENCY'"
+  echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$OVERPASS_UPDATE_FREQUENCY'" >&2
   usage
   exit 1
 fi
@@ -72,7 +71,7 @@ POLL_INTERVAL=$(( OVERPASS_UPDATE_FREQUENCY / 60 ))
 AREA_RULES_FILE="${AREA_RULES_FILE:-$DB_DIR/rules/areas.osm3s}"
 
 if [[ ! -f "$AREA_RULES_FILE" ]]; then
-  echo "ERROR: Rules file not found: '$AREA_RULES_FILE'"
+  echo "ERROR: Rules file not found: '$AREA_RULES_FILE'" >&2
   usage
   exit 1
 fi
@@ -81,7 +80,7 @@ AREA_UPDATE_TIME="${AREA_UPDATE_TIME:-}"
 
 if [[ -n "$AREA_UPDATE_TIME" ]] && \
    [[ ! "$AREA_UPDATE_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
-  echo "ERROR: AREA_UPDATE_TIME must be in HH:MM format (00:00-23:59), got: '$AREA_UPDATE_TIME'"
+  echo "ERROR: AREA_UPDATE_TIME must be in HH:MM format (00:00-23:59), got: '$AREA_UPDATE_TIME'" >&2
   usage
   exit 1
 fi
@@ -89,8 +88,8 @@ fi
 if [[ -n "$AREA_UPDATE_TIME" ]]; then
   DATE_CHECK=$(date -d "today $AREA_UPDATE_TIME" +%s 2>/dev/null)
   if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
-    echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')."
-    echo "Update your system packages, install GNU date, or use the Docker container instead."
+    echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')." >&2
+    echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
     exit 1
   fi
 fi
