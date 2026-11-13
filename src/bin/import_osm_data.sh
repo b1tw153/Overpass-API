@@ -121,6 +121,11 @@ if [[ -z "$DIFF_DIR" ]]; then
   exit 1
 fi
 
+# Resolve both directories to absolute paths before first use. The script
+# changes directory later. The -m option allows directories that do not exist yet.
+DB_DIR="$(realpath -m "$DB_DIR")"
+DIFF_DIR="$(realpath -m "$DIFF_DIR")"
+
 if [[ -z "$REPLICATION_SOURCE" ]]; then
   message "ERROR: --diff-url is required (or set OVERPASS_DIFF_URL)"
   usage
