@@ -199,7 +199,7 @@ fi
 # PATH CONVERSION
 # ============================================================================
 
-get_path()
+get_replicate_path()
 {
   local ID="$1"
   local ARG
@@ -223,7 +223,7 @@ fetch_state()
   local TARGET="$1"
   local LOCAL_PATH LOCAL_FILE REMOTE_URL TMP_FILE TIMESTAMP_LINE HTTP_CODE
 
-  get_path "$TARGET"
+  get_replicate_path "$TARGET"
 
   LOCAL_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
   LOCAL_FILE="$LOCAL_PATH/$DIGIT3.state.txt"

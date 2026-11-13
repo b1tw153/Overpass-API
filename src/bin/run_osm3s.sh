@@ -424,7 +424,7 @@ delete_stale_socket_files()
 # UPDATE FREQUENCY DETECTION
 # ============================================================================
 
-get_path() {
+get_replicate_path() {
   printf '%03d/%03d/%03d' \
     $(( $1 / 1000000 )) \
     $(( ($1 / 1000) % 1000 )) \
@@ -454,12 +454,12 @@ detect_update_frequency()
     return 1
   fi
 
-  LAST_MODIFIED_0=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$CURRENT_SEQ").state.txt") \
-    || { error "Failed to get Last-Modified time for $(get_path "$CURRENT_SEQ").state.txt"; return 1; }
-  LAST_MODIFIED_1=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$((CURRENT_SEQ - 1))").state.txt") \
-    || { error "Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 1))").state.txt"; return 1; }
-  LAST_MODIFIED_2=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_path "$((CURRENT_SEQ - 2))").state.txt") \
-    || { error "Failed to get Last-Modified time for $(get_path "$((CURRENT_SEQ - 2))").state.txt"; return 1; }
+  LAST_MODIFIED_0=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_replicate_path "$CURRENT_SEQ").state.txt") \
+    || { error "Failed to get Last-Modified time for $(get_replicate_path "$CURRENT_SEQ").state.txt"; return 1; }
+  LAST_MODIFIED_1=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_replicate_path "$((CURRENT_SEQ - 1))").state.txt") \
+    || { error "Failed to get Last-Modified time for $(get_replicate_path "$((CURRENT_SEQ - 1))").state.txt"; return 1; }
+  LAST_MODIFIED_2=$(get_last_modified "${OVERPASS_DIFF_URL%/}/$(get_replicate_path "$((CURRENT_SEQ - 2))").state.txt") \
+    || { error "Failed to get Last-Modified time for $(get_replicate_path "$((CURRENT_SEQ - 2))").state.txt"; return 1; }
 
   INTERVAL_1=$(( LAST_MODIFIED_0 - LAST_MODIFIED_1 ))
   INTERVAL_2=$(( LAST_MODIFIED_1 - LAST_MODIFIED_2 ))

@@ -406,7 +406,7 @@ get_latest_available_id()
 # PATH CONVERSION
 # ============================================================================
 
-get_path()
+get_replicate_path()
 {
   local ID=$1
   local ARG
@@ -516,7 +516,7 @@ download_batch()
 
   CACHED_COUNT=0
   for (( ID=START+1; ID<=END; ID++ )); do
-    get_path "$ID"
+    get_replicate_path "$ID"
 
     REMOTE_BASE="$SOURCE_URL/$URL_PATH"
     DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
