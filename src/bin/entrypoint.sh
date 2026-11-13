@@ -217,7 +217,7 @@ shutdown()
   FCGI_PID=
 
   message "Shutdown complete"
-  if $GO_ZOMBIE; then
+  if "$GO_ZOMBIE"; then
     GO_ZOMBIE=false
     while true; do
       sleep 60 &
@@ -259,6 +259,7 @@ FCGI_PID=$!
 echo "$FCGI_PID" > /opt/overpass/run/fcgiwrap.pid
 
 # Render nginx config from template
+# shellcheck disable=SC2016 # envsubst expands the variable names itself.
 envsubst '${FCGIWRAP_WORKERS} ${NGINX_FASTCGI_TIMEOUT} ${NGINX_MAX_CONN} ${NGINX_LIMIT_CONN_ZONE} ${NGINX_LIMIT_CONN_CLIENT} ${NGINX_LIMIT_REQ_ZONE} ${NGINX_LIMIT_REQ_CLIENT}' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf
 
 # Start nginx
@@ -274,6 +275,7 @@ OSM3S_PID="$!"
 # Start munin-node if monitoring is enabled (not load-bearing for serving)
 if [[ -n "$MUNIN_NODE_CIDR_ALLOW" ]]; then
   message "Starting munin-node"
+  # shellcheck disable=SC2016 # envsubst expands the variable names itself.
   envsubst '${MUNIN_NODE_LOG_LEVEL} ${MUNIN_NODE_HOST_NAME} ${MUNIN_NODE_ACL} ${MUNIN_NODE_HOST} ${MUNIN_NODE_PORT}' \
     < /etc/munin/munin-node.conf.template > /etc/munin/munin-node.conf
   munin-node --config /etc/munin/munin-node.conf >> "$OVERPASS_LOG_DIR/munin-node.out" 2>&1 &

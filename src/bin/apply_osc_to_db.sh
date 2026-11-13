@@ -299,7 +299,7 @@ get_replicate_path()
   local ARG=$((ID / 1000))
   printf -v DIGIT2 %03u $((ARG % 1000))
   ARG=$((ARG / 1000))
-  printf -v DIGIT1 %03u $ARG
+  printf -v DIGIT1 %03u "$ARG"
   REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
 }
 
@@ -376,7 +376,7 @@ collect_batch()
 
   # Find contiguous downloaded files until size or time limit reached
   while true; do
-    get_replicate_path $ID
+    get_replicate_path "$ID"
 
     local OSC_FILE="$REPLICATE_DIR/$REPLICATE_PATH.osc.gz"
     local STATE_FILE_LOCAL="$REPLICATE_DIR/$REPLICATE_PATH.state.txt"
@@ -431,7 +431,7 @@ collect_batch()
     fi
 
     # File passes all checks - add it to the batch
-    BATCH_END=$ID
+    BATCH_END="$ID"
     BATCH_SIZE_BYTES=$NEW_BATCH_SIZE
     ID=$((ID + 1))
   done
