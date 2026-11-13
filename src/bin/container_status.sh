@@ -26,6 +26,57 @@
 
 EXEC_DIR="$(dirname "$(realpath "$0")")"
 
+error() {
+  echo "$(date -u '+%F %T'): ERROR: $1" >&2
+}
+
+# Print the meta mode of the database in directory $1: no, yes or attic.
+# Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
+# missing. Return 2 if $1 is not a directory.
+detect_database_meta_state()
+{
+  local DIR="$1"
+  local TRUNK
+
+  if [[ ! -d "$DIR" ]]; then
+    error "detect_database_meta_state: not a directory: '$DIR'"
+    return 2
+  fi
+
+  for TRUNK in nodes ways relations; do
+    [[ -f "$DIR/$TRUNK.bin" ]] || return 1
+  done
+
+  local ATTIC_TRUNKS=(
+    nodes_attic nodes_attic_undeleted node_attic_indexes
+    node_tags_local_attic node_tags_global_attic node_frequent_tags_attic
+    nodes_meta_attic node_changelog
+    ways_attic ways_attic_undeleted way_attic_indexes
+    way_tags_local_attic way_tags_global_attic way_frequent_tags_attic
+    ways_meta_attic way_changelog
+    relations_attic relations_attic_undeleted relation_attic_indexes
+    relation_tags_local_attic relation_tags_global_attic
+    relation_frequent_tags_attic relations_meta_attic relation_changelog
+  )
+  local META_TRUNKS=(
+    user_data user_indices nodes_meta ways_meta relations_meta
+  )
+
+  for TRUNK in "${ATTIC_TRUNKS[@]}"; do
+    if [[ -f "$DIR/$TRUNK.bin" ]]; then
+      echo "attic"
+      return 0
+    fi
+  done
+  for TRUNK in "${META_TRUNKS[@]}"; do
+    if [[ -f "$DIR/$TRUNK.bin" ]]; then
+      echo "yes"
+      return 0
+    fi
+  done
+  echo "no"
+}
+
 # ============================================================================
 # ARGUMENT PARSING
 # ============================================================================
@@ -46,7 +97,7 @@ while true; do
 done
 
 if [[ "$FORMAT" != "text" && "$FORMAT" != "json" ]]; then
-  printf 'Error: unknown format %q (expected text or json)\n' "$FORMAT" >&2
+  error "Unknown format $FORMAT (expected text or json)" >&2
   exit 1
 fi
 
@@ -368,12 +419,12 @@ fi
 if [[ -n "$DB_DIR" ]]; then
   kv "osm_base lock" "$(lock_status "$DB_DIR/osm_base_shadow.lock")"
 
-  if [[ -f "$DB_DIR/nodes_attic.bin" || -f "$DB_DIR/node_changelog.bin" || -f "$DB_DIR/ways_attic.bin" ]]; then
-    kv "database type" "attic"
-  elif [[ -f "$DB_DIR/nodes_meta.bin" || -f "$DB_DIR/ways_meta.bin" || -f "$DB_DIR/user_data.bin" ]]; then
-    kv "database type" "meta"
-  elif [[ -f "$DB_DIR/nodes.bin" ]]; then
-    kv "database type" "base"
+  if DATABASE_META_STATE=$(detect_database_meta_state "$DB_DIR"); then
+    case "$DATABASE_META_STATE" in
+      attic) kv "database type" "attic" ;;
+      yes)   kv "database type" "meta" ;;
+      *)     kv "database type" "base" ;;
+    esac
   else
     kv "database type" "unknown (not initialized?)"
   fi

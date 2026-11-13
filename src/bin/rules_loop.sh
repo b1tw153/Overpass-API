@@ -52,7 +52,26 @@ fi
 
 DB_DIR="$(realpath "$DB_DIR")"
 
-if [[ ! -f "$DB_DIR/nodes.bin" || ! -f "$DB_DIR/ways.bin" || ! -f "$DB_DIR/relations.bin" ]]; then
+# Return 0 if directory $1 holds the skeleton files of an initialized database
+# (nodes.bin, ways.bin and relations.bin). Return 1 if any is missing. Return 2
+# if $1 is not a directory. This is the initialization test of
+# detect_database_meta_state() in the other scripts. The mode is not needed here.
+database_is_initialized()
+{
+  local DIR="$1"
+  local TRUNK
+
+  if [[ ! -d "$DIR" ]]; then
+    echo "ERROR: database_is_initialized: not a directory: '$DIR'" >&2
+    return 2
+  fi
+
+  for TRUNK in nodes ways relations; do
+    [[ -f "$DIR/$TRUNK.bin" ]] || return 1
+  done
+}
+
+if ! database_is_initialized "$DB_DIR"; then
   echo "ERROR: Database is not initialized (missing nodes.bin, ways.bin, or relations.bin)" >&2
   exit 1
 fi
@@ -100,8 +119,13 @@ fi
 
 LOG_FILE="$DB_DIR/rules_loop.log"
 
-log_message() {
-  echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
+log_message()
+{
+  if [[ -t 1 ]]; then
+    echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
+  else
+    echo "$(date -u '+%F %T'): $1" >> "$LOG_FILE"
+  fi
 }
 
 # ============================================================================

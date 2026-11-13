@@ -180,43 +180,82 @@ check_lock_files()
 # DATABASE STATE DETECTION
 # ============================================================================
 
-# Detect the meta mode of a database directory by checking for characteristic files
-# $1: directory to inspect
-# Returns: "no", "yes", or "attic" via stdout
-# Returns 1 if base files are missing (not a valid backup)
+# Print the meta mode of the database in directory $1: no, yes or attic.
+# Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
+# missing. Return 2 if $1 is not a directory.
 detect_database_meta_state()
 {
   local DIR="$1"
+  local TRUNK
 
-  # Check for attic files (most specific check first)
-  if [[ -f "$DIR/nodes_attic.bin" || -f "$DIR/node_changelog.bin" || -f "$DIR/ways_attic.bin" ]]; then
-    echo "attic"
-    return 0
+  if [[ ! -d "$DIR" ]]; then
+    log_error "detect_database_meta_state: not a directory: '$DIR'"
+    return 2
   fi
 
-  # Check for meta files
-  if [[ -f "$DIR/nodes_meta.bin" || -f "$DIR/ways_meta.bin" || -f "$DIR/user_data.bin" ]]; then
-    echo "yes"
-    return 0
-  fi
+  for TRUNK in nodes ways relations; do
+    [[ -f "$DIR/$TRUNK.bin" ]] || return 1
+  done
 
-  # No meta or attic files found - verify base files exist
-  if [[ ! -f "$DIR/nodes.bin" || ! -f "$DIR/ways.bin" || ! -f "$DIR/relations.bin" ]]; then
-    return 1
-  fi
+  local ATTIC_TRUNKS=(
+    nodes_attic nodes_attic_undeleted node_attic_indexes
+    node_tags_local_attic node_tags_global_attic node_frequent_tags_attic
+    nodes_meta_attic node_changelog
+    ways_attic ways_attic_undeleted way_attic_indexes
+    way_tags_local_attic way_tags_global_attic way_frequent_tags_attic
+    ways_meta_attic way_changelog
+    relations_attic relations_attic_undeleted relation_attic_indexes
+    relation_tags_local_attic relation_tags_global_attic
+    relation_frequent_tags_attic relations_meta_attic relation_changelog
+  )
+  local META_TRUNKS=(
+    user_data user_indices nodes_meta ways_meta relations_meta
+  )
 
+  for TRUNK in "${ATTIC_TRUNKS[@]}"; do
+    if [[ -f "$DIR/$TRUNK.bin" ]]; then
+      echo "attic"
+      return 0
+    fi
+  done
+  for TRUNK in "${META_TRUNKS[@]}"; do
+    if [[ -f "$DIR/$TRUNK.bin" ]]; then
+      echo "yes"
+      return 0
+    fi
+  done
   echo "no"
-  return 0
 }
 
+# Print whether the database in directory $1 has area files: yes or no.
+# Return 1 and print nothing if only some of the four area files exist.
+# Return 2 if $1 is not a directory.
 detect_database_areas()
 {
   local DIR="$1"
+  local TRUNK
+  local FOUND=0
+  local AREA_TRUNKS=(area_blocks areas area_tags_local area_tags_global)
 
-  if [[ -f "$DIR/areas.bin" && -f "$DIR/area_blocks.bin" && -f "$DIR/area_tags_global.bin" && -f "$DIR/area_tags_local.bin" ]]; then
-    return 0
+  if [[ ! -d "$DIR" ]]; then
+    log_error "detect_database_areas: not a directory: '$DIR'"
+    return 2
   fi
-  return 1
+
+  for TRUNK in "${AREA_TRUNKS[@]}"; do
+    if [[ -f "$DIR/$TRUNK.bin" ]]; then
+      (( ++FOUND ))
+    fi
+  done
+
+  if (( FOUND == 0 )); then
+    echo "no"
+  elif (( FOUND == ${#AREA_TRUNKS[@]} )); then
+    echo "yes"
+  else
+    log_error "Incomplete area files in '$DIR' ($FOUND of ${#AREA_TRUNKS[@]})"
+    return 1
+  fi
 }
 
 # ============================================================================
@@ -324,7 +363,12 @@ check_db_compatible()
     return 1
   fi
 
-  if detect_database_areas "$DB_DIR" && ! detect_database_areas "$BACKUP_DIR"; then
+  local DB_AREAS
+  local BACKUP_AREAS
+  DB_AREAS=$(detect_database_areas "$DB_DIR") || return 1
+  BACKUP_AREAS=$(detect_database_areas "$BACKUP_DIR") || return 1
+
+  if [[ "$DB_AREAS" == "yes" && "$BACKUP_AREAS" == "no" ]]; then
     log_error "Database has areas files but backup does not; restoring would leave orphaned files"
     return 1
   fi
@@ -343,8 +387,7 @@ META_STATE=$(detect_database_meta_state "$BACKUP_DIR") \
 
 check_db_compatible "$META_STATE" || exit 1
 
-RESTORE_AREAS="false"
-detect_database_areas "$BACKUP_DIR" && RESTORE_AREAS="true"
+RESTORE_AREAS=$(detect_database_areas "$BACKUP_DIR") || exit 1
 
 # Check the whole backup before changing the database. A restore that fails
 # partway leaves the database with a mix of old and new files.
@@ -355,7 +398,7 @@ fi
 if [[ "$META_STATE" == "attic" ]]; then
   REQUIRED_FILES+=("${FILES_ATTIC[@]}")
 fi
-if [[ "$RESTORE_AREAS" == "true" ]]; then
+if [[ "$RESTORE_AREAS" == "yes" ]]; then
   REQUIRED_FILES+=("${FILES_AREAS[@]}")
 fi
 check_backup_complete "${REQUIRED_FILES[@]}" || exit 1
@@ -378,7 +421,7 @@ if [[ "$META_STATE" == "attic" ]]; then
   restore_files "${FILES_ATTIC[@]}" || exit 1
 fi
 
-if [[ "$RESTORE_AREAS" == "true" ]]; then
+if [[ "$RESTORE_AREAS" == "yes" ]]; then
   log_message "Restoring area files"
   restore_files "${FILES_AREAS[@]}" || exit 1
 fi

@@ -193,30 +193,51 @@ verify_globals()
 # DATABASE STATE DETECTION
 # ============================================================================
 
-# Detect the meta mode of the database by checking for characteristic files
-# Returns: "no", "yes", or "attic" via stdout
-# Returns 1 if base files are missing (database not initialized)
+# Print the meta mode of the database in directory $1: no, yes or attic.
+# Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
+# missing. Return 2 if $1 is not a directory.
 detect_database_meta_state()
 {
-  # Check for attic files (most specific check first)
-  if [[ -f "$DB_DIR/nodes_attic.bin" || -f "$DB_DIR/node_changelog.bin" || -f "$DB_DIR/ways_attic.bin" ]]; then
-    echo "attic"
-    return 0
+  local DIR="$1"
+  local TRUNK
+
+  if [[ ! -d "$DIR" ]]; then
+    log_error "detect_database_meta_state: not a directory: '$DIR'"
+    return 2
   fi
 
-  # Check for meta files
-  if [[ -f "$DB_DIR/nodes_meta.bin" || -f "$DB_DIR/ways_meta.bin" || -f "$DB_DIR/user_data.bin" ]]; then
-    echo "yes"
-    return 0
-  fi
+  for TRUNK in nodes ways relations; do
+    [[ -f "$DIR/$TRUNK.bin" ]] || return 1
+  done
 
-  # No meta or attic files found - verify base files exist
-  if [[ ! -f "$DB_DIR/nodes.bin" || ! -f "$DB_DIR/ways.bin" || ! -f "$DB_DIR/relations.bin" ]]; then
-    return 1
-  fi
+  local ATTIC_TRUNKS=(
+    nodes_attic nodes_attic_undeleted node_attic_indexes
+    node_tags_local_attic node_tags_global_attic node_frequent_tags_attic
+    nodes_meta_attic node_changelog
+    ways_attic ways_attic_undeleted way_attic_indexes
+    way_tags_local_attic way_tags_global_attic way_frequent_tags_attic
+    ways_meta_attic way_changelog
+    relations_attic relations_attic_undeleted relation_attic_indexes
+    relation_tags_local_attic relation_tags_global_attic
+    relation_frequent_tags_attic relations_meta_attic relation_changelog
+  )
+  local META_TRUNKS=(
+    user_data user_indices nodes_meta ways_meta relations_meta
+  )
 
+  for TRUNK in "${ATTIC_TRUNKS[@]}"; do
+    if [[ -f "$DIR/$TRUNK.bin" ]]; then
+      echo "attic"
+      return 0
+    fi
+  done
+  for TRUNK in "${META_TRUNKS[@]}"; do
+    if [[ -f "$DIR/$TRUNK.bin" ]]; then
+      echo "yes"
+      return 0
+    fi
+  done
   echo "no"
-  return 0
 }
 
 # Validate that user-specified meta mode matches database state
@@ -227,7 +248,7 @@ validate_meta_mode()
 
   # Detect actual database state
   local DB_STATE
-  if ! DB_STATE=$(detect_database_meta_state); then
+  if ! DB_STATE=$(detect_database_meta_state "$DB_DIR"); then
     log_message "WARNING: Database directory does not contain required base files (nodes.bin, ways.bin, relations.bin)"
     log_message "The database may not be properly initialized"
     return 0
