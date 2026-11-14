@@ -198,15 +198,10 @@ fi
 # ============================================================================
 
 get_replicate_path() {
-  local ID="$1"
-  local ARG
-
-  DIGIT3=$(printf '%03u' $((ID % 1000)))
-  ARG=$((ID / 1000))
-  DIGIT2=$(printf '%03u' $((ARG % 1000)))
-  ARG=$((ARG / 1000))
-  DIGIT1=$(printf '%03u' $ARG)
-  URL_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
+  printf '%03u/%03u/%03u' \
+    $(( $1 / 1000000 )) \
+    $(( ($1 / 1000) % 1000 )) \
+    $(( $1 % 1000 ))
 }
 
 # ============================================================================
@@ -217,13 +212,13 @@ DATA_VERSION=
 
 fetch_state() {
   local TARGET="$1"
-  local LOCAL_PATH LOCAL_FILE REMOTE_URL TMP_FILE TIMESTAMP_LINE HTTP_CODE
+  local REPLICATE_PATH LOCAL_PATH LOCAL_FILE REMOTE_URL TMP_FILE TIMESTAMP_LINE HTTP_CODE
 
-  get_replicate_path "$TARGET"
+  REPLICATE_PATH=$(get_replicate_path "$TARGET")
 
-  LOCAL_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
-  LOCAL_FILE="$LOCAL_PATH/$DIGIT3.state.txt"
-  REMOTE_URL="$SOURCE_URL/$URL_PATH.state.txt"
+  LOCAL_PATH="$LOCAL_DIR/${REPLICATE_PATH%/*}"
+  LOCAL_FILE="$LOCAL_PATH/${REPLICATE_PATH##*/}.state.txt"
+  REMOTE_URL="$SOURCE_URL/$REPLICATE_PATH.state.txt"
 
   if [[ ! -s "$LOCAL_FILE" ]]; then
     if ! mkdir -p "$LOCAL_PATH"; then

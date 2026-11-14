@@ -272,15 +272,10 @@ sleep_with_interrupts() {
 # ============================================================================
 
 get_replicate_path() {
-  local ID=$1
-  local ARG
-
-  printf -v DIGIT3 %03u $((ID % 1000))
-  ARG=$((ID / 1000))
-  printf -v DIGIT2 %03u $((ARG % 1000))
-  ARG=$((ARG / 1000))
-  printf -v DIGIT1 %03u $ARG
-  REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
+  printf '%03u/%03u/%03u' \
+    $(( $1 / 1000000 )) \
+    $(( ($1 / 1000) % 1000 )) \
+    $(( $1 % 1000 ))
 }
 
 # ============================================================================
@@ -420,7 +415,7 @@ collect_minute_diffs() {
       break
     fi
 
-    get_replicate_path "$ID"
+    REPLICATE_PATH=$(get_replicate_path "$ID")
     printf -v TARGET_FILE %09u "$ID"
 
     STATE_URL="$SOURCE_URL/$REPLICATE_PATH.state.txt"

@@ -417,15 +417,10 @@ get_latest_available_id() {
 # ============================================================================
 
 get_replicate_path() {
-  local ID=$1
-  local ARG
-
-  DIGIT3=$(printf '%03u' $((ID % 1000)))
-  ARG=$((ID / 1000))
-  DIGIT2=$(printf '%03u' $((ARG % 1000)))
-  ARG=$((ARG / 1000))
-  DIGIT1=$(printf '%03u' $ARG)
-  URL_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
+  printf '%03u/%03u/%03u' \
+    $(( $1 / 1000000 )) \
+    $(( ($1 / 1000) % 1000 )) \
+    $(( $1 % 1000 ))
 }
 
 # ============================================================================
@@ -523,16 +518,16 @@ download_batch() {
 
   CACHED_COUNT=0
   for (( ID=START+1; ID<=END; ID++ )); do
-    get_replicate_path "$ID"
+    REPLICATE_PATH=$(get_replicate_path "$ID")
 
-    REMOTE_BASE="$SOURCE_URL/$URL_PATH"
-    DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
+    REMOTE_BASE="$SOURCE_URL/$REPLICATE_PATH"
+    DIR_PATH="$LOCAL_DIR/${REPLICATE_PATH%/*}"
     if ! mkdir -p "$DIR_PATH"; then
       log_error "Unable to create $DIR_PATH directory."
       exit 1
     fi
 
-    FILE="$DIR_PATH/$DIGIT3.state.txt"
+    FILE="$DIR_PATH/${REPLICATE_PATH##*/}.state.txt"
     if ! verify_file "$FILE" "text"; then
       URL_ARRAY+=("$REMOTE_BASE.state.txt")
       FILE_ARRAY+=("$FILE")
@@ -540,7 +535,7 @@ download_batch() {
       (( ++CACHED_COUNT ))
     fi
 
-    FILE="$DIR_PATH/$DIGIT3.osc.gz"
+    FILE="$DIR_PATH/${REPLICATE_PATH##*/}.osc.gz"
     if ! verify_file "$FILE" "gzip"; then
       URL_ARRAY+=("$REMOTE_BASE.osc.gz")
       FILE_ARRAY+=("$FILE")

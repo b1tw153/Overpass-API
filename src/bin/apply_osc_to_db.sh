@@ -288,13 +288,10 @@ update_state() {
 # ============================================================================
 
 get_replicate_path() {
-  local ID=$1
-  printf -v DIGIT3 %03u $((ID % 1000))
-  local ARG=$((ID / 1000))
-  printf -v DIGIT2 %03u $((ARG % 1000))
-  ARG=$((ARG / 1000))
-  printf -v DIGIT1 %03u "$ARG"
-  REPLICATE_PATH="$DIGIT1/$DIGIT2/$DIGIT3"
+  printf '%03u/%03u/%03u' \
+    $(( $1 / 1000000 )) \
+    $(( ($1 / 1000) % 1000 )) \
+    $(( $1 % 1000 ))
 }
 
 # ============================================================================
@@ -367,7 +364,7 @@ collect_batch() {
 
   # Find contiguous downloaded files until size or time limit reached
   while true; do
-    get_replicate_path "$ID"
+    REPLICATE_PATH=$(get_replicate_path "$ID")
 
     local OSC_FILE="$REPLICATE_DIR/$REPLICATE_PATH.osc.gz"
     local STATE_FILE_LOCAL="$REPLICATE_DIR/$REPLICATE_PATH.state.txt"
@@ -461,7 +458,7 @@ prepare_batch() {
   fi
 
   for (( ID=START+1; ID<=END; ID++ )); do
-    get_replicate_path "$ID"
+    REPLICATE_PATH=$(get_replicate_path "$ID")
 
     local OSC_GZ="$REPLICATE_DIR/$REPLICATE_PATH.osc.gz"
 
@@ -487,7 +484,7 @@ prepare_batch() {
 
 get_timestamp() {
   local ID=$1
-  get_replicate_path "$ID"
+  REPLICATE_PATH=$(get_replicate_path "$ID")
 
   local STATE_FILE_LOCAL="$REPLICATE_DIR/$REPLICATE_PATH.state.txt"
 
