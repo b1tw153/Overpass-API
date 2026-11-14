@@ -154,10 +154,10 @@ fi
 # ============================================================================
 
 # Strip .torrent to get the actual file URL and name
-USE_TORRENT=0
+USE_TORRENT=false
 FILE_URL="$DATA_SOURCE"
 if [[ "$FILE_URL" == *.torrent ]]; then
-  USE_TORRENT=1
+  USE_TORRENT=true
   FILE_URL="${FILE_URL%.torrent}"
 fi
 
@@ -165,17 +165,17 @@ FILENAME=$(basename "$FILE_URL")
 MD5_URL="${FILE_URL}.md5"
 
 # Strip .bz2 to detect decompression requirement
-USE_BUNZIP2=0
+USE_BUNZIP2=false
 FORMAT_EXT="$FILENAME"
 if [[ "$FORMAT_EXT" == *.bz2 ]]; then
-  USE_BUNZIP2=1
+  USE_BUNZIP2=true
   FORMAT_EXT="${FORMAT_EXT%.bz2}"
 fi
 
 # Detect converter from remaining extension
-USE_OSMIUM=0
+USE_OSMIUM=false
 if [[ "$FORMAT_EXT" == *.pbf ]]; then
-  USE_OSMIUM=1
+  USE_OSMIUM=true
 elif [[ "$FORMAT_EXT" == *.osm ]]; then
   : # no conversion needed
 else
@@ -199,17 +199,17 @@ if [[ ! -x "$EXEC_DIR/bisect_timestamp.sh" ]]; then
   exit 1
 fi
 
-HAS_ARIA2C=0
+HAS_ARIA2C=false
 if command -v aria2c > /dev/null 2>&1; then
-  HAS_ARIA2C=1
+  HAS_ARIA2C=true
 fi
 
-if (( USE_TORRENT == 1 && HAS_ARIA2C == 0 )); then
+if [[ "$USE_TORRENT" == "true" && "$HAS_ARIA2C" == "false" ]]; then
   error "aria2c is required for torrent downloads but is not installed"
   exit 1
 fi
 
-if (( USE_OSMIUM == 1 )) && ! command -v osmium > /dev/null 2>&1; then
+if [[ "$USE_OSMIUM" == "true" ]] && ! command -v osmium > /dev/null 2>&1; then
   error "osmium is required for .pbf imports but is not installed"
   exit 1
 fi
@@ -247,12 +247,12 @@ FILE_SIZE=$(curl -sIL --max-time 30 "$FILE_URL" 2>/dev/null \
 
 if [[ -z "$FILE_SIZE" || ! "$FILE_SIZE" =~ ^[1-9][0-9]*$ ]]; then
   message "WARNING: Unable to determine source file size; skipping disk space check"
-elif (( USE_OSMIUM == 0 && USE_BUNZIP2 == 0 )); then
+elif [[ "$USE_OSMIUM" == "false" && "$USE_BUNZIP2" == "false" ]]; then
   message "WARNING: Cannot estimate disk space for .osm format; skipping disk space check"
 else
   # DB_RATIO is db_size / source_size as an integer percentage
   # (e.g. 315 = database will be approximately 3.15x the source file size)
-  if (( USE_OSMIUM == 1 )); then
+  if [[ "$USE_OSMIUM" == "true" ]]; then
     case "$META" in
       attic) DB_RATIO=509 ;;  # extrapolated: history.pbf → attic db
       yes)   DB_RATIO=422 ;;  # planet.pbf  → meta db
@@ -283,10 +283,10 @@ message "Downloading $FILENAME ..."
 
 cd "$DB_DIR" || exit 1
 
-if (( USE_TORRENT == 1 )); then
+if [[ "$USE_TORRENT" == "true" ]]; then
   aria2c --allow-overwrite=true --seed-time=0 -o "$FILENAME" "$DATA_SOURCE" \
     || { error "Download failed"; exit 1; }
-elif (( HAS_ARIA2C == 1 )); then
+elif [[ "$HAS_ARIA2C" == "true" ]]; then
   aria2c --allow-overwrite=true -x 16 -s 16 -o "$FILENAME" "$FILE_URL" \
     || { error "Download failed"; exit 1; }
 else
@@ -352,14 +352,14 @@ esac
 
 message "Importing $FILENAME into database ..."
 
-if (( USE_BUNZIP2 == 1 )); then
+if [[ "$USE_BUNZIP2" == "true" ]]; then
   bunzip2 <"$DB_DIR/$FILENAME" \
     | "$EXEC_DIR/update_database" \
         --db-dir="$DB_DIR" \
         "$META_FLAG" \
         --compression-method="$COMPRESSION" \
         --map-compression-method="$COMPRESSION"
-elif (( USE_OSMIUM == 1 )); then
+elif [[ "$USE_OSMIUM" == "true" ]]; then
   osmium cat -f osm "$DB_DIR/$FILENAME" \
     | "$EXEC_DIR/update_database" \
         --db-dir="$DB_DIR" \
@@ -376,9 +376,9 @@ else
 fi
 
 PIPE_STATUS=("${PIPESTATUS[@]}")
-if (( USE_BUNZIP2 == 1 || USE_OSMIUM == 1 )); then
+if [[ "$USE_BUNZIP2" == "true" || "$USE_OSMIUM" == "true" ]]; then
   if (( ${PIPE_STATUS[0]:-0} != 0 )); then
-    if (( USE_BUNZIP2 == 1 )); then
+    if [[ "$USE_BUNZIP2" == "true" ]]; then
       error "bunzip2 failed (exit code ${PIPE_STATUS[0]})"
     else
       error "osmium failed (exit code ${PIPE_STATUS[0]})"

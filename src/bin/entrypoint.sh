@@ -232,7 +232,7 @@ shutdown() {
   FCGI_PID=
 
   message "Shutdown complete"
-  if "$GO_ZOMBIE"; then
+  if [[ "$GO_ZOMBIE" == "true" ]]; then
     GO_ZOMBIE=false
     while true; do
       sleep 60 &

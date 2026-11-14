@@ -486,10 +486,10 @@ get_data_version() {
 
 apply_minute_diffs() {
   local OSC_DIR="$1"
-  local SUCCESS=0
+  local SUCCESS=false
   local RETRY_COUNT=0
 
-  while (( SUCCESS == 0 && RETRY_COUNT < APPLY_MAX_RETRIES )); do
+  while [[ "$SUCCESS" == "false" ]] && (( RETRY_COUNT < APPLY_MAX_RETRIES )); do
     "$EXEC_DIR/update_from_dir" --osc-dir="$OSC_DIR" --version="$DATA_VERSION" --flush-size=0 &
     CHILD_PID=$!
     wait "$CHILD_PID"
@@ -498,7 +498,7 @@ apply_minute_diffs() {
 
     case $EXITCODE in
       0)
-        SUCCESS=1
+        SUCCESS=true
         ;;
       3)
         log_error "update_from_dir failed due to dispatcher error (exit code: $EXITCODE)"
@@ -532,7 +532,7 @@ apply_minute_diffs() {
     esac
   done
 
-  if (( SUCCESS == 0 )); then
+  if [[ "$SUCCESS" == "false" ]]; then
     log_error "Failed to apply batch after $APPLY_MAX_RETRIES attempts"
     return 1
   fi

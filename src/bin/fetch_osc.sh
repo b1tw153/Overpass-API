@@ -545,7 +545,7 @@ download_batch() {
 
   download_batch_with_curl
 
-  SUCCESS=1
+  SUCCESS=true
 
   for FILE in "${FILE_ARRAY[@]}"; do
     if [[ -f "$FILE.tmp" ]]; then
@@ -558,19 +558,19 @@ download_batch() {
         if ! mv "$FILE.tmp" "$FILE"; then
           log_error "Unable to save $FILE"
           rm -f "$FILE.tmp"
-          SUCCESS=0
+          SUCCESS=false
         fi
       else
         log_error "File failed verification: $FILE"
         rm -f "$FILE.tmp"
-        SUCCESS=0
+        SUCCESS=false
       fi
     else
-      SUCCESS=0
+      SUCCESS=false
     fi
   done
 
-  if (( SUCCESS == 1 )); then
+  if [[ "$SUCCESS" == "true" ]]; then
     if (( BATCH_COUNT == 1 )); then
       log_message "Downloaded $END"
     else
@@ -584,7 +584,7 @@ download_batch() {
     fi
   fi
   
-  return $((1 - SUCCESS))
+  [[ "$SUCCESS" == "true" ]]
 }
 
 # ============================================================================

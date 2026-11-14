@@ -516,11 +516,11 @@ apply_batch() {
 
   log_message "Applying batch to database (version: ${DATA_VERSION//\\/})"
 
-  local SUCCESS=0
+  local SUCCESS=false
   local RETRY_COUNT=0
   local MAX_RETRIES=5
 
-  while (( SUCCESS == 0 && RETRY_COUNT < MAX_RETRIES )); do
+  while [[ "$SUCCESS" == "false" ]] && (( RETRY_COUNT < MAX_RETRIES )); do
     "$EXEC_DIR/update_from_dir" --osc-dir="$OSC_DIR" --version="$DATA_VERSION" ${META:+"$META"} --flush-size=0 &
     CHILD_PID="$!"
     wait "$CHILD_PID"
@@ -528,7 +528,7 @@ apply_batch() {
     CHILD_PID=
 
     if (( EXIT_CODE == 0 )); then
-      SUCCESS=1
+      SUCCESS=true
     elif (( EXIT_CODE == 3 )); then
       log_error "update_from_dir failed due to context error (exit code: $EXIT_CODE)"
       log_message "Resolve the problem with the dispatcher before retrying"
@@ -561,7 +561,7 @@ apply_batch() {
     fi
   done
 
-  if (( SUCCESS == 0 )); then
+  if [[ "$SUCCESS" == "false" ]]; then
     log_error "Failed to apply batch after $MAX_RETRIES attempts"
     return 1
   fi

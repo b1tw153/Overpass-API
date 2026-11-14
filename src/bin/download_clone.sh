@@ -210,7 +210,7 @@ if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PER
 fi
 
 LOCK_FILE="$CLONE_DIR/.download_clone.lock"
-INTERRUPTED=0
+INTERRUPTED=false
 REMOTE_DIR=
 
 # Cleanup function - called on exit or interruption
@@ -218,7 +218,7 @@ REMOTE_DIR=
 cleanup() {
   local exit_code=${1:-$?}
 
-  if (( INTERRUPTED == 1 )); then
+  if [[ "$INTERRUPTED" == "true" ]]; then
     echo
     # Remove incomplete .tmp files and aria2c control files
     find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
@@ -240,7 +240,7 @@ cleanup() {
 # Signal handler for graceful interruption
 # $1 - exit code (128 + signal number)
 handle_interrupt() {
-  INTERRUPTED=1
+  INTERRUPTED=true
   cleanup "$1"
 }
 
@@ -431,28 +431,28 @@ download_files_parallel() {
         fi
 
         # Determine if error is recoverable
-        local recoverable=0
+        local recoverable=false
 
         case $CURL_EXIT in
           # Recoverable: transient network/server issues
           6)  log_message "Exit 6: Could not resolve host (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           7)  log_message "Exit 7: Failed to connect to host (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           16) log_message "Exit 16: HTTP/2 protocol error (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           18) log_message "Exit 18: Partial file transfer (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           28) log_message "Exit 28: Operation timeout (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           35) log_message "Exit 35: SSL connect error (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           52) log_message "Exit 52: Empty reply from server (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           55) log_message "Exit 55: Failed sending network data (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
           56) log_message "Exit 56: Failed receiving network data (will retry)"
-              recoverable=1 ;;
+              recoverable=true ;;
 
           # Non-recoverable: local filesystem issues
           23) log_error "Exit 23: Write error (non-recoverable)" ;;
@@ -466,7 +466,7 @@ download_files_parallel() {
               http_codes=$(sed -nE 's/.*\(22\).*error: ([0-9]+).*/\1/p' "$CURL_ERROR_LOG" | sort -u)
 
               # Check for non-recoverable HTTP status codes
-              local has_non_recoverable=0
+              local has_non_recoverable=false
               for code in $http_codes; do
                 case $code in
                   # Recoverable HTTP errors
@@ -476,18 +476,18 @@ download_files_parallel() {
                   # Non-recoverable HTTP errors
                   400|401|403|404|405|410)
                     log_error "  HTTP $code: non-recoverable"
-                    has_non_recoverable=1
+                    has_non_recoverable=true
                     ;;
                   # Unknown HTTP errors: treat as non-recoverable to be safe
                   *)
                     log_error "  HTTP $code: unknown (treating as non-recoverable)"
-                    has_non_recoverable=1
+                    has_non_recoverable=true
                     ;;
                 esac
               done
 
-              if (( has_non_recoverable == 0 )); then
-                recoverable=1
+              if [[ "$has_non_recoverable" == "false" ]]; then
+                recoverable=true
               fi
               ;;
 
@@ -496,7 +496,7 @@ download_files_parallel() {
         esac
 
         # Non-recoverable: delete .tmp files and exit
-        if (( recoverable == 0 )); then
+        if [[ "$recoverable" == "false" ]]; then
           for file in "${files[@]}"; do
             rm -f "$CLONE_DIR/$file.tmp" "$CLONE_DIR/$file.idx.tmp"
           done

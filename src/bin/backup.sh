@@ -449,15 +449,15 @@ run_rsync() {
 # $@: names of the files in DB_DIR
 # Returns 1 and logs each missing file if any is absent.
 check_files_present() {
-  local missing=0
+  local missing=false
   local f
   for f in "$@"; do
     if [[ ! -e "$DB_DIR/$f" ]]; then
       log_error "Required file '$f' is missing from '$DB_DIR'"
-      missing=1
+      missing=true
     fi
   done
-  (( missing == 0 ))
+  [[ "$missing" == "false" ]]
 }
 
 # Copy database files to BACKUP_DIR.

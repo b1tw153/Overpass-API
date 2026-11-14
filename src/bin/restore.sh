@@ -298,15 +298,15 @@ restore_optional_files() {
 # $@: names of the files in BACKUP_DIR
 # Returns 1 and logs each missing file if any is absent.
 check_backup_complete() {
-  local missing=0
+  local missing=false
   local f
   for f in "$@"; do
     if [[ ! -e "$BACKUP_DIR/$f" ]]; then
       log_error "Backup is incomplete: required file '$f' is missing from '$BACKUP_DIR'"
-      missing=1
+      missing=true
     fi
   done
-  (( missing == 0 ))
+  [[ "$missing" == "false" ]]
 }
 
 # ============================================================================
