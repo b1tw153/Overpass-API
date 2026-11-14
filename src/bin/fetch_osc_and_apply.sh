@@ -23,8 +23,7 @@
 # Purpose: Downloads and applies OSM change files in a single process
 # ============================================================================
 
-usage()
-{
+usage() {
   cat >&2 << EOF
 Usage: $0 diff_url
 
@@ -137,8 +136,7 @@ TEMP_TARGET_DIR=
 # CLEANUP
 # ============================================================================
 
-cleanup_temp_dirs()
-{
+cleanup_temp_dirs() {
   if [[ -n "$TEMP_TARGET_DIR" && -d "$TEMP_TARGET_DIR" ]]; then
     rm -f "$TEMP_TARGET_DIR"/*
     rmdir "$TEMP_TARGET_DIR" 2>/dev/null || true
@@ -151,8 +149,7 @@ cleanup_temp_dirs()
   TEMP_TARGET_DIR=
 }
 
-die()
-{
+die() {
   cleanup_temp_dirs
   rm -f "$PID_FILE" 2>/dev/null || true
   exit "$1"
@@ -162,8 +159,7 @@ die()
 # LOGGING
 # ============================================================================
 
-log_message()
-{
+log_message() {
   if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
@@ -171,8 +167,7 @@ log_message()
   fi
 }
 
-log_error()
-{
+log_error() {
   if [[ -t 2 ]]; then
     echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
@@ -184,8 +179,7 @@ log_error()
 # CONFIGURATION VALIDATION
 # ============================================================================
 
-verify_globals()
-{
+verify_globals() {
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
     log_error "Invalid OVERPASS_UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
     die 1
@@ -246,8 +240,7 @@ verify_globals()
 # TIMING
 # ============================================================================
 
-calculate_sleep_time()
-{
+calculate_sleep_time() {
   if [[ -z "$LAST_UPDATE_TIME" ]]; then
     echo 10
     return
@@ -269,8 +262,7 @@ calculate_sleep_time()
 # SLEEPING
 # ============================================================================
 
-sleep_with_interrupts()
-{
+sleep_with_interrupts() {
   sleep "$1" &
   wait $!
 }
@@ -279,8 +271,7 @@ sleep_with_interrupts()
 # PATH CONVERSION
 # ============================================================================
 
-get_replicate_path()
-{
+get_replicate_path() {
   local ID=$1
   local ARG
 
@@ -296,8 +287,7 @@ get_replicate_path()
 # REMOTE STATE CHECKING
 # ============================================================================
 
-get_latest_available_id()
-{
+get_latest_available_id() {
   LATEST_AVAILABLE_ID=
   local REMOTE_STATE="$TEMP_SOURCE_DIR/state.txt"
   local REMOTE_STATE_TMP="$REMOTE_STATE.tmp"
@@ -352,8 +342,7 @@ get_latest_available_id()
 # FILE DOWNLOAD
 # ============================================================================
 
-download_file()
-{
+download_file() {
   local URL="$1"
   local OUTPUT="$2"
   local TMP_FILE="$OUTPUT.tmp"
@@ -399,8 +388,7 @@ download_file()
 # BATCH COLLECTION
 # ============================================================================
 
-collect_minute_diffs()
-{
+collect_minute_diffs() {
   local MAX_AVAILABLE=$1
 
   BATCH_END=$CURRENT_ID
@@ -473,8 +461,7 @@ collect_minute_diffs()
 # TIMESTAMP EXTRACTION
 # ============================================================================
 
-get_data_version()
-{
+get_data_version() {
   local ID=$1
   printf -v TARGET_FILE %09u "$ID"
 
@@ -497,8 +484,7 @@ get_data_version()
 # BATCH APPLICATION
 # ============================================================================
 
-apply_minute_diffs()
-{
+apply_minute_diffs() {
   local OSC_DIR="$1"
   local SUCCESS=0
   local RETRY_COUNT=0
@@ -558,8 +544,7 @@ apply_minute_diffs()
 # STATE MANAGEMENT
 # ============================================================================
 
-read_current_state()
-{
+read_current_state() {
   if [[ -f "$STATE_FILE" && -s "$STATE_FILE" ]]; then
     cat "$STATE_FILE"
   else
@@ -567,8 +552,7 @@ read_current_state()
   fi
 }
 
-update_state()
-{
+update_state() {
   local NEW_ID=$1
   if ! { echo "$NEW_ID" > "$STATE_FILE.tmp"; }; then
     log_error "Failed to write new state to temporary file"
@@ -584,8 +568,7 @@ update_state()
 # SIGNAL HANDLERS
 # ============================================================================
 
-shutdown()
-{
+shutdown() {
   local EXIT_CODE=${1:-143}
 
   log_message "Shutdown signal received, cleaning up..."

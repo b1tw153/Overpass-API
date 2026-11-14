@@ -24,8 +24,7 @@
 #          or once a day at a set time
 # ============================================================================
 
-usage()
-{
+usage() {
   cat >&2 << EOF
 Usage: $0 [db_dir]
 
@@ -62,8 +61,7 @@ DB_DIR="$(realpath "$DB_DIR")"
 # (nodes.bin, ways.bin and relations.bin). Return 1 if any is missing. Return 2
 # if $1 is not a directory. This is the initialization test of
 # detect_database_meta_state() in the other scripts. The mode is not needed here.
-database_is_initialized()
-{
+database_is_initialized() {
   local DIR="$1"
   local TRUNK
 
@@ -125,8 +123,7 @@ fi
 
 LOG_FILE="$DB_DIR/rules_loop.log"
 
-log_message()
-{
+log_message() {
   if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else

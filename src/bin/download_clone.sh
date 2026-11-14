@@ -40,8 +40,7 @@
 # USAGE
 # ============================================================================
 
-usage()
-{
+usage() {
   cat << EOF
 Usage: $0 [options]
 
@@ -89,20 +88,17 @@ FILES_ATTIC=(
 )
 
 # Log error
-log_error()
-{
+log_error() {
   echo "$(date -u '+%F %T'): ERROR: $1"
 }
 
 # Log warning
-log_warning()
-{
+log_warning() {
   echo "$(date -u '+%F %T'): WARNING: $1"
 }
 
 # Log message
-log_message()
-{
+log_message() {
   echo "$(date -u '+%F %T'): $1"
 }
 
@@ -219,8 +215,7 @@ REMOTE_DIR=
 
 # Cleanup function - called on exit or interruption
 # $1 - exit code (optional, defaults to $?)
-cleanup()
-{
+cleanup() {
   local exit_code=${1:-$?}
 
   if [[ $INTERRUPTED -eq 1 ]]; then
@@ -247,16 +242,14 @@ cleanup()
 
 # Signal handler for graceful interruption
 # $1 - exit code (128 + signal number)
-handle_interrupt()
-{
+handle_interrupt() {
   INTERRUPTED=1
   cleanup "$1"
 }
 
 # Get remote file size using HTTP HEAD request
 # Returns: size in bytes, or empty string on error
-get_remote_file_size()
-{
+get_remote_file_size() {
   local url="$1"
   local headers
   local size
@@ -281,8 +274,7 @@ get_remote_file_size()
 
 # Check if local file matches remote file by size
 # Returns 0 if file is complete, 1 otherwise
-is_file_complete()
-{
+is_file_complete() {
   local url="$1"
   local local_file="$2"
   local remote_size
@@ -311,8 +303,7 @@ is_file_complete()
 }
 
 # Check and create lock file to prevent concurrent runs
-acquire_lock()
-{
+acquire_lock() {
   if [[ -f "$LOCK_FILE" ]]; then
   {
     local lock_pid
@@ -339,8 +330,7 @@ acquire_lock()
 
 # Check that CLONE_DIR has enough free space for remaining downloads.
 # Skips files already verified complete by is_file_complete().
-check_clone_disk_space()
-{
+check_clone_disk_space() {
   local files=()
   local file data_url idx_url size total_bytes threshold free_bytes
 
@@ -386,8 +376,7 @@ check_clone_disk_space()
 
 # Download multiple files in parallel using curl's built-in parallel support
 # Takes the filenames as arguments
-download_files_parallel()
-{
+download_files_parallel() {
   local files=("$@")
   local curl_args
   local CURL_ERROR_LOG="$CLONE_DIR/curl_error_$$.log"
@@ -572,8 +561,7 @@ download_files_parallel()
 # ARIA2C DOWNLOAD
 # ============================================================================
 
-download_files_with_aria2c()
-{
+download_files_with_aria2c() {
   local files=("$@")
   local ARIA2C_INPUT
   ARIA2C_INPUT="$CLONE_DIR/aria2c_batch_$$.txt"
@@ -653,8 +641,7 @@ download_files_with_aria2c()
   }; done
 }
 
-download_files()
-{
+download_files() {
   if [[ "$USE_ARIA2C" == "true" ]]; then
     download_files_with_aria2c "$@"
   else
@@ -663,8 +650,7 @@ download_files()
 }
 
 # Main function
-main()
-{
+main() {
   if command -v aria2c > /dev/null 2>&1; then
     USE_ARIA2C=true
   else

@@ -23,8 +23,7 @@
 #          processes to be stopped
 # ============================================================================
 
-usage()
-{
+usage() {
   cat >&2 << EOF
 Usage: $0 backup_dir db_dir
 
@@ -76,8 +75,7 @@ LOG_FILE="$DB_DIR/backup.log"
 # LOGGING
 # ============================================================================
 
-log_message()
-{
+log_message() {
   if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
@@ -85,8 +83,7 @@ log_message()
   fi
 }
 
-log_error()
-{
+log_error() {
   if [[ -t 2 ]]; then
     echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
@@ -166,8 +163,7 @@ FILES_AREAS=(
 # LOCK CHECK
 # ============================================================================
 
-check_lock_files()
-{
+check_lock_files() {
   local LOCK_FILE PID
   for LOCK_FILE in "$DB_DIR/osm_base_shadow.lock" "$DB_DIR/areas_shadow.lock"; do
     [[ -f "$LOCK_FILE" ]] || continue
@@ -188,8 +184,7 @@ check_lock_files()
 # Print the meta mode of the database in directory $1: no, yes or attic.
 # Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
 # missing. Return 2 if $1 is not a directory.
-detect_database_meta_state()
-{
+detect_database_meta_state() {
   local DIR="$1"
   local TRUNK
 
@@ -235,8 +230,7 @@ detect_database_meta_state()
 # Print whether the database in directory $1 has area files: yes or no.
 # Return 1 and print nothing if only some of the four area files exist.
 # Return 2 if $1 is not a directory.
-detect_database_areas()
-{
+detect_database_areas() {
   local DIR="$1"
   local TRUNK
   local FOUND=0
@@ -267,8 +261,7 @@ detect_database_areas()
 # RESTORE FILES
 # ============================================================================
 
-restore_files()
-{
+restore_files() {
   local exit_code
   printf '%s\n' "$@" \
     | timeout "$RESTORE_TIMEOUT" rsync -a --files-from=- "$BACKUP_DIR/" "$DB_DIR/"
@@ -286,8 +279,7 @@ restore_files()
 # BACKUP_DIR has. Remove each file that BACKUP_DIR omits.
 # $@: names of the files
 # Returns 1 if a file can't be removed or the copy fails.
-restore_optional_files()
-{
+restore_optional_files() {
   local files=()
   local f
   for f in "$@"; do
@@ -305,8 +297,7 @@ restore_optional_files()
 # Check that the backup holds every file in the list.
 # $@: names of the files in BACKUP_DIR
 # Returns 1 and logs each missing file if any is absent.
-check_backup_complete()
-{
+check_backup_complete() {
   local missing=0
   local f
   for f in "$@"; do
@@ -327,8 +318,7 @@ check_backup_complete()
 # index files over the main index files, which would overwrite the restored
 # files. Leave the `.status` file alone. It is not a transaction file.
 # Returns 1 if a file can't be removed.
-remove_transaction_leftovers()
-{
+remove_transaction_leftovers() {
   local leftovers=()
   local f
   mapfile -t leftovers < <(find "$DB_DIR" -maxdepth 1 -type f \( \
@@ -348,8 +338,7 @@ remove_transaction_leftovers()
 # COMPATIBILITY CHECK
 # ============================================================================
 
-meta_level()
-{
+meta_level() {
   case "$1" in
     no)    echo 0 ;;
     yes)   echo 1 ;;
@@ -357,8 +346,7 @@ meta_level()
   esac
 }
 
-check_db_compatible()
-{
+check_db_compatible() {
   local BACKUP_META="$1"
   local DB_META
   DB_META=$(detect_database_meta_state "$DB_DIR") || return 0  # uninitialized is always ok

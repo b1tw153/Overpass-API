@@ -23,8 +23,7 @@
 #          reclaim disk space while keeping files needed for apply process
 # ============================================================================
 
-usage()
-{
+usage() {
   cat >&2 << EOF
 Usage: $0 db_dir diff_dir keep_count
        $0 --all diff_dir
@@ -131,13 +130,11 @@ fi
 # LOGGING
 # ============================================================================
 
-log_message()
-{
+log_message() {
   echo "$(date -u '+%F %T'): $1"
 }
 
-log_error()
-{
+log_error() {
   echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 
@@ -145,8 +142,7 @@ log_error()
 # STATE READING
 # ============================================================================
 
-read_current_state()
-{
+read_current_state() {
   local STATE_PATH="$STATE_FILE"
 
   if [[ ! -e "$STATE_PATH" ]]; then
@@ -191,8 +187,7 @@ read_current_state()
 # CLEANUP LOGIC
 # ============================================================================
 
-cleanup_all_files()
-{
+cleanup_all_files() {
   log_message "Deleting ALL OSC files (recovery mode)"
 
   local CLEANED_FILES=0
@@ -222,8 +217,7 @@ cleanup_all_files()
   return 0
 }
 
-cleanup_old_files()
-{
+cleanup_old_files() {
   local CURRENT_STATE="$1"
   local CLEANUP_THRESHOLD
   CLEANUP_THRESHOLD=$(( CURRENT_STATE - KEEP_COUNT ))

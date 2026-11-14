@@ -28,8 +28,7 @@
 #            nohup ./import_osm_data.sh --db-dir=/opt/overpass/db --diff-dir=/opt/overpass/diff --diff-url=https://... &
 # ============================================================================
 
-usage()
-{
+usage() {
   cat << EOF
 Usage: $0 [options]
 
@@ -61,13 +60,11 @@ Supported file formats (detected from URL):
 EOF
 }
 
-message()
-{
+message() {
   echo "$(date -u '+%F %T'): $1"
 }
 
-error()
-{
+error() {
   echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 

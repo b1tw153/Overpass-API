@@ -33,8 +33,7 @@ error() {
 # Print the meta mode of the database in directory $1: no, yes or attic.
 # Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
 # missing. Return 2 if $1 is not a directory.
-detect_database_meta_state()
-{
+detect_database_meta_state() {
   local DIR="$1"
   local TRUNK
 

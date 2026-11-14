@@ -26,20 +26,17 @@ GO_ZOMBIE=false
 
 EXEC_DIR="$(dirname "$(realpath "$0")")"
 
-message()
-{
+message() {
   echo "$(date -u '+%F %T'): $1"
 }
 
-error()
-{
+error() {
   echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 
 # Validate an IP address or CIDR netblock with the same library (Net::CIDR) that
 # munin-node uses to enforce its access-control list.
-munin_valid_cidr()
-{
+munin_valid_cidr() {
   perl -MNet::CIDR=cidrvalidate -e 'exit(defined cidrvalidate($ARGV[0]) ? 0 : 1)' "$1"
 }
 
@@ -193,8 +190,7 @@ fi
 # SIGNAL HANDLER
 # ============================================================================
 
-shutdown()
-{
+shutdown() {
   local EXIT_CODE="$1"
   local EXIT_REASON="$2"
   message "$EXIT_REASON, shutting down..."

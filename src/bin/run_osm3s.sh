@@ -97,19 +97,16 @@ Help: $0
 EOF
 }
 
-sleep_with_interrupts()
-{
+sleep_with_interrupts() {
   sleep "$1" &
   wait $!
 }
 
-message()
-{
+message() {
   echo "$(date -u '+%F %T'): $1"
 }
 
-error()
-{
+error() {
   echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 
@@ -345,8 +342,7 @@ fi
 # Print the meta mode of the database in directory $1: no, yes or attic.
 # Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
 # missing. Return 2 if $1 is not a directory.
-detect_database_meta_state()
-{
+detect_database_meta_state() {
   local DIR="$1"
   local TRUNK
 
@@ -390,8 +386,7 @@ detect_database_meta_state()
 }
 
 # Validate that user-specified meta mode matches database state
-validate_meta_mode()
-{
+validate_meta_mode() {
   # Detect actual database state
   local DB_STATE
   if ! DB_STATE=$(detect_database_meta_state "$OVERPASS_DB_DIR"); then
@@ -406,8 +401,7 @@ validate_meta_mode()
   fi
 }
 
-delete_stale_socket_files()
-{
+delete_stale_socket_files() {
   # if $OVERPASS_SOCKET_DIR/osm3s_osm_base exists, warn about a possible uncontrolled shutdown and database corruption and delete the file
   if [[ -S "$OVERPASS_SOCKET_DIR/osm3s_osm_base" ]]; then
     message "WARNING: Stale socket file detected: $OVERPASS_SOCKET_DIR/osm3s_osm_base"
@@ -448,8 +442,7 @@ get_last_modified() {
 # interval of Last-Modified times for three state files
 # Returns: "60", "3600", or "86400" via stdout
 # Returns 1 if the update frequency could not be determined
-detect_update_frequency()
-{
+detect_update_frequency() {
   local CURRENT_SEQ LAST_MODIFIED_0 LAST_MODIFIED_1 LAST_MODIFIED_2 INTERVAL_1 INTERVAL_2 MEAN_INTERVAL
 
   CURRENT_SEQ=$(curl -sL "${OVERPASS_DIFF_URL%/}/state.txt" \
@@ -482,8 +475,7 @@ detect_update_frequency()
 # STARTUP
 # ============================================================================
 
-start_base_dispatcher()
-{
+start_base_dispatcher() {
   message "Starting base dispatcher"
   local META_FLAG=()
   if [[ $OVERPASS_META_MODE == "yes" ]]; then
@@ -508,8 +500,7 @@ start_base_dispatcher()
   message "Started base dispatcher (PID $DISPATCHER_BASE_PID)"
 }
 
-start_areas_dispatcher()
-{
+start_areas_dispatcher() {
   if [[ $AREAS == "yes" ]]; then
     message "Starting areas dispatcher"
     "$EXEC_DIR/dispatcher" --areas \
@@ -530,8 +521,7 @@ start_areas_dispatcher()
   fi
 }
 
-start_apply_osc()
-{
+start_apply_osc() {
   message "Starting apply_osc_to_db.sh"
   "$EXEC_DIR/apply_osc_to_db.sh" \
     "$OVERPASS_DIFF_DIR" \
@@ -544,8 +534,7 @@ start_apply_osc()
   message "Started apply_osc_to_db.sh (PID $APPLY_OSC_PID)"
 }
 
-start_fetch_osc()
-{
+start_fetch_osc() {
   message "Starting fetch_osc.sh"
   local FETCH_START_ID
   if [[ "$START_ID" == "auto" ]]; then
@@ -565,8 +554,7 @@ start_fetch_osc()
   message "Started fetch_osc.sh (PID $FETCH_OSC_PID)"
 }
 
-start_rules_loop()
-{
+start_rules_loop() {
   if [[ "$AREAS" == "yes" ]]; then
     message "Starting rules_loop.sh"
     "$EXEC_DIR/rules_loop.sh" \
@@ -581,8 +569,7 @@ start_rules_loop()
   fi
 }
 
-start_backup()
-{
+start_backup() {
   if [[ "$BACKUP" == "yes" ]]; then
     message "Starting backup.sh"
     "$EXEC_DIR/backup.sh" \
@@ -601,8 +588,7 @@ start_backup()
 # SHUTDOWN
 # ============================================================================
 
-kill_child()
-{
+kill_child() {
   local CHILD_NAME="$1"
   local CHILD_PID="$2"
 
@@ -619,8 +605,7 @@ kill_child()
   wait "$CHILD_PID" 2>/dev/null
 }
 
-stop_base_dispatcher()
-{
+stop_base_dispatcher() {
   if [[ -n "$DISPATCHER_BASE_PID" ]] && kill -0 "$DISPATCHER_BASE_PID" 2>/dev/null; then
     message "Stopping base dispatcher"
     if "$EXEC_DIR/dispatcher" --osm-base --terminate; then
@@ -635,8 +620,7 @@ stop_base_dispatcher()
   DISPATCHER_BASE_PID=
 }
 
-stop_areas_dispatcher()
-{
+stop_areas_dispatcher() {
   if [[ -n "$DISPATCHER_AREAS_PID" ]] && kill -0 "$DISPATCHER_AREAS_PID" 2>/dev/null; then
     message "Stopping areas dispatcher"
     if "$EXEC_DIR/dispatcher" --areas --terminate; then
@@ -651,8 +635,7 @@ stop_areas_dispatcher()
   DISPATCHER_AREAS_PID=
 }
 
-stop_apply_osc()
-{
+stop_apply_osc() {
   if [[ -n "$APPLY_OSC_PID" ]] && kill -0 "$APPLY_OSC_PID" 2>/dev/null; then
     message "Stopping apply_osc_to_db.sh (attempting safe termination)"
     message "This may take some time while we wait for updates to finish"
@@ -663,8 +646,7 @@ stop_apply_osc()
   APPLY_OSC_PID=
 }
 
-stop_fetch_osc()
-{
+stop_fetch_osc() {
   if [[ -n "$FETCH_OSC_PID" ]] && kill -0 "$FETCH_OSC_PID" 2>/dev/null; then
     message "Stopping fetch_osc.sh"
     kill "$FETCH_OSC_PID" 2>/dev/null
@@ -674,8 +656,7 @@ stop_fetch_osc()
   FETCH_OSC_PID=
 }
 
-stop_rules_loop()
-{
+stop_rules_loop() {
   if [[ -n "$RULES_LOOP_PID" ]] && kill -0 "$RULES_LOOP_PID" 2>/dev/null; then
     message "Stopping rules_loop.sh"
     kill "$RULES_LOOP_PID" 2>/dev/null
@@ -685,8 +666,7 @@ stop_rules_loop()
   RULES_LOOP_PID=
 }
 
-stop_backup()
-{
+stop_backup() {
   if [[ -n "$BACKUP_PID" ]] && kill -0 "$BACKUP_PID" 2>/dev/null; then
     message "Stopping backup.sh"
     kill "$BACKUP_PID" 2>/dev/null
@@ -696,8 +676,7 @@ stop_backup()
   BACKUP_PID=
 }
 
-stop_overpass()
-{
+stop_overpass() {
   stop_apply_osc
   stop_fetch_osc
   stop_rules_loop
@@ -710,8 +689,7 @@ stop_overpass()
 # HEALTH CHECKS
 # ============================================================================
 
-check_base_dispatcher()
-{
+check_base_dispatcher() {
   local DB_DIR
   local EXIT_CODE
   DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
@@ -724,8 +702,7 @@ check_base_dispatcher()
   return 0
 }
 
-check_areas_dispatcher()
-{
+check_areas_dispatcher() {
   [[ "$AREAS" == "no" ]] && return 0
   local DB_DIR
   local EXIT_CODE
@@ -739,8 +716,7 @@ check_areas_dispatcher()
   return 0
 }
 
-check_apply_osc()
-{
+check_apply_osc() {
   if [[ -n "$APPLY_OSC_PID" ]] && kill -0 "$APPLY_OSC_PID" 2>/dev/null; then
     return 0
   else
@@ -749,8 +725,7 @@ check_apply_osc()
   fi
 }
 
-check_fetch_osc()
-{
+check_fetch_osc() {
   if [[ -n "$FETCH_OSC_PID" ]] && kill -0 "$FETCH_OSC_PID" 2>/dev/null; then
     return 0
   else
@@ -759,8 +734,7 @@ check_fetch_osc()
   fi
 }
 
-check_rules_loop()
-{
+check_rules_loop() {
   [[ "$AREAS" == "no" ]] && return 0
   if [[ -n "$RULES_LOOP_PID" ]] && kill -0 "$RULES_LOOP_PID" 2>/dev/null; then
     return 0
@@ -770,8 +744,7 @@ check_rules_loop()
   fi
 }
 
-check_backup()
-{
+check_backup() {
   [[ "$BACKUP" == "no" ]] && return 0
   if [[ -n "$BACKUP_PID" ]] && kill -0 "$BACKUP_PID" 2>/dev/null; then
     return 0
@@ -781,8 +754,7 @@ check_backup()
   fi
 }
 
-check_overpass()
-{
+check_overpass() {
   if check_backup && check_rules_loop && \
     check_fetch_osc && check_apply_osc && \
     check_areas_dispatcher && check_base_dispatcher; then
@@ -791,8 +763,7 @@ check_overpass()
   return 1
 }
 
-is_overpass_process()
-{
+is_overpass_process() {
   local pid="$1"
   local cmdline
   [[ "$(readlink "/proc/$pid/exe" 2>/dev/null)" == "$EXEC_DIR/"* ]] && return 0
@@ -801,8 +772,7 @@ is_overpass_process()
   return 1
 }
 
-check_lock_files()
-{
+check_lock_files() {
   local LOCK_FILES=("$OVERPASS_DB_DIR/osm_base_shadow.lock")
   if [[ "$AREAS" == "yes" ]]; then
     LOCK_FILES+=("$OVERPASS_DB_DIR/areas_shadow.lock")
@@ -835,8 +805,7 @@ check_lock_files()
   return 0
 }
 
-check_disk_space()
-{
+check_disk_space() {
   [[ -z "$OVERPASS_LOG_DIR" ]] && return 0
 
   local USED_PCT FREE_PCT
@@ -853,8 +822,7 @@ check_disk_space()
 # LOG ROTATION
 # ============================================================================
 
-generate_logrotate_config()
-{
+generate_logrotate_config() {
   cat > "$OVERPASS_DB_DIR/logrotate.conf" <<EOF
 $OVERPASS_DB_DIR/*.log $OVERPASS_DB_DIR/*.out $OVERPASS_DIFF_DIR/*.log $OVERPASS_DIFF_DIR/*.out {
     daily
@@ -888,8 +856,7 @@ EOF
 # SIGNAL HANDLERS
 # ============================================================================
 
-shutdown()
-{
+shutdown() {
   local EXIT_CODE=$1
   message "Shutdown signal received, cleaning up..."
 

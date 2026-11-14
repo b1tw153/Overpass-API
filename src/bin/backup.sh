@@ -23,8 +23,7 @@
 #          and error handling
 # ============================================================================
 
-usage()
-{
+usage() {
   cat >&2 << EOF
 Usage: $0 [--time HH:MM] [--day DAY] backup_dir
 
@@ -62,8 +61,7 @@ if [[ -z "${1:-}" ]]; then
   exit 1
 fi
 
-print_corruption_warning()
-{
+print_corruption_warning() {
   cat >&2 << EOF
 WARNING: Backup could not confirm that the database is valid. No files will be
 copied to prevent overwriting the backup with corrupt data. To proceed, the
@@ -177,8 +175,7 @@ fi
 # LOGGING
 # ============================================================================
 
-log_message()
-{
+log_message() {
   if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
@@ -186,8 +183,7 @@ log_message()
   fi
 }
 
-log_error()
-{
+log_error() {
   if [[ -t 2 ]]; then
     echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
@@ -266,8 +262,7 @@ FILES_AREAS=(
 # LOCK MANAGEMENT
 # ============================================================================
 
-acquire_lock()
-{
+acquire_lock() {
   local type="$1"
   local lock_file
   if [[ "$type" == "base" ]]; then
@@ -291,8 +286,7 @@ acquire_lock()
   log_message "Acquired $type lock"
 }
 
-release_lock()
-{
+release_lock() {
   local type="$1"
   local lock_file
   if [[ "$type" == "base" ]]; then
@@ -320,8 +314,7 @@ release_lock()
 
 RSYNC_PID=
 
-stop_rsync()
-{
+stop_rsync() {
   if [[ -n "$RSYNC_PID" ]]; then
     kill "$RSYNC_PID" 2>/dev/null || true
     wait "$RSYNC_PID" 2>/dev/null || true
@@ -329,8 +322,7 @@ stop_rsync()
   fi
 }
 
-shutdown()
-{
+shutdown() {
   local EXIT_CODE=$1
   trap '' SIGTERM SIGINT SIGHUP
   stop_rsync
@@ -356,8 +348,7 @@ trap 'shutdown 129' SIGHUP
 # Print the meta mode of the database in directory $1: no, yes or attic.
 # Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
 # missing. Return 2 if $1 is not a directory.
-detect_database_meta_state()
-{
+detect_database_meta_state() {
   local DIR="$1"
   local TRUNK
 
@@ -419,16 +410,14 @@ detect_database_meta_state()
 
 TICKLE_PID=
 
-tickle_replicate_id()
-{
+tickle_replicate_id() {
   while true; do
     sleep_with_interrupts "$UPDATE_FREQUENCY"
     touch "$DB_DIR/replicate_id" 2>/dev/null || true
   done
 }
 
-stop_tickle()
-{
+stop_tickle() {
   if [[ -n "$TICKLE_PID" ]]; then
     kill "$TICKLE_PID" 2>/dev/null || true
     wait "$TICKLE_PID" 2>/dev/null || true
@@ -442,8 +431,7 @@ stop_tickle()
 
 # Run rsync on database files and wait for it, so that a signal can interrupt.
 # $@: absolute paths of the files to copy to BACKUP_DIR
-run_rsync()
-{
+run_rsync() {
   local exit_code
   timeout "$BACKUP_TIMEOUT" rsync -a "$@" "$BACKUP_DIR/" &
   RSYNC_PID=$!
@@ -462,8 +450,7 @@ run_rsync()
 # Check that the database holds every file in the list.
 # $@: names of the files in DB_DIR
 # Returns 1 and logs each missing file if any is absent.
-check_files_present()
-{
+check_files_present() {
   local missing=0
   local f
   for f in "$@"; do
@@ -477,8 +464,7 @@ check_files_present()
 
 # Copy database files to BACKUP_DIR.
 # $@: names of the files in DB_DIR
-copy_files()
-{
+copy_files() {
   local files=()
   local f
   for f in "$@"; do
@@ -489,8 +475,7 @@ copy_files()
 
 # Copy optional database files to BACKUP_DIR, skipping any that don't exist.
 # $@: names of the files in DB_DIR
-copy_optional_files()
-{
+copy_optional_files() {
   local files=()
   local f
   for f in "$@"; do
@@ -504,8 +489,7 @@ copy_optional_files()
 # DISK SPACE CHECK
 # ============================================================================
 
-check_backup_disk_space()
-{
+check_backup_disk_space() {
   local DB_SIZE BACKUP_SIZE LARGEST_FILE DELTA THRESHOLD FREE_BYTES
 
   DB_SIZE=$(du -sb "$DB_DIR" | cut -f1)
@@ -531,16 +515,14 @@ check_backup_disk_space()
 # SLEEP
 # ============================================================================
 
-dow_number()
-{
+dow_number() {
   case "$1" in
     MON) echo 1 ;; TUE) echo 2 ;; WED) echo 3 ;; THU) echo 4 ;;
     FRI) echo 5 ;; SAT) echo 6 ;; SUN) echo 7 ;;
   esac
 }
 
-is_backup_day()
-{
+is_backup_day() {
   if [[ "$BACKUP_DAY" =~ ^[0-9]+$ ]]; then
     [[ $(date +%-d) -eq $BACKUP_DAY ]]
   else
@@ -548,8 +530,7 @@ is_backup_day()
   fi
 }
 
-calculate_sleep_time()
-{
+calculate_sleep_time() {
   local NOW
   NOW=$(date +%s)
 

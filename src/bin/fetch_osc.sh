@@ -155,8 +155,7 @@ FETCH_STATE_FILE="$LOCAL_DIR/replicate_id"
 # LOGGING
 # ============================================================================
 
-log_message()
-{
+log_message() {
   if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
@@ -164,8 +163,7 @@ log_message()
   fi
 }
 
-log_error()
-{
+log_error() {
   if [[ -t 2 ]]; then
     echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
@@ -176,8 +174,7 @@ log_error()
 # ============================================================================
 # VARIABLES
 # ============================================================================
-verify_globals()
-{
+verify_globals() {
   local MESSAGE
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]+$ ]]; then
     MESSAGE="Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
@@ -282,8 +279,7 @@ verify_globals()
 # TIMING
 # ============================================================================
 
-sleep_until_check_time()
-{
+sleep_until_check_time() {
   local NOW T_START SLEEP_TIME
   NOW=$(date +%s)
   T_START=$(( LAST_SCHEDULED + UPDATE_FREQUENCY - TRIM ))
@@ -299,8 +295,7 @@ sleep_until_check_time()
 # SLEEPING
 # ============================================================================
 
-sleep_with_interrupts()
-{
+sleep_with_interrupts() {
   sleep "$1" &
   wait $!
 }
@@ -309,8 +304,7 @@ sleep_with_interrupts()
 # FILE VERIFICATION
 # ============================================================================
 
-verify_file()
-{
+verify_file() {
   local FILE="$1"
   local TYPE="$2"
   
@@ -338,8 +332,7 @@ verify_file()
 # REMOTE STATE CHECKING
 # ============================================================================
 
-get_latest_available_id()
-{
+get_latest_available_id() {
   LATEST_AVAILABLE_ID=
   LATEST_ROOT_LM=
   local REMOTE_STATE="$LOCAL_DIR/state.txt"
@@ -406,8 +399,7 @@ get_latest_available_id()
 # PATH CONVERSION
 # ============================================================================
 
-get_replicate_path()
-{
+get_replicate_path() {
   local ID=$1
   local ARG
 
@@ -423,8 +415,7 @@ get_replicate_path()
 # DOWNLOAD HELPERS
 # ============================================================================
 
-download_batch_with_curl()
-{
+download_batch_with_curl() {
   local URL
   local INDEX
   local CURL_CONFIG
@@ -498,8 +489,7 @@ download_batch_with_curl()
 # BATCH DOWNLOAD
 # ============================================================================
 
-download_batch()
-{
+download_batch() {
   local START=$1
   local END=$2
   local BATCH_COUNT=$((END - START))
@@ -602,8 +592,7 @@ download_batch()
 # FETCH STATE MANAGEMENT
 # ============================================================================
 
-read_fetch_state()
-{
+read_fetch_state() {
   if [[ -f "$FETCH_STATE_FILE" && -s "$FETCH_STATE_FILE" ]]; then
     cat "$FETCH_STATE_FILE"
   else
@@ -611,8 +600,7 @@ read_fetch_state()
   fi
 }
 
-read_db_state()
-{
+read_db_state() {
   if [[ -f "$DB_STATE_FILE" && -s "$DB_STATE_FILE" ]]; then
     cat "$DB_STATE_FILE"
   else
@@ -620,8 +608,7 @@ read_db_state()
   fi
 }
 
-update_fetch_state()
-{
+update_fetch_state() {
   local NEW_ID=$1
   echo "$NEW_ID" > "$FETCH_STATE_FILE.tmp"
   mv "$FETCH_STATE_FILE.tmp" "$FETCH_STATE_FILE" || log_error "Unable to update $FETCH_STATE_FILE"
@@ -631,8 +618,7 @@ update_fetch_state()
 # DISK SPACE CHECK
 # ============================================================================
 
-check_diff_disk_space()
-{
+check_diff_disk_space() {
   local USED_PCT FREE_PCT
   USED_PCT=$(df --output=pcent "$LOCAL_DIR" | tail -1 | tr -d ' %')
   FREE_PCT=$(( 100 - USED_PCT ))
@@ -646,8 +632,7 @@ check_diff_disk_space()
 # SIGNAL HANDLERS
 # ============================================================================
 
-shutdown()
-{
+shutdown() {
   local EXIT_CODE=$1
 
   log_message "Shutdown signal received, cleaning up..."

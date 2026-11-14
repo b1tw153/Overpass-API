@@ -24,8 +24,7 @@
 #          timestamp using binary search
 # ============================================================================
 
-usage()
-{
+usage() {
   cat >&2 << EOF
 Usage: $0 [diff_url [diff_dir [target_time [lower [upper]]]]]
 
@@ -54,13 +53,11 @@ number of the last diff that would have been applied to the database.
 EOF
 }
 
-warning()
-{
+warning() {
   echo "$(date -u '+%F %T'): WARNING: $1" >&2
 }
 
-error()
-{
+error() {
   echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 
@@ -200,8 +197,7 @@ fi
 # PATH CONVERSION
 # ============================================================================
 
-get_replicate_path()
-{
+get_replicate_path() {
   local ID="$1"
   local ARG
 
@@ -219,8 +215,7 @@ get_replicate_path()
 
 DATA_VERSION=
 
-fetch_state()
-{
+fetch_state() {
   local TARGET="$1"
   local LOCAL_PATH LOCAL_FILE REMOTE_URL TMP_FILE TIMESTAMP_LINE HTTP_CODE
 

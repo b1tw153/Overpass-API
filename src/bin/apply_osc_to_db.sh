@@ -125,8 +125,7 @@ INOTIFY_WATCHDOG_SLACK=30  # seconds beyond --timeout before declaring inotifywa
 # CLEANUP
 # ============================================================================
 
-die()
-{
+die() {
   if [[ -n "$WORK_DIR" ]]; then
     rm -rf "$WORK_DIR" 2>/dev/null || true
   fi
@@ -138,8 +137,7 @@ die()
 # LOGGING
 # ============================================================================
 
-log_message()
-{
+log_message() {
   if [[ -t 1 ]]; then
     echo "$(date -u '+%F %T'): $1" | tee -a "$LOG_FILE"
   else
@@ -147,8 +145,7 @@ log_message()
   fi
 }
 
-log_error()
-{
+log_error() {
   if [[ -t 2 ]]; then
     echo "$(date -u '+%F %T'): ERROR: $1" | tee -a "$LOG_FILE" >&2
   else
@@ -160,8 +157,7 @@ log_error()
 # GLOBAL VALIDATION
 # ============================================================================
 
-verify_globals()
-{
+verify_globals() {
   local MESSAGE
 
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
@@ -196,8 +192,7 @@ verify_globals()
 # Print the meta mode of the database in directory $1: no, yes or attic.
 # Return 1 and print nothing if nodes.bin, ways.bin or relations.bin is
 # missing. Return 2 if $1 is not a directory.
-detect_database_meta_state()
-{
+detect_database_meta_state() {
   local DIR="$1"
   local TRUNK
 
@@ -241,8 +236,7 @@ detect_database_meta_state()
 }
 
 # Validate that user-specified meta mode matches database state
-validate_meta_mode()
-{
+validate_meta_mode() {
   # Extract the mode from the argument
   local USER_MODE="${META_ARG#--meta=}"
 
@@ -265,8 +259,7 @@ validate_meta_mode()
 # STATE MANAGEMENT
 # ============================================================================
 
-read_current_state()
-{
+read_current_state() {
   if [[ -f "$STATE_FILE" && -s "$STATE_FILE" ]]; then
     cat "$STATE_FILE"
     return 0
@@ -275,8 +268,7 @@ read_current_state()
   fi
 }
 
-update_state()
-{
+update_state() {
   local NEW_ID=$1
   if ! {  echo "$NEW_ID" > "$STATE_FILE.tmp"; }; then
     log_error "Failed to write new state to temporary file"
@@ -292,8 +284,7 @@ update_state()
 # PATH CONVERSION
 # ============================================================================
 
-get_replicate_path()
-{
+get_replicate_path() {
   local ID=$1
   printf -v DIGIT3 %03u $((ID % 1000))
   local ARG=$((ID / 1000))
@@ -307,8 +298,7 @@ get_replicate_path()
 # FILE VERIFICATION
 # ============================================================================
 
-verify_file()
-{
+verify_file() {
   local FILE="$1"
   local TYPE="$2"
   
@@ -337,8 +327,7 @@ verify_file()
 # ============================================================================
 
 # Helper function to extract timestamp from state file and convert to epoch seconds
-get_timestamp_epoch()
-{
+get_timestamp_epoch() {
   local STATE_FILE_PATH="$1"
 
   if [[ ! -f "$STATE_FILE_PATH" ]]; then
@@ -363,8 +352,7 @@ get_timestamp_epoch()
   return $?
 }
 
-collect_batch()
-{
+collect_batch() {
   local START=$1
   local ID=$((START + 1))
 
@@ -453,8 +441,7 @@ collect_batch()
 # BATCH PREPARATION
 # ============================================================================
 
-prepare_batch()
-{
+prepare_batch() {
   local START=$1
   local END=$2
   local COUNT=$((END - START))
@@ -496,8 +483,7 @@ prepare_batch()
 # TIMESTAMP EXTRACTION
 # ============================================================================
 
-get_timestamp()
-{
+get_timestamp() {
   local ID=$1
   get_replicate_path "$ID"
 
@@ -527,8 +513,7 @@ get_timestamp()
 # BATCH APPLICATION
 # ============================================================================
 
-apply_batch()
-{
+apply_batch() {
   local OSC_DIR="$1"
 
   log_message "Applying batch to database (version: ${DATA_VERSION//\\/})"
@@ -590,8 +575,7 @@ apply_batch()
 # SLEEPING
 # ============================================================================
 
-sleep_with_interrupts()
-{
+sleep_with_interrupts() {
   sleep "$1" &
   wait $!
 }
@@ -600,8 +584,7 @@ sleep_with_interrupts()
 # BATCH WAITING
 # ============================================================================
 
-wait_for_batch()
-{
+wait_for_batch() {
   local NOW FETCH_MTIME SLEEP_TARGET SLEEP_TIME LOG_INTERVAL ELAPSED INOTIFY_EXIT CURRENT_MTIME
 
   LOG_INTERVAL=$(( UPDATE_FREQUENCY / 6 ))
@@ -707,8 +690,7 @@ wait_for_batch()
 # DISK SPACE CHECK
 # ============================================================================
 
-check_db_disk_space()
-{
+check_db_disk_space() {
   local USED_PCT FREE_PCT
   USED_PCT=$(df --output=pcent "$DB_DIR" | tail -1 | tr -d ' %')
   FREE_PCT=$(( 100 - USED_PCT ))
@@ -722,8 +704,7 @@ check_db_disk_space()
 # SIGNAL HANDLERS
 # ============================================================================
 
-shutdown()
-{
+shutdown() {
   local EXIT_CODE=$1
   log_message "Shutdown signal received, cleaning up..."
 
