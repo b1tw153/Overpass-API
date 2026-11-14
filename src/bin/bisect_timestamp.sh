@@ -123,6 +123,7 @@ if [[ -z "$TARGET_TIME" ]]; then
     fi
   elif [[ -x "$EXEC_DIR/dispatcher" ]]; then
     DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir 2>/dev/null)
+    DB_DIR="$(realpath "$DB_DIR")"
     if [[ -n "$DB_DIR" && -s "$DB_DIR/osm_base_version" ]]; then
       TARGET_TIME=$(cat "$DB_DIR/osm_base_version")
     else
