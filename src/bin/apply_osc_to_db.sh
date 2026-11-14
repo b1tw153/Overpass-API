@@ -419,7 +419,7 @@ collect_batch() {
     # File passes all checks - add it to the batch
     BATCH_END="$ID"
     BATCH_SIZE_BYTES=$NEW_BATCH_SIZE
-    ID=$((ID + 1))
+    (( ++ID ))
   done
 
   if (( BATCH_END <= START )); then
@@ -494,7 +494,7 @@ get_timestamp() {
     TIMESTAMP_LINE=$(grep "^timestamp" <"$STATE_FILE_LOCAL" 2>/dev/null)
     if [[ -z "$TIMESTAMP_LINE" ]]; then
       sleep_with_interrupts 1
-      WAIT_COUNT=$((WAIT_COUNT + 1))
+      (( ++WAIT_COUNT ))
     fi
   done
 
@@ -551,7 +551,7 @@ apply_batch() {
       log_error "update_from_dir terminated by signal (exit code: $EXIT_CODE), cleaning up..."
       shutdown $EXIT_CODE
     else
-      RETRY_COUNT=$((RETRY_COUNT + 1))
+      (( ++RETRY_COUNT ))
       if (( RETRY_COUNT < MAX_RETRIES )); then
         log_error "update_from_dir failed (exit code: $EXIT_CODE), attempt $((RETRY_COUNT + 1))/$MAX_RETRIES, retrying..."
         sleep_with_interrupts "$UPDATE_FREQUENCY"

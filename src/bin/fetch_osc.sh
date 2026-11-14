@@ -432,7 +432,7 @@ download_batch_with_curl() {
   for URL in "${URL_ARRAY[@]}"; do
     echo "url = \"$URL\"" >> "$CURL_CONFIG"
     echo "output = \"${FILE_ARRAY[$INDEX]}.tmp\"" >> "$CURL_CONFIG"
-    ((++INDEX))
+    (( ++INDEX ))
   done
   
   CURL_ERROR_LOG="$LOCAL_DIR/curl_error_$$.log"
@@ -520,7 +520,7 @@ download_batch() {
       URL_ARRAY+=("$REMOTE_BASE.state.txt")
       FILE_ARRAY+=("$FILE")
     else
-      ((++CACHED_COUNT))
+      (( ++CACHED_COUNT ))
     fi
 
     FILE="$DIR_PATH/$DIGIT3.osc.gz"
@@ -528,7 +528,7 @@ download_batch() {
       URL_ARRAY+=("$REMOTE_BASE.osc.gz")
       FILE_ARRAY+=("$FILE")
     else
-      ((++CACHED_COUNT))
+      (( ++CACHED_COUNT ))
     fi
   done
 

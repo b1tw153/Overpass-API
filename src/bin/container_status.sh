@@ -135,7 +135,7 @@ begin_section() {
     if [[ "${_JSON_COMMA[DEPTH]:-0}" == "1" ]]; then printf ','; fi
     printf '\n%*s"%s":\n%*s{' $(( DEPTH * 2 )) '' "$(json_escape "$name")" $(( DEPTH * 2 )) ''
     _JSON_COMMA[DEPTH]=1
-    DEPTH=$(( DEPTH + 1 ))
+    (( ++DEPTH ))
     _JSON_COMMA[DEPTH]=0
   else
     if (( DEPTH == 0 )); then
@@ -143,18 +143,18 @@ begin_section() {
     else
       printf '\n%s\n' "$name"
     fi
-    DEPTH=$(( DEPTH + 1 ))
+    (( ++DEPTH ))
   fi
 }
 
 end_section() {
   if [[ "$FORMAT" == "json" ]]; then
     printf '\n'
-    DEPTH=$(( DEPTH - 1 ))
+    (( DEPTH-- ))
     printf '%*s}' $(( DEPTH * 2 )) ''
     _JSON_COMMA[DEPTH]=1
   else
-    DEPTH=$(( DEPTH - 1 ))
+    (( DEPTH-- ))
   fi
 }
 

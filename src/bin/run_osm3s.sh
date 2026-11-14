@@ -596,7 +596,7 @@ kill_child() {
   local WAIT_COUNT=0
   while kill -0 "$CHILD_PID" 2>/dev/null && (( WAIT_COUNT < 30 )); do
     sleep 1
-    ((++WAIT_COUNT))
+    (( ++WAIT_COUNT ))
   done
   if kill -0 "$CHILD_PID" 2>/dev/null; then
     error "Unable to forcefully terminate $CHILD_NAME, killing"

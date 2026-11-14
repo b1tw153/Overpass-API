@@ -522,7 +522,7 @@ apply_minute_diffs() {
           log_message "update_from_dir terminated by signal (exit code: $EXITCODE)"
           shutdown $EXITCODE
         else
-          RETRY_COUNT=$((RETRY_COUNT + 1))
+          (( ++RETRY_COUNT ))
           if (( RETRY_COUNT < APPLY_MAX_RETRIES )); then
             log_error "update_from_dir failed (exit code: $EXITCODE), attempt $((RETRY_COUNT + 1))/$APPLY_MAX_RETRIES"
             sleep_with_interrupts "$UPDATE_FREQUENCY"
