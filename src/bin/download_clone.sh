@@ -204,7 +204,7 @@ if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
   log_error "Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
   exit 1
 fi
@@ -218,7 +218,7 @@ REMOTE_DIR=
 cleanup() {
   local exit_code=${1:-$?}
 
-  if [[ $INTERRUPTED -eq 1 ]]; then
+  if (( INTERRUPTED == 1 )); then
     echo
     # Remove incomplete .tmp files and aria2c control files
     find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
@@ -292,7 +292,7 @@ is_file_complete() {
   local_size=$(stat -f%z "$local_file" 2>/dev/null || stat -c%s "$local_file" 2>/dev/null)
 
   # Sizes must match
-  if [[ "$local_size" -ne "$remote_size" ]]; then
+  if (( local_size != remote_size )); then
     return 1
   fi
 
@@ -352,14 +352,14 @@ check_clone_disk_space() {
     fi
   done
 
-  if [[ $total_bytes -eq 0 ]]; then
+  if (( total_bytes == 0 )); then
     return 0
   fi
 
   threshold=$(( total_bytes * (100 + MIN_FREE_DISK_PERCENT) / 100 ))
   free_bytes=$(df --output=avail -B1 "$CLONE_DIR" | tail -1 | tr -d ' ')
 
-  if [[ $free_bytes -lt $threshold ]]; then
+  if (( free_bytes < threshold )); then
     log_error "Insufficient free disk space on database filesystem: ${free_bytes} bytes free (minimum: ${threshold} bytes)"
     exit 1
   fi
@@ -376,7 +376,7 @@ download_files_parallel() {
   local DEADLINE=$(($(date '+%s') + MAX_TIME))
 
   # while current time is less than deadline
-  while [[ $(date '+%s') -lt $DEADLINE ]]; do
+  while (( $(date '+%s') < DEADLINE )); do
     curl_args=()
 
     # Build list of files that need downloading
@@ -400,7 +400,7 @@ download_files_parallel() {
     done
 
     # Download all files in parallel if there are any to download
-    if [[ ${#curl_args[@]} -gt 0 ]]; then
+    if (( ${#curl_args[@]} > 0 )); then
       echo
       curl --parallel --parallel-immediate --parallel-max "$PARALLEL_JOBS" \
         -f -S -L \
@@ -419,7 +419,7 @@ download_files_parallel() {
 
       echo "curl command completed"
 
-      if [[ $CURL_EXIT -ne 0 ]]; then
+      if (( CURL_EXIT != 0 )); then
         log_warning "Batch download failed (curl exit code: $CURL_EXIT)"
 
         # Log curl error details if available
@@ -486,7 +486,7 @@ download_files_parallel() {
                 esac
               done
 
-              if [[ $has_non_recoverable -eq 0 ]]; then
+              if (( has_non_recoverable == 0 )); then
                 recoverable=1
               fi
               ;;
@@ -496,7 +496,7 @@ download_files_parallel() {
         esac
 
         # Non-recoverable: delete .tmp files and exit
-        if [[ $recoverable -eq 0 ]]; then
+        if (( recoverable == 0 )); then
           for file in "${files[@]}"; do
             rm -f "$CLONE_DIR/$file.tmp" "$CLONE_DIR/$file.idx.tmp"
           done
@@ -524,7 +524,7 @@ download_files_parallel() {
       done
 
       # Recoverable error: sleep and retry
-      if [[ $CURL_EXIT -ne 0 ]]; then
+      if (( CURL_EXIT != 0 )); then
         log_message "Retrying in $RETRY_DELAY seconds..."
         sleep "$RETRY_DELAY"
       fi
@@ -587,7 +587,7 @@ download_files_with_aria2c() {
   local ARIA2C_EXIT=$?
   rm -f "$ARIA2C_INPUT"
 
-  if [[ $ARIA2C_EXIT -ne 0 ]]; then
+  if (( ARIA2C_EXIT != 0 )); then
     log_warning "Batch download failed (aria2c exit code: $ARIA2C_EXIT)"
     case $ARIA2C_EXIT in
       2)  log_error "Exit 2: Timeout" ;;

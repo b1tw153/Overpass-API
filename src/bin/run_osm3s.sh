@@ -322,7 +322,7 @@ if [[ "$DISPATCHER_LIMIT_CLIENT_ZERO" != "yes" && "$DISPATCHER_LIMIT_CLIENT_ZERO
 fi
 
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
   error "OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
   usage
   exit 1
@@ -463,8 +463,8 @@ detect_update_frequency() {
   INTERVAL_2=$(( LAST_MODIFIED_1 - LAST_MODIFIED_2 ))
   MEAN_INTERVAL=$(( (INTERVAL_1 + INTERVAL_2) / 2 ))
 
-  if   [[ "$MEAN_INTERVAL" -lt 1800  ]]; then printf '%d' 60
-  elif [[ "$MEAN_INTERVAL" -lt 43200 ]]; then printf '%d' 3600
+  if   (( MEAN_INTERVAL < 1800 )); then printf '%d' 60
+  elif (( MEAN_INTERVAL < 43200 )); then printf '%d' 3600
   else                                        printf '%d' 86400
   fi
 
@@ -594,7 +594,7 @@ kill_child() {
 
   kill "$CHILD_PID" 2>/dev/null
   local WAIT_COUNT=0
-  while kill -0 "$CHILD_PID" 2>/dev/null && [[ $WAIT_COUNT -lt 30 ]]; do
+  while kill -0 "$CHILD_PID" 2>/dev/null && (( WAIT_COUNT < 30 )); do
     sleep 1
     ((++WAIT_COUNT))
   done
@@ -695,7 +695,7 @@ check_base_dispatcher() {
   DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
   EXIT_CODE=$?
   DB_DIR="$(realpath "$DB_DIR")"
-  if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
+  if (( EXIT_CODE != 0 )) || [[ "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
     error "base dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR). Check $OVERPASS_DB_DIR/database.log and $OVERPASS_DB_DIR/base_dispatcher.out"
     return 1
   fi
@@ -709,7 +709,7 @@ check_areas_dispatcher() {
   DB_DIR=$("$EXEC_DIR/dispatcher" --areas --show-dir)
   EXIT_CODE=$?
   DB_DIR="$(realpath "$DB_DIR")"
-  if [[ "$EXIT_CODE" -ne 0 || "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
+  if (( EXIT_CODE != 0 )) || [[ "$DB_DIR" != "$OVERPASS_DB_DIR" ]]; then
     error "areas dispatcher is not running (exit: $EXIT_CODE, dir: $DB_DIR). Check $OVERPASS_DB_DIR/areas_dispatcher.out."
     return 1
   fi
@@ -811,7 +811,7 @@ check_disk_space() {
   local USED_PCT FREE_PCT
   USED_PCT=$(df --output=pcent "$OVERPASS_LOG_DIR" | tail -1 | tr -d ' %')
   FREE_PCT=$(( 100 - USED_PCT ))
-  if [[ $FREE_PCT -lt $MIN_FREE_DISK_PERCENT ]]; then
+  if (( FREE_PCT < MIN_FREE_DISK_PERCENT )); then
     error "Insufficient free disk space on log filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
     return 1
   fi

@@ -94,8 +94,7 @@ if [[ ! -d "$DB_DIR" ]]; then
 fi
 
 # Check for buggy date implementation
-DATE_CHECK=$(date -d "2026-01-31T20:00:30Z" +%s 2>/dev/null)
-if [[ "$?" -ne 0 || "$DATE_CHECK" -ne 1769889630 ]]; then
+if ! DATE_CHECK=$(date -d "2026-01-31T20:00:30Z" +%s 2>/dev/null) || (( DATE_CHECK != 1769889630 )); then
   echo "ERROR: The 'date' command on this system cannot parse ISO-8601 timestamps (e.g., 2026-01-31T20:00:30Z) used in OSM data." >&2
   echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
   exit 1
@@ -178,7 +177,7 @@ verify_globals() {
     exit 1
   fi
 
-  if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+  if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
     MESSAGE="Invalid OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (must be an integer from 0 to 99)"
     log_error "$MESSAGE"
     exit 1
@@ -387,13 +386,13 @@ collect_batch() {
     # Get uncompressed size of this file
     local UNCOMPRESSED_SIZE
     UNCOMPRESSED_SIZE=$(gunzip -l "$OSC_FILE" 2>/dev/null | tail -1 | awk '{print $2}')
-    if [[ -z "$UNCOMPRESSED_SIZE" || "$UNCOMPRESSED_SIZE" -le 0 ]]; then
+    if [[ -z "$UNCOMPRESSED_SIZE" ]] || (( UNCOMPRESSED_SIZE <= 0 )); then
       log_error "Cannot determine uncompressed size of $OSC_FILE"
       break
     fi
 
     # Check size limit: is the current batch already at or over the limit?
-    if [[ $BATCH_SIZE_BYTES -gt $MAX_BATCH_SIZE_BYTES ]]; then
+    if (( BATCH_SIZE_BYTES > MAX_BATCH_SIZE_BYTES )); then
       break
     fi
 
@@ -401,8 +400,7 @@ collect_batch() {
 
     # Get timestamp for this file
     local FILE_TIMESTAMP_EPOCH
-    FILE_TIMESTAMP_EPOCH=$(get_timestamp_epoch "$STATE_FILE_LOCAL")
-    if [[ $? -ne 0 || -z "$FILE_TIMESTAMP_EPOCH" ]]; then
+    if ! FILE_TIMESTAMP_EPOCH=$(get_timestamp_epoch "$STATE_FILE_LOCAL") || [[ -z "$FILE_TIMESTAMP_EPOCH" ]]; then
       log_error "Cannot extract timestamp from $STATE_FILE_LOCAL"
       break
     fi
@@ -414,7 +412,7 @@ collect_batch() {
 
     # Check time limit: would adding this file exceed the time span?
     local TIME_SPAN=$((FILE_TIMESTAMP_EPOCH - BATCH_START_TIMESTAMP))
-    if [[ $TIME_SPAN -ge MAX_BATCH_TIME ]]; then
+    if (( TIME_SPAN >= MAX_BATCH_TIME )); then
       break
     fi
 
@@ -424,12 +422,12 @@ collect_batch() {
     ID=$((ID + 1))
   done
 
-  if [[ $BATCH_END -le $START ]]; then
+  if (( BATCH_END <= START )); then
     return 1
   fi
 
   local COUNT=$((BATCH_END - START))
-  if [[ $COUNT -eq 1 ]]; then
+  if (( COUNT == 1 )); then
     log_message "Collected one file: $BATCH_END"
   else
     log_message "Collected batch: $START to $BATCH_END ($COUNT files)"
@@ -452,7 +450,7 @@ prepare_batch() {
     return 1
   fi
 
-  if [[ $COUNT -eq 1 ]]; then
+  if (( COUNT == 1 )); then
     log_message "Decompressing file: $END"
   else
     log_message "Decompressing batch: $START to $END ($COUNT files)"
@@ -492,7 +490,7 @@ get_timestamp() {
   # read the local state file carefully, as it may not be fully written yet
   local TIMESTAMP_LINE=""
   local WAIT_COUNT=0
-  while [[ -z "$TIMESTAMP_LINE" && $WAIT_COUNT -lt 10 ]]; do
+  while [[ -z "$TIMESTAMP_LINE" ]] && (( WAIT_COUNT < 10 )); do
     TIMESTAMP_LINE=$(grep "^timestamp" <"$STATE_FILE_LOCAL" 2>/dev/null)
     if [[ -z "$TIMESTAMP_LINE" ]]; then
       sleep_with_interrupts 1
@@ -522,39 +520,39 @@ apply_batch() {
   local RETRY_COUNT=0
   local MAX_RETRIES=5
 
-  while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $MAX_RETRIES ]]; do
+  while (( SUCCESS == 0 && RETRY_COUNT < MAX_RETRIES )); do
     "$EXEC_DIR/update_from_dir" --osc-dir="$OSC_DIR" --version="$DATA_VERSION" ${META:+"$META"} --flush-size=0 &
     CHILD_PID="$!"
     wait "$CHILD_PID"
     local EXIT_CODE=$?
     CHILD_PID=
 
-    if [[ $EXIT_CODE -eq 0 ]]; then
+    if (( EXIT_CODE == 0 )); then
       SUCCESS=1
-    elif [[ $EXIT_CODE -eq 3 ]]; then
+    elif (( EXIT_CODE == 3 )); then
       log_error "update_from_dir failed due to context error (exit code: $EXIT_CODE)"
       log_message "Resolve the problem with the dispatcher before retrying"
       log_error "Dispatcher failure, cannot proceed"
       die 1
-    elif [[ $EXIT_CODE -eq 15 ]]; then
+    elif (( EXIT_CODE == 15 )); then
       log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
       shutdown 143
-    elif [[ $EXIT_CODE -eq 126 || $EXIT_CODE -eq 127 ]]; then
+    elif (( EXIT_CODE == 126 || EXIT_CODE == 127 )); then
       # Unrecoverable errors: command not executable (126) or not found (127)
       log_error "Unable to run update_from_dir (exit code: $EXIT_CODE)"
       log_error "update_from_dir is not available or not executable"
       die 1
-    elif [[ $EXIT_CODE -eq 134 ]]; then
+    elif (( EXIT_CODE == 134 )); then
       log_error "Received SIGABRT (exit code: $EXIT_CODE) from update_from_dir, shutting down"
       log_error "Database may be corrupt; verify or restore from backup before resuming updates"
       shutdown $EXIT_CODE
-    elif [[ $EXIT_CODE -ge 128 && $EXIT_CODE -le 165 ]]; then
+    elif (( EXIT_CODE >= 128 && EXIT_CODE <= 165 )); then
       # Signal-based exits: process was killed/crashed (128+N where N is signal number)
       log_error "update_from_dir terminated by signal (exit code: $EXIT_CODE), cleaning up..."
       shutdown $EXIT_CODE
     else
       RETRY_COUNT=$((RETRY_COUNT + 1))
-      if [[ $RETRY_COUNT -lt $MAX_RETRIES ]]; then
+      if (( RETRY_COUNT < MAX_RETRIES )); then
         log_error "update_from_dir failed (exit code: $EXIT_CODE), attempt $((RETRY_COUNT + 1))/$MAX_RETRIES, retrying..."
         sleep_with_interrupts "$UPDATE_FREQUENCY"
       else
@@ -563,7 +561,7 @@ apply_batch() {
     fi
   done
 
-  if [[ $SUCCESS -eq 0 ]]; then
+  if (( SUCCESS == 0 )); then
     log_error "Failed to apply batch after $MAX_RETRIES attempts"
     return 1
   fi
@@ -596,7 +594,7 @@ wait_for_batch() {
   SLEEP_TIME=$(( SLEEP_TARGET - NOW ))
 
   # Phase 1: initial sleep before update window opens
-  if [[ $SLEEP_TIME -gt 0 ]]; then
+  if (( SLEEP_TIME > 0 )); then
     log_message "Next batch expected in $SLEEP_TIME seconds at $(date -d "@$SLEEP_TARGET" -u '+%F %T')"
     if [[ "$USE_INOTIFYWAIT" == "true" ]]; then
       timeout "$((SLEEP_TIME + INOTIFY_WATCHDOG_SLACK))" \
@@ -615,10 +613,10 @@ wait_for_batch() {
         wait "$INOTIFY_PID"
         INOTIFY_EXIT=$?
         INOTIFY_PID=
-        if [[ $INOTIFY_EXIT -eq 1 ]]; then
+        if (( INOTIFY_EXIT == 1 )); then
           log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
           USE_INOTIFYWAIT=false
-        elif [[ $INOTIFY_EXIT -eq 124 ]]; then
+        elif (( INOTIFY_EXIT == 124 )); then
           # See https://github.com/inotify-tools/inotify-tools/issues/243
           log_message "WARNING: Watchdog ended wait period because inotifywait --timeout did not work"
         fi
@@ -633,11 +631,11 @@ wait_for_batch() {
   [[ -z "$POLL_START" ]] && POLL_START=$NOW
   ELAPSED=$(( NOW - POLL_START ))
 
-  if [[ $ELAPSED -ge $((UPDATE_FREQUENCY * 2)) ]]; then
+  if (( ELAPSED >= UPDATE_FREQUENCY * 2 )); then
     log_message "No new batch after ${ELAPSED}s, is fetch_osc.sh running?"
-  elif [[ $ELAPSED -ge $UPDATE_FREQUENCY ]]; then
+  elif (( ELAPSED >= UPDATE_FREQUENCY )); then
     log_message "Next batch is overdue (${ELAPSED}s)"
-  elif [[ $ELAPSED -eq 0 ]]; then
+  elif (( ELAPSED == 0 )); then
     log_message "Waiting for next batch"
   else
     log_message "Still waiting for next batch (${ELAPSED}s)"
@@ -660,10 +658,10 @@ wait_for_batch() {
       wait "$INOTIFY_PID"
       INOTIFY_EXIT=$?
       INOTIFY_PID=
-      if [[ $INOTIFY_EXIT -eq 1 ]]; then
+      if (( INOTIFY_EXIT == 1 )); then
         log_error "inotifywait failed (exit $INOTIFY_EXIT), falling back to timed polling"
         USE_INOTIFYWAIT=false
-      elif [[ $INOTIFY_EXIT -eq 124 ]]; then
+      elif (( INOTIFY_EXIT == 124 )); then
         # See https://github.com/inotify-tools/inotify-tools/issues/243
         log_message "WARNING: Watchdog ended wait period because inotifywait --timeout did not work"
       fi
@@ -678,7 +676,7 @@ wait_for_batch() {
       if [[ "$CURRENT_MTIME" != "$FETCH_MTIME" ]]; then
         break
       fi
-      if [[ $(( $(date +%s) - PHASE2_START )) -ge $LOG_INTERVAL ]]; then
+      if (( $(date +%s) - PHASE2_START >= LOG_INTERVAL )); then
         break
       fi
       sleep_with_interrupts "$POLL_INTERVAL"
@@ -694,7 +692,7 @@ check_db_disk_space() {
   local USED_PCT FREE_PCT
   USED_PCT=$(df --output=pcent "$DB_DIR" | tail -1 | tr -d ' %')
   FREE_PCT=$(( 100 - USED_PCT ))
-  if [[ $FREE_PCT -lt $MIN_FREE_DISK_PERCENT ]]; then
+  if (( FREE_PCT < MIN_FREE_DISK_PERCENT )); then
     log_error "Insufficient free disk space on database filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
     die 1
   fi
@@ -766,14 +764,14 @@ if [[ "$START_ID" == "auto" ]]; then
     log_error "Use an explicit replicate ID to specify the starting point"
     die 1
   fi
-  if [[ $CURRENT_ID -lt 0 ]]; then
+  if (( CURRENT_ID < 0 )); then
     log_error "Current replicate ID in database is invalid: $CURRENT_ID"
     die 1
   fi
   log_message "Auto mode: resuming from $CURRENT_ID"
 else
   CURRENT_ID=$START_ID
-  if [[ $CURRENT_ID -lt 0 ]]; then
+  if (( CURRENT_ID < 0 )); then
     log_error "Specified start replicate ID is invalid: $CURRENT_ID"
     die 1
   fi
@@ -795,7 +793,7 @@ CHILD_PID=$!
 wait "$CHILD_PID"
 EXIT_CODE=$?
 CHILD_PID=
-if [[ $EXIT_CODE -ne 0 ]]; then
+if (( EXIT_CODE != 0 )); then
   log_error "Database migration failed"
   die 1
 fi

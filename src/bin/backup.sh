@@ -148,14 +148,13 @@ if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
   echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)" >&2
   exit 1
 fi
 
 if [[ -n "$BACKUP_TIME" ]]; then
-  DATE_CHECK=$(date -d "today $BACKUP_TIME" +%s 2>/dev/null)
-  if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
+  if ! DATE_CHECK=$(date -d "today $BACKUP_TIME" +%s 2>/dev/null) || [[ ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
     echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')." >&2
     echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
     exit 1
@@ -163,8 +162,7 @@ if [[ -n "$BACKUP_TIME" ]]; then
 fi
 
 if [[ "$BACKUP_DAY" =~ ^[0-9]+$ ]]; then
-  DATE_CHECK=$(date +%-d 2>/dev/null)
-  if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
+  if ! DATE_CHECK=$(date +%-d 2>/dev/null) || [[ ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
     echo "ERROR: The 'date' command on this system does not support the '%-d' format specifier." >&2
     echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
     exit 1
@@ -438,10 +436,10 @@ run_rsync() {
   wait "$RSYNC_PID"
   exit_code=$?
   RSYNC_PID=
-  if [[ $exit_code -eq 124 ]]; then
+  if (( exit_code == 124 )); then
     log_error "rsync timed out after ${BACKUP_TIMEOUT}s"
     return 1
-  elif [[ $exit_code -ne 0 ]]; then
+  elif (( exit_code != 0 )); then
     log_error "rsync failed (exit $exit_code)"
     return 1
   fi
@@ -459,7 +457,7 @@ check_files_present() {
       missing=1
     fi
   done
-  [[ $missing -eq 0 ]]
+  (( missing == 0 ))
 }
 
 # Copy database files to BACKUP_DIR.
@@ -481,7 +479,7 @@ copy_optional_files() {
   for f in "$@"; do
     [[ -e "$DB_DIR/$f" ]] && files+=("$DB_DIR/$f")
   done
-  [[ ${#files[@]} -gt 0 ]] || return 0
+  (( ${#files[@]} > 0 )) || return 0
   run_rsync "${files[@]}"
 }
 
@@ -504,7 +502,7 @@ check_backup_disk_space() {
 
   FREE_BYTES=$(df --output=avail -B1 "$BACKUP_DIR" | tail -1 | tr -d ' ')
 
-  if [[ $FREE_BYTES -lt $THRESHOLD ]]; then
+  if (( FREE_BYTES < THRESHOLD )); then
     log_error "Insufficient free disk space on backup filesystem: ${FREE_BYTES} bytes free (minimum: ${THRESHOLD} bytes)"
     return 1
   fi
@@ -524,9 +522,9 @@ dow_number() {
 
 is_backup_day() {
   if [[ "$BACKUP_DAY" =~ ^[0-9]+$ ]]; then
-    [[ $(date +%-d) -eq $BACKUP_DAY ]]
+    (( $(date +%-d) == BACKUP_DAY ))
   else
-    [[ $(date +%u) -eq $(dow_number "$BACKUP_DAY") ]]
+    (( $(date +%u) == $(dow_number "$BACKUP_DAY") ))
   fi
 }
 
@@ -539,7 +537,7 @@ calculate_sleep_time() {
   (( NEXT_BACKUP <= NOW )) && NEXT_BACKUP=$(date -d "tomorrow $BACKUP_TIME" +%s)
 
   local SLEEP_TIME=$(( NEXT_BACKUP - NOW ))
-  if [[ $SLEEP_TIME -lt 1 ]]; then
+  if (( SLEEP_TIME < 1 )); then
     echo "1"
   else
     echo "$SLEEP_TIME"

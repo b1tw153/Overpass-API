@@ -251,7 +251,7 @@ calculate_sleep_time() {
   local NEXT_CHECK=$((LAST_UPDATE_TIME + UPDATE_FREQUENCY + UPDATE_TRIM))
   local SLEEP_TIME=$((NEXT_CHECK - NOW))
 
-  if [[ $SLEEP_TIME -lt 1 ]]; then
+  if (( SLEEP_TIME < 1 )); then
     echo 1
   else
     echo $SLEEP_TIME
@@ -307,7 +307,7 @@ get_latest_available_id() {
 
     local CURL_EXIT=$?
 
-    if [[ $CURL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
+    if (( CURL_EXIT == 0 )) && [[ -s "$REMOTE_STATE_TMP" ]]; then
       local SEQ_LINE
       SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE_TMP")
       if [[ -n "$SEQ_LINE" ]]; then
@@ -360,7 +360,7 @@ download_file() {
 
   local CURL_EXIT=$?
 
-  if [[ $CURL_EXIT -ne 0 ]]; then
+  if (( CURL_EXIT != 0 )); then
     rm -f "$TMP_FILE"
     if [[ -s "$CURL_ERROR_LOG" ]]; then
       log_error "Curl error output:"
@@ -395,11 +395,11 @@ collect_minute_diffs() {
 
   # Determine potential batch end (limited by count and availability)
   local POTENTIAL_END=$((CURRENT_ID + MAX_BATCH_COUNT))
-  if [[ $POTENTIAL_END -gt $MAX_AVAILABLE ]]; then
+  if (( POTENTIAL_END > MAX_AVAILABLE )); then
     POTENTIAL_END=$MAX_AVAILABLE
   fi
 
-  if [[ $POTENTIAL_END -le $CURRENT_ID ]]; then
+  if (( POTENTIAL_END <= CURRENT_ID )); then
     return 1
   fi
 
@@ -416,7 +416,7 @@ collect_minute_diffs() {
   for (( ID=CURRENT_ID+1; ID<=POTENTIAL_END; ID++ )); do
     # Check size before downloading next file (like master branch)
     CURRENT_SIZE_MB=$(du -m "$TEMP_TARGET_DIR" 2>/dev/null | awk '{print $1}')
-    if [[ ${CURRENT_SIZE_MB:-0} -gt $MAX_BATCH_MB ]]; then
+    if (( ${CURRENT_SIZE_MB:-0} > MAX_BATCH_MB )); then
       break
     fi
 
@@ -450,7 +450,7 @@ collect_minute_diffs() {
     BATCH_END=$ID
   done
 
-  if [[ $BATCH_END -gt $CURRENT_ID ]]; then
+  if (( BATCH_END > CURRENT_ID )); then
     return 0
   else
     return 1
@@ -489,7 +489,7 @@ apply_minute_diffs() {
   local SUCCESS=0
   local RETRY_COUNT=0
 
-  while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $APPLY_MAX_RETRIES ]]; do
+  while (( SUCCESS == 0 && RETRY_COUNT < APPLY_MAX_RETRIES )); do
     "$EXEC_DIR/update_from_dir" --osc-dir="$OSC_DIR" --version="$DATA_VERSION" --flush-size=0 &
     CHILD_PID=$!
     wait "$CHILD_PID"
@@ -518,12 +518,12 @@ apply_minute_diffs() {
         shutdown $EXITCODE
         ;;
       *)
-        if [[ $EXITCODE -ge 128 && $EXITCODE -le 165 ]]; then
+        if (( EXITCODE >= 128 && EXITCODE <= 165 )); then
           log_message "update_from_dir terminated by signal (exit code: $EXITCODE)"
           shutdown $EXITCODE
         else
           RETRY_COUNT=$((RETRY_COUNT + 1))
-          if [[ $RETRY_COUNT -lt $APPLY_MAX_RETRIES ]]; then
+          if (( RETRY_COUNT < APPLY_MAX_RETRIES )); then
             log_error "update_from_dir failed (exit code: $EXITCODE), attempt $((RETRY_COUNT + 1))/$APPLY_MAX_RETRIES"
             sleep_with_interrupts "$UPDATE_FREQUENCY"
           fi
@@ -532,7 +532,7 @@ apply_minute_diffs() {
     esac
   done
 
-  if [[ $SUCCESS -eq 0 ]]; then
+  if (( SUCCESS == 0 )); then
     log_error "Failed to apply batch after $APPLY_MAX_RETRIES attempts"
     return 1
   fi
@@ -618,7 +618,7 @@ log_message "-----------------------------------"
 
 CURRENT_ID=$(($(read_current_state) + 0))
 
-if [[ $CURRENT_ID -lt 0 ]]; then
+if (( CURRENT_ID < 0 )); then
   log_error "Invalid replicate_id: $CURRENT_ID"
   die 1
 fi
@@ -630,7 +630,7 @@ CHILD_PID=$!
 wait "$CHILD_PID"
 EXIT_CODE=$?
 CHILD_PID=
-if [[ $EXIT_CODE -ne 0 ]]; then
+if (( EXIT_CODE != 0 )); then
   log_error "Database migration failed"
   die 1
 fi
@@ -661,7 +661,7 @@ while true; do
     log_message "Replication source verified"
   fi
 
-  if [[ $MAX_AVAILABLE -le $CURRENT_ID ]]; then
+  if (( MAX_AVAILABLE <= CURRENT_ID )); then
     cleanup_temp_dirs
     SLEEP_TIME=$(calculate_sleep_time)
     log_message "No new files available, sleeping ${SLEEP_TIME}s"

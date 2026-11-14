@@ -222,7 +222,7 @@ cleanup_old_files() {
   local CLEANUP_THRESHOLD
   CLEANUP_THRESHOLD=$(( CURRENT_STATE - KEEP_COUNT ))
 
-  if [[ $CLEANUP_THRESHOLD -le 0 ]]; then
+  if (( CLEANUP_THRESHOLD <= 0 )); then
     log_message "Cleanup threshold is $CLEANUP_THRESHOLD, nothing to clean"
     return 0
   fi
@@ -283,7 +283,7 @@ cleanup_old_files() {
         local FILE_ID=$(( 10#$DIGIT1 * 1000000 + 10#$DIGIT2 * 1000 + 10#$DIGIT3 ))
 
         # Delete if older than threshold
-        if [[ $FILE_ID -le $CLEANUP_THRESHOLD ]]; then
+        if (( FILE_ID <= CLEANUP_THRESHOLD )); then
           rm -f "$FILE"
           (( ++CLEANED_FILES ))
         fi
@@ -301,7 +301,7 @@ cleanup_old_files() {
     fi
   done
 
-  if [[ $CLEANED_FILES -gt 0 ]]; then
+  if (( CLEANED_FILES > 0 )); then
     log_message "Cleaned up $CLEANED_FILES files and removed $CLEANED_DIRS empty directories"
   else
     log_message "No files needed cleaning"
@@ -339,7 +339,7 @@ log_message "-----------------------------------"
 CURRENT_STATE=$(read_current_state)
 READ_EXIT=$?
 
-if [[ $READ_EXIT -ne 0 ]]; then
+if (( READ_EXIT != 0 )); then
   log_error "Failed to read current database state"
   exit 1
 fi

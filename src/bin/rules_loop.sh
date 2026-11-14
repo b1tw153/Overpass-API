@@ -109,8 +109,7 @@ if [[ -n "$AREA_UPDATE_TIME" ]] && \
 fi
 
 if [[ -n "$AREA_UPDATE_TIME" ]]; then
-  DATE_CHECK=$(date -d "today $AREA_UPDATE_TIME" +%s 2>/dev/null)
-  if [[ "$?" -ne 0 || ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
+  if ! DATE_CHECK=$(date -d "today $AREA_UPDATE_TIME" +%s 2>/dev/null) || [[ ! "$DATE_CHECK" =~ ^[0-9]+$ ]]; then
     echo "ERROR: The 'date' command on this system cannot parse relative date expressions (e.g., 'today 03:00')." >&2
     echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
     exit 1
@@ -145,7 +144,7 @@ calculate_sleep_time() {
       SLEEP_TIME=$AREA_SLEEP
     fi
   fi
-  if [[ $SLEEP_TIME -lt 1 ]]; then
+  if (( SLEEP_TIME < 1 )); then
     echo "$POLL_INTERVAL"
   else
     echo "$SLEEP_TIME"
@@ -222,7 +221,7 @@ while true; do
     wait "$QUERY_PID"
     QUERY_EXIT=$?
     QUERY_PID=""
-    if [[ $QUERY_EXIT -ne 0 ]]; then
+    if (( QUERY_EXIT != 0 )); then
       log_message "Area update failed (osm3s_query exit code $QUERY_EXIT)"
     else
       log_message "Area update finished"

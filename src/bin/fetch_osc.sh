@@ -182,7 +182,7 @@ verify_globals() {
     exit 1
   fi
 
-  if [[ UPDATE_FREQUENCY -ne 60 && UPDATE_FREQUENCY -ne 3600 && UPDATE_FREQUENCY -ne 86400 ]]; then
+  if (( UPDATE_FREQUENCY != 60 && UPDATE_FREQUENCY != 3600 && UPDATE_FREQUENCY != 86400 )); then
     MESSAGE="Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY (must be 60, 3600, or 86400)"
     log_error "$MESSAGE"
     exit 1
@@ -195,7 +195,7 @@ verify_globals() {
   fi
 
   local MAX_POSSIBLE_BATCH_TIME=$((MAX_BATCH_SIZE * UPDATE_FREQUENCY))
-  if [[ $MAX_POSSIBLE_BATCH_TIME -gt 86400 ]]; then
+  if (( MAX_POSSIBLE_BATCH_TIME > 86400 )); then
     MESSAGE="WARNING: MAX_BATCH_SIZE ($MAX_BATCH_SIZE) with UPDATE_FREQUENCY ($UPDATE_FREQUENCY) exceeds one day"
     log_message "$MESSAGE"
   fi
@@ -207,14 +207,14 @@ verify_globals() {
   fi
 
   # verify that MAX_BATCH_TIME is at least UPDATE_FREQUENCY
-  if [[ $MAX_BATCH_TIME -lt $UPDATE_FREQUENCY ]]; then
+  if (( MAX_BATCH_TIME < UPDATE_FREQUENCY )); then
     MESSAGE="MAX_BATCH_TIME ($MAX_BATCH_TIME) must be at least UPDATE_FREQUENCY ($UPDATE_FREQUENCY)"
     log_error "$MESSAGE"
     exit 1
   fi
 
   # verify that MAX_BATCH_TIME is less than one day
-  if [[ $MAX_BATCH_TIME -gt 86400 ]]; then
+  if (( MAX_BATCH_TIME > 86400 )); then
     MESSAGE="WARNING: MAX_BATCH_TIME ($MAX_BATCH_TIME) exceeds one day"
     log_message "$MESSAGE"
   fi
@@ -267,7 +267,7 @@ verify_globals() {
     exit 1
   fi
 
-  if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+  if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
     MESSAGE="Invalid OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (must be an integer from 0 to 99)"
     log_error "$MESSAGE"
     exit 1
@@ -285,7 +285,7 @@ sleep_until_check_time() {
   T_START=$(( LAST_SCHEDULED + UPDATE_FREQUENCY - TRIM ))
   SLEEP_TIME=$(( T_START - NOW ))
 
-  if [[ $SLEEP_TIME -gt 0 ]]; then
+  if (( SLEEP_TIME > 0 )); then
     log_message "Sleeping until next file should be available ($(date -d @$T_START -u '+%F %T'))"
     sleep_with_interrupts "$SLEEP_TIME"
   fi
@@ -355,7 +355,7 @@ get_latest_available_id() {
 
     local TOOL_EXIT=$?
 
-    if [[ $TOOL_EXIT -eq 0 && -s "$REMOTE_STATE_TMP" ]]; then
+    if (( TOOL_EXIT == 0 )) && [[ -s "$REMOTE_STATE_TMP" ]]; then
       if verify_file "$REMOTE_STATE_TMP" "text"; then
         local SEQ_LINE LM_LINE LM_EPOCH
         SEQ_LINE=$(grep -E '^sequenceNumber=[1-9][0-9]*$' "$REMOTE_STATE_TMP")
@@ -457,7 +457,7 @@ download_batch_with_curl() {
   CURL_EXIT=$?
   rm -f "$CURL_CONFIG"
   
-  if [[ $CURL_EXIT -ne 0 ]]; then
+  if (( CURL_EXIT != 0 )); then
     log_error "Batch download failed (curl exit code: $CURL_EXIT)"
     
     if [[ -s "$CURL_ERROR_LOG" ]]; then
@@ -532,10 +532,10 @@ download_batch() {
     fi
   done
 
-  [[ $CACHED_COUNT -gt 0 ]] && log_message "Verified ($((CACHED_COUNT * 50 / BATCH_COUNT))%) of files already cached"
+  (( CACHED_COUNT > 0 )) && log_message "Verified ($((CACHED_COUNT * 50 / BATCH_COUNT))%) of files already cached"
 
-  if [[ ${#URL_ARRAY[@]} -eq 0 ]]; then
-    if [[ $BATCH_COUNT -eq 1 ]]; then
+  if (( ${#URL_ARRAY[@]} == 0 )); then
+    if (( BATCH_COUNT == 1 )); then
       log_message "Downloaded $END (cached)"
     else
       log_message "Downloaded $BATCH_COUNT files (all cached)"
@@ -570,14 +570,14 @@ download_batch() {
     fi
   done
 
-  if [[ $SUCCESS -eq 1 ]]; then
-    if [[ $BATCH_COUNT -eq 1 ]]; then
+  if (( SUCCESS == 1 )); then
+    if (( BATCH_COUNT == 1 )); then
       log_message "Downloaded $END"
     else
       log_message "Downloaded $BATCH_COUNT files ($((START + 1)) to $END)"
     fi
   else
-    if [[ $BATCH_COUNT -eq 1 ]]; then
+    if (( BATCH_COUNT == 1 )); then
       log_error "File failed verification: OSC file $END"
     else
       log_error "Some files failed verification in batch $((START + 1)) to $END"
@@ -621,7 +621,7 @@ check_diff_disk_space() {
   local USED_PCT FREE_PCT
   USED_PCT=$(df --output=pcent "$LOCAL_DIR" | tail -1 | tr -d ' %')
   FREE_PCT=$(( 100 - USED_PCT ))
-  if [[ $FREE_PCT -lt $MIN_FREE_DISK_PERCENT ]]; then
+  if (( FREE_PCT < MIN_FREE_DISK_PERCENT )); then
     log_error "Insufficient free disk space on diff filesystem: ${FREE_PCT}% free (minimum: ${MIN_FREE_DISK_PERCENT}%)"
     exit 1
   fi
@@ -701,7 +701,7 @@ while true; do
   # Last-Modified can precede availability by a minute or more on some
   # sources. When we waited for the file, our own sighting time is a better
   # anchor. Otherwise (startup, or files already waiting) use Last-Modified.
-  if [[ -n "$FIRST_SIGHTING" && $MAX_AVAILABLE -le $CURRENT_ID ]]; then
+  if [[ -n "$FIRST_SIGHTING" ]] && (( MAX_AVAILABLE <= CURRENT_ID )); then
     LAST_SCHEDULED=$FIRST_SIGHTING
   else
     LAST_SCHEDULED=$LATEST_ROOT_LM
@@ -714,24 +714,24 @@ while true; do
     log_message "Replication source verified and operational"
   fi
   
-  if [[ $MAX_AVAILABLE -le $CURRENT_ID ]]; then
+  if (( MAX_AVAILABLE <= CURRENT_ID )); then
     sleep_until_check_time
 
     DELAY_INDEX=0
-    while [[ $MAX_AVAILABLE -le $CURRENT_ID ]]; do
+    while (( MAX_AVAILABLE <= CURRENT_ID )); do
       get_latest_available_id
       MAX_AVAILABLE=$LATEST_AVAILABLE_ID
 
-      if [[ $MAX_AVAILABLE -gt $CURRENT_ID ]]; then
+      if (( MAX_AVAILABLE > CURRENT_ID )); then
         FIRST_SIGHTING=$(date +%s)
         break
       fi
 
-      if [[ $DELAY_INDEX -lt ${#DELAYS[@]} ]]; then
+      if (( DELAY_INDEX < ${#DELAYS[@]} )); then
         DELAY=${DELAYS[$DELAY_INDEX]}
         (( ++DELAY_INDEX ))
         log_message "Waiting for file $((CURRENT_ID + 1)) (${DELAY}s)"
-        [[ $DELAY -gt 0 ]] && sleep_with_interrupts "$DELAY"
+        (( DELAY > 0 )) && sleep_with_interrupts "$DELAY"
       else
         log_message "Waiting for file $((CURRENT_ID + 1)) (${PHASE3_DELAY}s)"
         sleep_with_interrupts "$PHASE3_DELAY"
@@ -744,7 +744,7 @@ while true; do
   (( CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY < BATCH_END )) && BATCH_END=$((CURRENT_ID + MAX_BATCH_TIME / UPDATE_FREQUENCY))
 
   BATCH_COUNT=$((BATCH_END - CURRENT_ID))
-  if [[ $BATCH_COUNT -eq 1 ]]; then
+  if (( BATCH_COUNT == 1 )); then
     log_message "Fetching $BATCH_END"
   else
     log_message "Fetching $BATCH_COUNT files ($((CURRENT_ID + 1)) to $BATCH_END)"

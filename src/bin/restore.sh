@@ -266,10 +266,10 @@ restore_files() {
   printf '%s\n' "$@" \
     | timeout "$RESTORE_TIMEOUT" rsync -a --files-from=- "$BACKUP_DIR/" "$DB_DIR/"
   exit_code=$?
-  if [[ $exit_code -eq 124 ]]; then
+  if (( exit_code == 124 )); then
     log_error "rsync timed out after ${RESTORE_TIMEOUT}s"
     return 1
-  elif [[ $exit_code -ne 0 ]]; then
+  elif (( exit_code != 0 )); then
     log_error "rsync failed (exit $exit_code)"
     return 1
   fi
@@ -290,7 +290,7 @@ restore_optional_files() {
       rm -f "$DB_DIR/$f" || { log_error "Unable to remove '$DB_DIR/$f'"; return 1; }
     fi
   done
-  [[ ${#files[@]} -gt 0 ]] || return 0
+  (( ${#files[@]} > 0 )) || return 0
   restore_files "${files[@]}"
 }
 
@@ -306,7 +306,7 @@ check_backup_complete() {
       missing=1
     fi
   done
-  [[ $missing -eq 0 ]]
+  (( missing == 0 ))
 }
 
 # ============================================================================

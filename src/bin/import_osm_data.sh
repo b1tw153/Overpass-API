@@ -144,7 +144,7 @@ if ! [[ "$COMPRESSION" =~ ^(no|gz|lz4)$ ]]; then
   exit 1
 fi
 
-if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ || $MIN_FREE_DISK_PERCENT -ge 100 ]]; then
+if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
   error "Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
   exit 1
 fi
@@ -204,12 +204,12 @@ if command -v aria2c > /dev/null 2>&1; then
   HAS_ARIA2C=1
 fi
 
-if [[ $USE_TORRENT -eq 1 && $HAS_ARIA2C -eq 0 ]]; then
+if (( USE_TORRENT == 1 && HAS_ARIA2C == 0 )); then
   error "aria2c is required for torrent downloads but is not installed"
   exit 1
 fi
 
-if [[ $USE_OSMIUM -eq 1 ]] && ! command -v osmium > /dev/null 2>&1; then
+if (( USE_OSMIUM == 1 )) && ! command -v osmium > /dev/null 2>&1; then
   error "osmium is required for .pbf imports but is not installed"
   exit 1
 fi
@@ -247,12 +247,12 @@ FILE_SIZE=$(curl -sIL --max-time 30 "$FILE_URL" 2>/dev/null \
 
 if [[ -z "$FILE_SIZE" || ! "$FILE_SIZE" =~ ^[1-9][0-9]*$ ]]; then
   message "WARNING: Unable to determine source file size; skipping disk space check"
-elif [[ $USE_OSMIUM -eq 0 && $USE_BUNZIP2 -eq 0 ]]; then
+elif (( USE_OSMIUM == 0 && USE_BUNZIP2 == 0 )); then
   message "WARNING: Cannot estimate disk space for .osm format; skipping disk space check"
 else
   # DB_RATIO is db_size / source_size as an integer percentage
   # (e.g. 315 = database will be approximately 3.15x the source file size)
-  if [[ $USE_OSMIUM -eq 1 ]]; then
+  if (( USE_OSMIUM == 1 )); then
     case "$META" in
       attic) DB_RATIO=509 ;;  # extrapolated: history.pbf → attic db
       yes)   DB_RATIO=422 ;;  # planet.pbf  → meta db
@@ -269,7 +269,7 @@ else
   # Threshold: space for source file + database, plus MIN_FREE_DISK_PERCENT headroom
   THRESHOLD=$(( FILE_SIZE * (100 + DB_RATIO) * (100 + MIN_FREE_DISK_PERCENT) / 100 / 100 ))
   FREE_BYTES=$(df --output=avail -B1 "$DB_DIR" | tail -1 | tr -d ' ')
-  if [[ $FREE_BYTES -lt $THRESHOLD ]]; then
+  if (( FREE_BYTES < THRESHOLD )); then
     error "Insufficient free disk space on database filesystem: ${FREE_BYTES} bytes free (minimum: ${THRESHOLD} bytes)"
     exit 1
   fi
@@ -283,10 +283,10 @@ message "Downloading $FILENAME ..."
 
 cd "$DB_DIR" || exit 1
 
-if [[ $USE_TORRENT -eq 1 ]]; then
+if (( USE_TORRENT == 1 )); then
   aria2c --allow-overwrite=true --seed-time=0 -o "$FILENAME" "$DATA_SOURCE" \
     || { error "Download failed"; exit 1; }
-elif [[ $HAS_ARIA2C -eq 1 ]]; then
+elif (( HAS_ARIA2C == 1 )); then
   aria2c --allow-overwrite=true -x 16 -s 16 -o "$FILENAME" "$FILE_URL" \
     || { error "Download failed"; exit 1; }
 else
@@ -321,7 +321,7 @@ CURL_STATUS=$?
 # MD5 VERIFICATION
 # ============================================================================
 
-if [[ $CURL_STATUS -ne 0 ]]; then
+if (( CURL_STATUS != 0 )); then
   error "Failed to download MD5 checksum from $MD5_URL (curl exit $CURL_STATUS)"
   exit 1
 elif [[ "$HTTP_CODE" == 404 ]]; then
@@ -352,14 +352,14 @@ esac
 
 message "Importing $FILENAME into database ..."
 
-if [[ $USE_BUNZIP2 -eq 1 ]]; then
+if (( USE_BUNZIP2 == 1 )); then
   bunzip2 <"$DB_DIR/$FILENAME" \
     | "$EXEC_DIR/update_database" \
         --db-dir="$DB_DIR" \
         "$META_FLAG" \
         --compression-method="$COMPRESSION" \
         --map-compression-method="$COMPRESSION"
-elif [[ $USE_OSMIUM -eq 1 ]]; then
+elif (( USE_OSMIUM == 1 )); then
   osmium cat -f osm "$DB_DIR/$FILENAME" \
     | "$EXEC_DIR/update_database" \
         --db-dir="$DB_DIR" \
@@ -376,21 +376,21 @@ else
 fi
 
 PIPE_STATUS=("${PIPESTATUS[@]}")
-if [[ $USE_BUNZIP2 -eq 1 || $USE_OSMIUM -eq 1 ]]; then
-  if [[ ${PIPE_STATUS[0]:-0} -ne 0 ]]; then
-    if [[ $USE_BUNZIP2 -eq 1 ]]; then
+if (( USE_BUNZIP2 == 1 || USE_OSMIUM == 1 )); then
+  if (( ${PIPE_STATUS[0]:-0} != 0 )); then
+    if (( USE_BUNZIP2 == 1 )); then
       error "bunzip2 failed (exit code ${PIPE_STATUS[0]})"
     else
       error "osmium failed (exit code ${PIPE_STATUS[0]})"
     fi
     exit 1
   fi
-  if [[ ${PIPE_STATUS[1]:-0} -ne 0 ]]; then
+  if (( ${PIPE_STATUS[1]:-0} != 0 )); then
     error "update_database failed (exit code ${PIPE_STATUS[1]})"
     exit 1
   fi
 else
-  if [[ ${PIPE_STATUS[0]:-0} -ne 0 ]]; then
+  if (( ${PIPE_STATUS[0]:-0} != 0 )); then
     error "update_database failed (exit code ${PIPE_STATUS[0]})"
     exit 1
   fi

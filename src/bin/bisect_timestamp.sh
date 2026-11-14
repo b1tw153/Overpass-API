@@ -61,7 +61,7 @@ error() {
   echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 
-if [[ $# -eq 0 && -z "$OVERPASS_DIFF_URL" ]]; then
+if (( $# == 0 )) && [[ -z "$OVERPASS_DIFF_URL" ]]; then
   usage
   exit 1
 fi
@@ -187,7 +187,7 @@ if [[ ! "$UPPER" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-if [[ $LOWER -ge $UPPER ]]; then
+if (( LOWER >= UPPER )); then
   error "lower bound ($LOWER) must be less than upper bound ($UPPER)"
   usage
   exit 1
@@ -276,10 +276,10 @@ while ((LOWER + 1 < UPPER )); do
   TARGET=$(( (LOWER + UPPER) / 2 ))
   fetch_state "$TARGET"
   FETCH_STATUS=$?
-  if [[ $FETCH_STATUS -eq 2 ]]; then
+  if (( FETCH_STATUS == 2 )); then
     error "Aborting bisect due to download failure"
     exit 1
-  elif [[ $FETCH_STATUS -eq 1 ]]; then
+  elif (( FETCH_STATUS == 1 )); then
     # assume that 404 means that LOWER is less than the starting sequence number
     LOWER="$TARGET"
   elif [[ -n "$DATA_VERSION" && ! "$DATA_VERSION" > "$TARGET_TIME" ]]; then
