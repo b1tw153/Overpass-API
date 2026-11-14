@@ -76,6 +76,10 @@ detect_database_meta_state() {
   echo "no"
 }
 
+usage() {
+  printf 'Usage: %s [--format=text|json]\n' "$0" >&2
+}
+
 # ============================================================================
 # ARGUMENT PARSING
 # ============================================================================
@@ -85,7 +89,7 @@ FORMAT=$(printf '%s' "${QUERY_STRING:-}" | tr '[:upper:]' '[:lower:]' | tr '&' '
 FORMAT="${FORMAT:-text}"
 
 PARSED=$(getopt --options '' --longoptions 'format:' --name "$0" -- "$@") \
-  || { printf 'Usage: %s [--format=text|json]\n' "$0" >&2; exit 1; }
+  || { usage; exit 1; }
 eval set -- "$PARSED"
 
 while true; do

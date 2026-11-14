@@ -24,7 +24,7 @@
 #          with atomic operations, integrity checking, and connection reuse
 # ============================================================================
 
-if [[ -z $3 ]]; then
+usage() {
   cat >&2 << EOF
 Usage: $0 replicate_id diff_url diff_dir [sleep]
 
@@ -49,6 +49,10 @@ Environment variables:
   FETCH_OSC_SPEED_LIMIT            Minimum download speed in bytes/sec; 0 to disable (default: 1024)
   FETCH_OSC_SPEED_TIME             Time in seconds over which to check minimum speed (default: 30)
 EOF
+}
+
+if [[ -z $3 ]]; then
+  usage
   exit 1
 fi
 

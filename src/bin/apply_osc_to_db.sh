@@ -24,7 +24,7 @@
 #          in continuous batches with robust error handling
 # ============================================================================
 
-if [[ -z $3 ]]; then
+usage() {
   cat >&2 << EOF
 Usage: $0 diff_dir replicate_id --meta=(attic|yes|no)
 
@@ -39,6 +39,10 @@ Environment variables:
   APPLY_OSC_MAX_BATCH_MB           Maximum uncompressed size per batch in MB (default: 512)
   APPLY_OSC_MAX_BATCH_TIME         Maximum time span per batch in seconds (default: 86400)
 EOF
+}
+
+if [[ -z $3 ]]; then
+  usage
   exit 1
 fi
 
