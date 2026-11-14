@@ -81,6 +81,7 @@ if ! mkdir -p "$LOCAL_DIR" 2>/dev/null; then
   echo "ERROR: local_dir '$LOCAL_DIR' is not writable or cannot be created" >&2
   exit 1
 fi
+LOCAL_DIR="$(realpath "$LOCAL_DIR")"
 
 # Check for deprecated sleep parameter
 if [[ -n "$4" ]]; then

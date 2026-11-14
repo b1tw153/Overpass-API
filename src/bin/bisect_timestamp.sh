@@ -272,7 +272,7 @@ fetch_state() {
 # BINARY SEARCH
 # ============================================================================
 
-while ((LOWER + 1 < UPPER )); do
+while (( LOWER + 1 < UPPER )); do
   TARGET=$(( (LOWER + UPPER) / 2 ))
   fetch_state "$TARGET"
   FETCH_STATUS=$?

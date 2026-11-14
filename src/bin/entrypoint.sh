@@ -124,6 +124,18 @@ if [[ -z "${DISPATCHER_BASE_SPACE:-}" ]]; then
   export DISPATCHER_BASE_SPACE
 fi
 
+if [[ -z "${OVERPASS_DB_DIR:-}" ]]; then
+  error "OVERPASS_DB_DIR must be set"
+  exit 1
+fi
+
+if [[ ! -d "$OVERPASS_DB_DIR" ]]; then
+  error "OVERPASS_DB_DIR is not a directory, got: '$OVERPASS_DB_DIR'"
+  exit 1
+fi
+
+OVERPASS_DB_DIR="$(realpath "$OVERPASS_DB_DIR")"
+
 # Munin monitoring is opt-in: the node starts only when the operator names who
 # may poll it via MUNIN_NODE_CIDR_ALLOW. An empty allow-list leaves it stopped.
 MUNIN_NODE_CIDR_ALLOW=${MUNIN_NODE_CIDR_ALLOW:-}
