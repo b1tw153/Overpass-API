@@ -64,6 +64,11 @@ fi
 
 RESTORE_TIMEOUT=${OVERPASS_RESTORE_TIMEOUT:-7200}
 
+if [[ ! "$BACKUP_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: OVERPASS_RESTORE_TIMEOUT must be a positive integer, got: '$RESTORE_TIMEOUT'" >&2
+  exit 1
+fi
+
 # Log file
 LOG_FILE="$DB_DIR/backup.log"
 

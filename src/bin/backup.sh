@@ -140,6 +140,11 @@ if [[ -n "$BACKUP_TIME" ]] && \
   exit 1
 fi
 
+if [[ ! "$BACKUP_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: OVERPASS_BACKUP_TIMEOUT must be a positive integer, got: '$BACKUP_TIMEOUT'" >&2
+  exit 1
+fi
+
 if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'" >&2
   exit 1
