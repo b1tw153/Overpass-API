@@ -504,7 +504,7 @@ apply_minute_diffs()
   local RETRY_COUNT=0
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $APPLY_MAX_RETRIES ]]; do
-    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" --flush-size=0 &
+    "$EXEC_DIR/update_from_dir" --osc-dir="$OSC_DIR" --version="$DATA_VERSION" --flush-size=0 &
     CHILD_PID=$!
     wait "$CHILD_PID"
     local EXITCODE=$?
@@ -625,11 +625,9 @@ if [[ $CURRENT_ID -lt 0 ]]; then
   die 1
 fi
 
-pushd "$EXEC_DIR" > /dev/null || die 1
-
 # Run database migration
 log_message "Running database migration"
-./migrate_database --migrate &
+"$EXEC_DIR/migrate_database" --migrate &
 CHILD_PID=$!
 wait "$CHILD_PID"
 EXIT_CODE=$?

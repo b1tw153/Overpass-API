@@ -533,17 +533,12 @@ apply_batch()
 
   log_message "Applying batch to database (version: ${DATA_VERSION//\\/})"
 
-  if ! cd "$EXEC_DIR"; then
-    log_error "Unable to cd to execution directory"
-    die 1
-  fi
-
   local SUCCESS=0
   local RETRY_COUNT=0
   local MAX_RETRIES=5
 
   while [[ $SUCCESS -eq 0 && $RETRY_COUNT -lt $MAX_RETRIES ]]; do
-    ./update_from_dir --osc-dir="$OSC_DIR" --version="$DATA_VERSION" ${META:+"$META"} --flush-size=0 &
+    "$EXEC_DIR/update_from_dir" --osc-dir="$OSC_DIR" --version="$DATA_VERSION" ${META:+"$META"} --flush-size=0 &
     CHILD_PID="$!"
     wait "$CHILD_PID"
     local EXIT_CODE=$?
@@ -554,28 +549,23 @@ apply_batch()
     elif [[ $EXIT_CODE -eq 3 ]]; then
       log_error "update_from_dir failed due to context error (exit code: $EXIT_CODE)"
       log_message "Resolve the problem with the dispatcher before retrying"
-      cd - >/dev/null || true
       log_error "Dispatcher failure, cannot proceed"
       die 1
     elif [[ $EXIT_CODE -eq 15 ]]; then
       log_message "Received SIGTERM in update_from_dir, shutting down gracefully"
-      cd - >/dev/null || true
       shutdown 143
     elif [[ $EXIT_CODE -eq 126 || $EXIT_CODE -eq 127 ]]; then
       # Unrecoverable errors: command not executable (126) or not found (127)
       log_error "Unable to run update_from_dir (exit code: $EXIT_CODE)"
-      cd - >/dev/null || true
       log_error "update_from_dir is not available or not executable"
       die 1
     elif [[ $EXIT_CODE -eq 134 ]]; then
       log_error "Received SIGABRT (exit code: $EXIT_CODE) from update_from_dir, shutting down"
       log_error "Database may be corrupt; verify or restore from backup before resuming updates"
-      cd - >/dev/null || true
       shutdown $EXIT_CODE
     elif [[ $EXIT_CODE -ge 128 && $EXIT_CODE -le 165 ]]; then
       # Signal-based exits: process was killed/crashed (128+N where N is signal number)
       log_error "update_from_dir terminated by signal (exit code: $EXIT_CODE), cleaning up..."
-      cd - >/dev/null || true
       shutdown $EXIT_CODE
     else
       RETRY_COUNT=$((RETRY_COUNT + 1))
@@ -587,11 +577,6 @@ apply_batch()
       fi
     fi
   done
-
-  if ! cd - >/dev/null; then
-    log_error "Unable to cd back to previous directory"
-    die 1
-  fi
 
   if [[ $SUCCESS -eq 0 ]]; then
     log_error "Failed to apply batch after $MAX_RETRIES attempts"
@@ -824,21 +809,13 @@ validate_meta_mode
 
 # Run database migration
 log_message "Running database migration"
-if ! cd "$EXEC_DIR"; then
-  log_error "Unable to cd to execution directory"
-  die 1
-fi
-./migrate_database --migrate &
+"$EXEC_DIR/migrate_database" --migrate &
 CHILD_PID=$!
 wait "$CHILD_PID"
 EXIT_CODE=$?
 CHILD_PID=
 if [[ $EXIT_CODE -ne 0 ]]; then
   log_error "Database migration failed"
-  die 1
-fi
-if ! cd - >/dev/null; then
-  log_error "Unable to cd back to previous directory"
   die 1
 fi
 
