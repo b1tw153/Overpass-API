@@ -373,6 +373,11 @@ check_db_compatible() {
 # MAIN EXECUTION
 # ============================================================================
 
+if ! command -v rsync > /dev/null 2>&1; then
+  echo "ERROR: rsync is not available" >&2
+  exit 1
+fi
+
 check_lock_files || exit 1
 
 META_STATE=$(detect_database_meta_state "$BACKUP_DIR") \

@@ -156,6 +156,11 @@ if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
   exit 1
 fi
 
+if ! command -v curl > /dev/null 2>&1; then
+  log_error "curl is not available"
+  exit 1
+fi
+
 # ============================================================================
 # DOWNLOAD PARAMETERS
 # ============================================================================

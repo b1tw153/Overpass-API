@@ -596,6 +596,11 @@ trap 'shutdown 129' SIGHUP
 # MAIN EXECUTION
 # ============================================================================
 
+if ! command -v curl > /dev/null 2>&1; then
+  echo "ERROR: curl is not available" >&2
+  exit 1
+fi
+
 verify_globals
 
 echo >> "$LOG_FILE"

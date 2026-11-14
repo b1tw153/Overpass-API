@@ -214,6 +214,11 @@ if [[ "$USE_OSMIUM" == "true" ]] && ! command -v osmium > /dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v curl > /dev/null 2>&1; then
+  error "curl is not available"
+  exit 1
+fi
+
 if ! command -v md5sum > /dev/null 2>&1; then
   error "md5sum is not available"
   exit 1
