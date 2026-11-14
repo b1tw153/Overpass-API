@@ -858,6 +858,7 @@ EOF
 
 shutdown() {
   local EXIT_CODE=$1
+  trap '' SIGTERM SIGINT SIGHUP
   message "Shutdown signal received, cleaning up..."
 
   stop_overpass
