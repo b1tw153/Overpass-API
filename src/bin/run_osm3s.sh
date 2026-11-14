@@ -17,6 +17,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
+# ============================================================================
+# Script: run_osm3s.sh
+# Purpose: Starts and supervises the dispatchers and update processes of an
+#          Overpass instance
+# ============================================================================
+
 usage() {
   cat >&2 <<EOF
 Usage: $0

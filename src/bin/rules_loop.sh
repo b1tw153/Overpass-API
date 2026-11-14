@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
 # Copyright 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018 Roland Olbricht et al.
+# With improvements in 2026 by Kai Johnson
 #
 # This file is part of Overpass_API.
-# With improvements in 2026 by Kai Johnson
 #
 # Overpass_API is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
@@ -17,6 +17,12 @@
 #
 # You should have received a copy of the GNU Affero General Public License
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
+
+# ============================================================================
+# Script: rules_loop.sh
+# Purpose: Updates the area data with osm3s_query after the database changes,
+#          or once a day at a set time
+# ============================================================================
 
 usage()
 {

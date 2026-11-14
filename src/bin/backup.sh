@@ -18,8 +18,9 @@
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
 # ============================================================================
-# Robust backup script for Overpass API
-# Performs safe backup with process verification and error handling
+# Script: backup.sh
+# Purpose: Backs up the Overpass database safely, with process verification
+#          and error handling
 # ============================================================================
 
 usage()

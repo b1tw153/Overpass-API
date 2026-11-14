@@ -18,8 +18,9 @@
 # along with Overpass_API. If not, see <https://www.gnu.org/licenses/>.
 
 # ============================================================================
-# Restore script for Overpass API
-# Restores database from backup; requires all Overpass processes to be stopped
+# Script: restore.sh
+# Purpose: Restores the Overpass database from a backup. Requires all Overpass
+#          processes to be stopped
 # ============================================================================
 
 usage()

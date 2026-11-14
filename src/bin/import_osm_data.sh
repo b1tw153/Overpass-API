@@ -4,11 +4,6 @@
 #
 # This file is part of Overpass_API.
 #
-# USAGE NOTE: This script downloads and imports a planet file or extract and
-# may run for many hours. Run it in the background to prevent interruption:
-#
-#   nohup ./import_osm_data.sh --db-dir=/opt/overpass/db --diff-dir=/opt/overpass/diff --diff-url=https://... &
-#
 # Overpass_API is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License as
 # published by the Free Software Foundation, either version 3 of the
@@ -26,6 +21,11 @@
 # Script: import_osm_data.sh
 # Purpose: Downloads and imports an OSM planet file or extract into the
 #          Overpass database, then determines the correct replicate_id.
+# Note:    This script downloads and imports a planet file or extract and may
+#          run for many hours. Run it in the background to prevent
+#          interruption:
+#
+#            nohup ./import_osm_data.sh --db-dir=/opt/overpass/db --diff-dir=/opt/overpass/diff --diff-url=https://... &
 # ============================================================================
 
 usage()
