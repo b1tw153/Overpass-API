@@ -68,19 +68,23 @@ else
 fi
 
 # Batch configuration
-MAX_BATCH_MB=${APPLY_OSC_MAX_BATCH_MB:-512}       # Maximum uncompressed size per batch (MB)
-MAX_BATCH_TIME=${APPLY_OSC_MAX_BATCH_TIME:-86400} # Maximum time span per batch (1 day = 86400 seconds)
+MAX_BATCH_MB=${APPLY_OSC_MAX_BATCH_MB:-512}
+# The default of 86400 seconds is 1 day.
+MAX_BATCH_TIME=${APPLY_OSC_MAX_BATCH_TIME:-86400}
 
 # Disk space configuration
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
 # Update configuration
-UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}        # Frequency of updates in seconds
-TRIM=$(( (UPDATE_FREQUENCY + 23) / 24 ))                 # Start polling this many seconds before expected update
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
+# Start polling this many seconds before the expected update.
+TRIM=$(( (UPDATE_FREQUENCY + 23) / 24 ))
 
 # Child process tracking
-CHILD_PID=                                        # PID of running migrate_database or update_from_dir processes
-INOTIFY_PID=                                      # PID of running inotifywait process
+# The process ID of a running migrate_database or update_from_dir.
+CHILD_PID=
+# The process ID of a running inotifywait.
+INOTIFY_PID=
 
 # Get execution directory
 EXEC_DIR="$(dirname "$(realpath "$0")")"
@@ -122,7 +126,8 @@ USE_INOTIFYWAIT=false
 if command -v inotifywait > /dev/null 2>&1; then
   USE_INOTIFYWAIT=true
 fi
-INOTIFY_WATCHDOG_SLACK=30  # seconds beyond --timeout before declaring inotifywait unreliable
+# Seconds beyond --timeout before the script declares inotifywait unreliable.
+INOTIFY_WATCHDOG_SLACK=30
 
 # ============================================================================
 # CLEANUP

@@ -165,13 +165,14 @@ fi
 # DOWNLOAD PARAMETERS
 # ============================================================================
 
-PARALLEL_JOBS=${DOWNLOAD_CLONE_PARALLEL_JOBS:-3}      # Number of parallel downloads
-MAX_TIME=${DOWNLOAD_CLONE_MAX_TIME:-86400}            # 24 hours - total time limit for all downloads
-CONNECT_TIMEOUT=${DOWNLOAD_CLONE_CONNECT_TIMEOUT:-30} # Timeout for initial connection
-RETRY_COUNT=${DOWNLOAD_CLONE_RETRY_COUNT:-240}        # Number of retries per file
-RETRY_DELAY=${DOWNLOAD_CLONE_RETRY_DELAY:-15}         # Seconds between retries
-SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-16}       # Minimum bytes/sec before considering stalled
-SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-60}           # Seconds below speed limit before aborting
+PARALLEL_JOBS=${DOWNLOAD_CLONE_PARALLEL_JOBS:-3}
+# The default of 86400 seconds is 24 hours. It limits the total time for all downloads.
+MAX_TIME=${DOWNLOAD_CLONE_MAX_TIME:-86400}
+CONNECT_TIMEOUT=${DOWNLOAD_CLONE_CONNECT_TIMEOUT:-30}
+RETRY_COUNT=${DOWNLOAD_CLONE_RETRY_COUNT:-240}
+RETRY_DELAY=${DOWNLOAD_CLONE_RETRY_DELAY:-15}
+SPEED_LIMIT=${DOWNLOAD_CLONE_SPEED_LIMIT:-16}
+SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-60}
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
 if [[ ! "$PARALLEL_JOBS" =~ ^[1-9][0-9]*$ ]]; then

@@ -107,9 +107,11 @@ if ! DATE_CHECK=$(date -d @1445412480 -u '+%F %T' 2>/dev/null) || [[ "$DATE_CHEC
 fi
 
 # Update timing configuration
-UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds (60, 3600, or 86400)
-TRIM=$(( (UPDATE_FREQUENCY + 23) / 24 ))                # Start polling this many seconds before expected update
-PHASE3_DELAY=1200                                        # Seconds between polls after backoff is exhausted
+UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}
+# Start polling this many seconds before the expected update.
+TRIM=$(( (UPDATE_FREQUENCY + 23) / 24 ))
+# Seconds between polls after the backoff delays run out.
+PHASE3_DELAY=1200
 
 case $UPDATE_FREQUENCY in
   60)
@@ -124,26 +126,31 @@ case $UPDATE_FREQUENCY in
 esac
 
 # Batch configuration
-MAX_BATCH_SIZE=${FETCH_OSC_MAX_BATCH_SIZE:-360}         # Maximum OSC files per batch download
-MAX_BATCH_TIME=${FETCH_OSC_MAX_BATCH_TIME:-86400}       # Maximum time span of OSC files per batch (in seconds)
+MAX_BATCH_SIZE=${FETCH_OSC_MAX_BATCH_SIZE:-360}
+MAX_BATCH_TIME=${FETCH_OSC_MAX_BATCH_TIME:-86400}
 
 # Download configuration
-MAX_RETRIES=${FETCH_OSC_MAX_RETRIES:-20}                # Max download attempts before giving up
-RETRY_DELAY=${FETCH_OSC_RETRY_DELAY:-15}                # Seconds between retry attempts
-CONNECT_TIMEOUT=${FETCH_OSC_CONNECT_TIMEOUT:-30}        # Connection timeout in seconds
-KEEPALIVE_TIME=${FETCH_OSC_KEEPALIVE_TIME:-20}          # Seconds to retain previous connections
-PARALLEL_MAX=${FETCH_OSC_PARALLEL_MAX:-4}               # Maximum parallel connections for batch downloads
-PARALLEL_MODE=${FETCH_OSC_PARALLEL_MODE:-"multiplexed"} # Either "immediate" or "multiplexed"
-SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}              # Minimum download speed in bytes/sec
-SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}                  # Time in seconds to check for speed limit
+MAX_RETRIES=${FETCH_OSC_MAX_RETRIES:-20}
+RETRY_DELAY=${FETCH_OSC_RETRY_DELAY:-15}
+CONNECT_TIMEOUT=${FETCH_OSC_CONNECT_TIMEOUT:-30}
+KEEPALIVE_TIME=${FETCH_OSC_KEEPALIVE_TIME:-20}
+PARALLEL_MAX=${FETCH_OSC_PARALLEL_MAX:-4}
+PARALLEL_MODE=${FETCH_OSC_PARALLEL_MODE:-"multiplexed"}
+SPEED_LIMIT=${FETCH_OSC_SPEED_LIMIT:-1024}
+SPEED_TIME=${FETCH_OSC_SPEED_TIME:-30}
 
 # Disk space configuration
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
-SOURCE_VERIFIED=false  # Flag to track if source URL has been verified
+# Whether the script has verified the source URL.
+SOURCE_VERIFIED=false
 
-LAST_SCHEDULED=        # Epoch that anchors the next expected file: local time of the check that first returned the newest sequence, else its root state.txt Last-Modified
-FIRST_SIGHTING=        # Local epoch of the check that first returned the newest sequence
+# The epoch that anchors the next expected file. It is the local time of the
+# check that first returned the newest sequence. Otherwise it is the
+# Last-Modified time of the root state.txt.
+LAST_SCHEDULED=
+# The local epoch of the check that first returned the newest sequence.
+FIRST_SIGHTING=
 LATEST_AVAILABLE_ID=   # Result of get_latest_available_id
 LATEST_ROOT_LM=        # Last-Modified epoch of root state.txt from last get_latest_available_id
 
