@@ -335,6 +335,12 @@ else
   message "WARNING: logrotate not found, log files will not be rotated"
 fi
 
+if ! DATE_CHECK=$(date -d "Wed, 21 Oct 2015 07:28:00 GMT" +%s 2>/dev/null) || (( DATE_CHECK != 1445412480 )); then
+  error "The 'date' command on this system cannot parse HTTP dates (e.g., 'Wed, 21 Oct 2015 07:28:00 GMT') used in Last-Modified headers."
+  error "Update your system packages, install GNU date, or use the Docker container instead."
+  exit 1
+fi
+
 # ============================================================================
 # DATABASE STATE DETECTION
 # ============================================================================

@@ -94,6 +94,18 @@ if ! command -v curl > /dev/null 2>&1; then
   exit 1
 fi
 
+if ! DATE_CHECK=$(date -d "Wed, 21 Oct 2015 07:28:00 GMT" +%s 2>/dev/null) || (( DATE_CHECK != 1445412480 )); then
+  echo "ERROR: The 'date' command on this system cannot parse HTTP dates (e.g., 'Wed, 21 Oct 2015 07:28:00 GMT') used in Last-Modified headers." >&2
+  echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
+  exit 1
+fi
+
+if ! DATE_CHECK=$(date -d @1445412480 -u '+%F %T' 2>/dev/null) || [[ "$DATE_CHECK" != "2015-10-21 07:28:00" ]]; then
+  echo "ERROR: The 'date' command on this system cannot format epoch timestamps (e.g., '@1445412480')." >&2
+  echo "Update your system packages, install GNU date, or use the Docker container instead." >&2
+  exit 1
+fi
+
 # Update timing configuration
 UPDATE_FREQUENCY=${OVERPASS_UPDATE_FREQUENCY:-60}       # Frequency of updates in seconds (60, 3600, or 86400)
 TRIM=$(( (UPDATE_FREQUENCY + 23) / 24 ))                # Start polling this many seconds before expected update
