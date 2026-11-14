@@ -219,23 +219,20 @@ cleanup() {
   local exit_code=${1:-$?}
 
   if [[ $INTERRUPTED -eq 1 ]]; then
-  {
     echo
     # Remove incomplete .tmp files and aria2c control files
     find "$CLONE_DIR" -name "*.tmp" -type f -delete 2>/dev/null
     find "$CLONE_DIR" -name "*.aria2" -type f -delete 2>/dev/null
-  }; fi
+  fi
 
   # Only remove lock file if it contains our PID
   if [[ -f "$LOCK_FILE" ]]; then
-  {
     local lock_pid
     lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
     if [[ "$lock_pid" == "$$" ]]; then
-    {
       rm -f "$LOCK_FILE"
-    }; fi
-  }; fi
+    fi
+  fi
 
   exit "$exit_code"
 }
@@ -305,27 +302,22 @@ is_file_complete() {
 # Check and create lock file to prevent concurrent runs
 acquire_lock() {
   if [[ -f "$LOCK_FILE" ]]; then
-  {
     local lock_pid
     lock_pid=$(cat "$LOCK_FILE" 2>/dev/null)
     if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
-    {
       log_error "Another instance of this script is already running (PID: $lock_pid)\nIf this is incorrect, remove the lock file: $LOCK_FILE"
       exit 1
-    }
     else
-    {
       log_message "Removing stale lock file from PID $lock_pid"
       rm -f "$LOCK_FILE"
-    }; fi
-  }; fi
+    fi
+  fi
 
   # Create lock file with current PID
   if ! echo $$ > "$LOCK_FILE"; then
-  {
     log_error "Failed to create lock file: $LOCK_FILE"
     exit 1
-  }; fi
+  fi
 }
 
 # Check that CLONE_DIR has enough free space for remaining downloads.
@@ -346,7 +338,6 @@ check_clone_disk_space() {
 
   total_bytes=0
   for file in "${files[@]}"; do
-  {
     data_url="$REMOTE_DIR/$file"
     idx_url="$REMOTE_DIR/$file.idx"
 
@@ -359,7 +350,7 @@ check_clone_disk_space() {
       size=$(get_remote_file_size "$idx_url")
       [[ -n "$size" ]] && total_bytes=$(( total_bytes + size ))
     fi
-  }; done
+  done
 
   if [[ $total_bytes -eq 0 ]]; then
     return 0
@@ -386,12 +377,10 @@ download_files_parallel() {
 
   # while current time is less than deadline
   while [[ $(date '+%s') -lt $DEADLINE ]]; do
-  {
     curl_args=()
 
     # Build list of files that need downloading
     for file in "${files[@]}"; do
-    {
       local data_file="$CLONE_DIR/$file"
       local idx_file="$CLONE_DIR/$file.idx"
       local data_url="$REMOTE_DIR/$file"
@@ -399,22 +388,19 @@ download_files_parallel() {
 
       # Check data file
       if ! is_file_complete "$data_url" "$data_file"; then
-      {
         log_message "Fetching $file"
         curl_args+=("$data_url" -o "$data_file.tmp")
-      }; fi
+      fi
 
       # Check index file
       if ! is_file_complete "$idx_url" "$idx_file"; then
-      {
         log_message "Fetching $file.idx"
         curl_args+=("$idx_url" -o "$idx_file.tmp")
-      }; fi
-    }; done
+      fi
+    done
 
     # Download all files in parallel if there are any to download
     if [[ ${#curl_args[@]} -gt 0 ]]; then
-    {
       echo
       curl --parallel --parallel-immediate --parallel-max "$PARALLEL_JOBS" \
         -f -S -L \
@@ -434,7 +420,6 @@ download_files_parallel() {
       echo "curl command completed"
 
       if [[ $CURL_EXIT -ne 0 ]]; then
-      {
         log_warning "Batch download failed (curl exit code: $CURL_EXIT)"
 
         # Log curl error details if available
@@ -518,13 +503,12 @@ download_files_parallel() {
           rm -f "$CURL_ERROR_LOG"
           exit 1
         fi
-      }; fi
+      fi
 
       rm -f "$CURL_ERROR_LOG"
 
       # Move complete .tmp files to final destinations
       for file in "${files[@]}"; do
-      {
         local data_tmp="$CLONE_DIR/$file.tmp"
         local idx_tmp="$CLONE_DIR/$file.idx.tmp"
         local data_url="$REMOTE_DIR/$file"
@@ -537,20 +521,18 @@ download_files_parallel() {
         if [[ -f "$idx_tmp" ]] && is_file_complete "$idx_url" "$idx_tmp"; then
           mv "$idx_tmp" "$CLONE_DIR/$file.idx" || exit 1
         fi
-      }; done
+      done
 
       # Recoverable error: sleep and retry
       if [[ $CURL_EXIT -ne 0 ]]; then
         log_message "Retrying in $RETRY_DELAY seconds..."
         sleep "$RETRY_DELAY"
       fi
-    }
     else
-    {
       # All files are complete
       return 0
-    }; fi
-  }; done
+    fi
+  done
 
   # If we reach here, time limit was reached
   log_error "Time limit reached without completing all downloads"
@@ -568,7 +550,6 @@ download_files_with_aria2c() {
   rm -f "$ARIA2C_INPUT"
 
   for file in "${files[@]}"; do
-  {
     local data_url="$REMOTE_DIR/$file"
     local idx_url="$REMOTE_DIR/$file.idx"
 
@@ -581,13 +562,12 @@ download_files_with_aria2c() {
       log_message "Fetching $file.idx"
       printf '%s\n  out=%s\n' "$idx_url" "$file.idx.tmp" >> "$ARIA2C_INPUT"
     fi
-  }; done
+  done
 
   if [[ ! -s "$ARIA2C_INPUT" ]]; then
-  {
     rm -f "$ARIA2C_INPUT"
     return 0
-  }; fi
+  fi
 
   echo
   aria2c \
@@ -608,7 +588,6 @@ download_files_with_aria2c() {
   rm -f "$ARIA2C_INPUT"
 
   if [[ $ARIA2C_EXIT -ne 0 ]]; then
-  {
     log_warning "Batch download failed (aria2c exit code: $ARIA2C_EXIT)"
     case $ARIA2C_EXIT in
       2)  log_error "Exit 2: Timeout" ;;
@@ -620,12 +599,11 @@ download_files_with_aria2c() {
       *)  log_error "Exit $ARIA2C_EXIT: Download failed" ;;
     esac
     exit 1
-  }; fi
+  fi
 
   echo "aria2c command completed"
 
   for file in "${files[@]}"; do
-  {
     local data_tmp="$CLONE_DIR/$file.tmp"
     local idx_tmp="$CLONE_DIR/$file.idx.tmp"
     local data_url="$REMOTE_DIR/$file"
@@ -638,7 +616,7 @@ download_files_with_aria2c() {
     if [[ -f "$idx_tmp" ]] && is_file_complete "$idx_url" "$idx_tmp"; then
       mv "$idx_tmp" "$CLONE_DIR/$file.idx" || exit 1
     fi
-  }; done
+  done
 }
 
 download_files() {
@@ -679,39 +657,34 @@ main() {
   fi
 
   if ! mkdir -p "$CLONE_DIR"; then
-  {
     log_error "Failed to create or access database directory: $CLONE_DIR"
     exit 1
-  }; fi
+  fi
 
   # Fetch the clone URL from the trigger_clone endpoint
   if ! curl -f -s -S -L --max-time "$CONNECT_TIMEOUT" -o "$CLONE_DIR/base-url" "$SOURCE/trigger_clone"; then
-  {
     log_error "Failed to retrieve clone URL from trigger endpoint"
     exit 1
-  }; fi
+  fi
 
   # Read and validate the clone URL
   REMOTE_DIR=$(cat "$CLONE_DIR/base-url")
 
   if [[ -z "$REMOTE_DIR" ]]; then
-  {
     log_error "Empty URL from trigger_clone"
     exit 1
-  }; fi
+  fi
 
   if [[ ! "$REMOTE_DIR" =~ ^https?://[^[:space:]]+$ ]]; then
-  {
     log_error "Invalid URL from trigger_clone"
     exit 1
-  }; fi
+  fi
 
   # Verify clone is accessible by fetching replicate_id
   if ! curl -f -s -S -L --max-time "$CONNECT_TIMEOUT" -o "$CLONE_DIR/replicate_id" "$REMOTE_DIR/replicate_id"; then
-  {
     log_error "Clone not accessible"
     exit 1
-  }; fi
+  fi
 
   check_clone_disk_space
 
@@ -721,14 +694,12 @@ main() {
   download_files "${FILES_BASE[@]}"
 
   if [[ $META == "yes" || $META == "attic" ]]; then
-  {
     download_files "${FILES_META[@]}"
-  }; fi
+  fi
 
   if [[ $META == "attic" ]]; then
-  {
     download_files "${FILES_ATTIC[@]}"
-  }; fi
+  fi
 
   log_message "Database ready"
 }

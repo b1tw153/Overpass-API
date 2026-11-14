@@ -511,10 +511,9 @@ download_batch() {
     REMOTE_BASE="$SOURCE_URL/$URL_PATH"
     DIR_PATH="$LOCAL_DIR/$DIGIT1/$DIGIT2"
     if ! mkdir -p "$DIR_PATH"; then
-    {
       log_error "Unable to create $DIR_PATH directory."
       exit 1
-    }; fi
+    fi
 
     FILE="$DIR_PATH/$DIGIT3.state.txt"
     if ! verify_file "$FILE" "text"; then

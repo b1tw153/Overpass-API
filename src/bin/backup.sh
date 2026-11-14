@@ -571,7 +571,6 @@ log_message "-----------------------------------"
 # ============================================================================
 
 while true; do
-{
   if [[ -n "$BACKUP_TIME" ]]; then
     SLEEP_TIME=$(calculate_sleep_time)
     sleep_with_interrupts "$SLEEP_TIME"
@@ -643,5 +642,4 @@ while true; do
     SLEEP_TIME=$(calculate_sleep_time)
     sleep_with_interrupts "$SLEEP_TIME"
   fi
-}
 done
