@@ -181,19 +181,19 @@ log_error() {
 verify_globals() {
   local MESSAGE
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]+$ ]]; then
-    MESSAGE="Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
+    MESSAGE="OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if (( UPDATE_FREQUENCY != 60 && UPDATE_FREQUENCY != 3600 && UPDATE_FREQUENCY != 86400 )); then
-    MESSAGE="Invalid UPDATE_FREQUENCY: $UPDATE_FREQUENCY (must be 60, 3600, or 86400)"
+    MESSAGE="OVERPASS_UPDATE_FREQUENCY must be 60, 3600, or 86400, got: '$UPDATE_FREQUENCY'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$MAX_BATCH_SIZE" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid MAX_BATCH_SIZE: $MAX_BATCH_SIZE"
+    MESSAGE="FETCH_OSC_MAX_BATCH_SIZE must be a positive integer, got: '$MAX_BATCH_SIZE'"
     log_error "$MESSAGE"
     exit 1
   fi
@@ -205,7 +205,7 @@ verify_globals() {
   fi
 
   if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]+$ ]]; then
-    MESSAGE="Invalid MAX_BATCH_TIME: $MAX_BATCH_TIME"
+    MESSAGE="FETCH_OSC_MAX_BATCH_TIME must be a positive integer, got: '$MAX_BATCH_TIME'"
     log_error "$MESSAGE"
     exit 1
   fi
@@ -224,55 +224,55 @@ verify_globals() {
   fi
 
   if [[ ! "$MAX_RETRIES" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    MESSAGE="Invalid MAX_RETRIES: $MAX_RETRIES"
+    MESSAGE="FETCH_OSC_MAX_RETRIES must be a non-negative integer, got: '$MAX_RETRIES'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid RETRY_DELAY: $RETRY_DELAY"
+    MESSAGE="FETCH_OSC_RETRY_DELAY must be a positive integer, got: '$RETRY_DELAY'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid CONNECT_TIMEOUT: $CONNECT_TIMEOUT"
+    MESSAGE="FETCH_OSC_CONNECT_TIMEOUT must be a positive integer, got: '$CONNECT_TIMEOUT'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid KEEPALIVE_TIME: $KEEPALIVE_TIME"
+    MESSAGE="FETCH_OSC_KEEPALIVE_TIME must be a positive integer, got: '$KEEPALIVE_TIME'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$PARALLEL_MAX" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid PARALLEL_MAX: $PARALLEL_MAX"
+    MESSAGE="FETCH_OSC_PARALLEL_MAX must be a positive integer, got: '$PARALLEL_MAX'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$PARALLEL_MODE" =~ ^(immediate|multiplexed)$ ]]; then
-    MESSAGE="Invalid PARALLEL_MODE: $PARALLEL_MODE (must be \"immediate\" or \"multiplexed\")"
+    MESSAGE="FETCH_OSC_PARALLEL_MODE must be 'immediate' or 'multiplexed', got: '$PARALLEL_MODE'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$SPEED_LIMIT" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    MESSAGE="Invalid SPEED_LIMIT: $SPEED_LIMIT"
+    MESSAGE="FETCH_OSC_SPEED_LIMIT must be a non-negative integer, got: '$SPEED_LIMIT'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid SPEED_TIME: $SPEED_TIME"
+    MESSAGE="FETCH_OSC_SPEED_TIME must be a positive integer, got: '$SPEED_TIME'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
-    MESSAGE="Invalid OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (must be an integer from 0 to 99)"
+    MESSAGE="OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99, got: '$MIN_FREE_DISK_PERCENT'"
     log_error "$MESSAGE"
     exit 1
   fi

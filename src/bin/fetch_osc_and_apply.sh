@@ -181,57 +181,57 @@ log_error() {
 
 verify_globals() {
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid OVERPASS_UPDATE_FREQUENCY: $UPDATE_FREQUENCY"
+    log_error "OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'"
     die 1
   fi
 
   if [[ ! "$UPDATE_TRIM" =~ ^-?(0|[1-9][0-9]*)$ ]]; then
-    log_error "Invalid FETCH_OSC_UPDATE_TRIM: $UPDATE_TRIM"
+    log_error "FETCH_OSC_UPDATE_TRIM must be an integer, got: '$UPDATE_TRIM'"
     die 1
   fi
 
   if [[ ! "$MAX_BATCH_COUNT" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid FETCH_OSC_MAX_BATCH_SIZE: $MAX_BATCH_COUNT"
+    log_error "FETCH_OSC_MAX_BATCH_SIZE must be a positive integer, got: '$MAX_BATCH_COUNT'"
     die 1
   fi
 
   if [[ ! "$MAX_BATCH_MB" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid APPLY_OSC_MAX_BATCH_MB: $MAX_BATCH_MB"
+    log_error "APPLY_OSC_MAX_BATCH_MB must be a positive integer, got: '$MAX_BATCH_MB'"
     die 1
   fi
 
   if [[ ! "$CURL_CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid FETCH_OSC_CONNECT_TIMEOUT: $CURL_CONNECT_TIMEOUT"
+    log_error "FETCH_OSC_CONNECT_TIMEOUT must be a positive integer, got: '$CURL_CONNECT_TIMEOUT'"
     die 1
   fi
 
   if [[ ! "$CURL_KEEPALIVE_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid FETCH_OSC_KEEPALIVE_TIME: $CURL_KEEPALIVE_TIME"
+    log_error "FETCH_OSC_KEEPALIVE_TIME must be a positive integer, got: '$CURL_KEEPALIVE_TIME'"
     die 1
   fi
 
   if [[ ! "$CURL_MAX_RETRIES" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    log_error "Invalid FETCH_OSC_MAX_RETRIES: $CURL_MAX_RETRIES"
+    log_error "FETCH_OSC_MAX_RETRIES must be a non-negative integer, got: '$CURL_MAX_RETRIES'"
     die 1
   fi
 
   if [[ ! "$CURL_RETRY_DELAY" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid FETCH_OSC_RETRY_DELAY: $CURL_RETRY_DELAY"
+    log_error "FETCH_OSC_RETRY_DELAY must be a positive integer, got: '$CURL_RETRY_DELAY'"
     die 1
   fi
 
   if [[ ! "$CURL_SPEED_LIMIT" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    log_error "Invalid FETCH_OSC_SPEED_LIMIT: $CURL_SPEED_LIMIT"
+    log_error "FETCH_OSC_SPEED_LIMIT must be a non-negative integer, got: '$CURL_SPEED_LIMIT'"
     die 1
   fi
 
   if [[ ! "$CURL_SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid FETCH_OSC_SPEED_TIME: $CURL_SPEED_TIME"
+    log_error "FETCH_OSC_SPEED_TIME must be a positive integer, got: '$CURL_SPEED_TIME'"
     die 1
   fi
 
   if [[ ! "$APPLY_MAX_RETRIES" =~ ^[1-9][0-9]*$ ]]; then
-    log_error "Invalid APPLY_OSC_APPLY_MAX_RETRIES: $APPLY_MAX_RETRIES"
+    log_error "APPLY_OSC_APPLY_MAX_RETRIES must be a positive integer, got: '$APPLY_MAX_RETRIES'"
     die 1
   fi
 }

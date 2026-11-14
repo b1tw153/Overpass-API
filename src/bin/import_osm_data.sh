@@ -135,17 +135,17 @@ if [[ -z "$REPLICATION_SOURCE" ]]; then
 fi
 
 if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
-  error "Invalid value for --meta: $META (expected yes, no, or attic)"
+  error "--meta must be 'yes', 'no', or 'attic', got: '$META'"
   exit 1
 fi
 
 if ! [[ "$COMPRESSION" =~ ^(no|gz|lz4)$ ]]; then
-  error "Invalid value for --compression-method: $COMPRESSION (expected no, gz, or lz4)"
+  error "--compression-method must be 'no', 'gz', or 'lz4', got: '$COMPRESSION'"
   exit 1
 fi
 
 if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
-  error "Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
+  error "OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99, got: '$MIN_FREE_DISK_PERCENT'"
   exit 1
 fi
 

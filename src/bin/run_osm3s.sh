@@ -191,13 +191,13 @@ if [[ ! "$OVERPASS_DIFF_URL" =~ ^https?:// ]]; then
 fi
 
 if [[ $OVERPASS_META_MODE != "attic" && $OVERPASS_META_MODE != "yes" && $OVERPASS_META_MODE != "no" ]]; then
-  error "--meta must be 'attic', 'yes', or 'no'"
+  error "--meta must be 'attic', 'yes', or 'no', got: '$OVERPASS_META_MODE'"
   usage
   exit 1
 fi
 
 if [[ $AREAS != "yes" && $AREAS != "no" ]]; then
-  error "--areas must be 'yes' or 'no'"
+  error "--areas must be 'yes' or 'no', got: '$AREAS'"
   usage
   exit 1
 fi
@@ -323,7 +323,7 @@ fi
 
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
-  error "OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)"
+  error "OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99, got: '$MIN_FREE_DISK_PERCENT'"
   usage
   exit 1
 fi

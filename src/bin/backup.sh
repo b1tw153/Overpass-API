@@ -154,7 +154,7 @@ if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
-  echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99 (got: $MIN_FREE_DISK_PERCENT)" >&2
+  echo "ERROR: OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99, got: '$MIN_FREE_DISK_PERCENT'" >&2
   exit 1
 fi
 

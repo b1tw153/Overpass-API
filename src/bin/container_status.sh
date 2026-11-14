@@ -104,7 +104,7 @@ while true; do
 done
 
 if [[ "$FORMAT" != "text" && "$FORMAT" != "json" ]]; then
-  error "Unknown format $FORMAT (expected text or json)" >&2
+  error "--format must be 'text' or 'json', got: '$FORMAT'" >&2
   exit 1
 fi
 

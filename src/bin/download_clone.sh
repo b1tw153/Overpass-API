@@ -152,7 +152,7 @@ if [[ -z "$SOURCE" ]]; then
 fi
 
 if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
-  log_error "Invalid value for --meta: $META (expected yes, no, or attic)"
+  log_error "--meta must be 'yes', 'no', or 'attic', got: '$META'"
   exit 1
 fi
 
@@ -170,42 +170,42 @@ SPEED_TIME=${DOWNLOAD_CLONE_SPEED_TIME:-60}           # Seconds below speed limi
 MIN_FREE_DISK_PERCENT=${OVERPASS_MIN_FREE_DISK_PERCENT:-5}
 
 if [[ ! "$PARALLEL_JOBS" =~ ^[1-9][0-9]*$ ]]; then
-  log_error "Invalid value for DOWNLOAD_CLONE_PARALLEL_JOBS: $PARALLEL_JOBS"
+  log_error "DOWNLOAD_CLONE_PARALLEL_JOBS must be a positive integer, got: '$PARALLEL_JOBS'"
   exit 1
 fi
 
 if [[ ! "$MAX_TIME" =~ ^[1-9][0-9]*$ ]]; then
-  log_error "Invalid value for DOWNLOAD_CLONE_MAX_TIME: $MAX_TIME"
+  log_error "DOWNLOAD_CLONE_MAX_TIME must be a positive integer, got: '$MAX_TIME'"
   exit 1
 fi
 
 if [[ ! "$CONNECT_TIMEOUT" =~ ^[1-9][0-9]*$ ]]; then
-  log_error "Invalid value for DOWNLOAD_CLONE_CONNECT_TIMEOUT: $CONNECT_TIMEOUT"
+  log_error "DOWNLOAD_CLONE_CONNECT_TIMEOUT must be a positive integer, got: '$CONNECT_TIMEOUT'"
   exit 1
 fi
 
 if [[ ! "$RETRY_COUNT" =~ ^(0|[1-9][0-9]*)$ ]]; then
-  log_error "Invalid value for DOWNLOAD_CLONE_RETRY_COUNT: $RETRY_COUNT"
+  log_error "DOWNLOAD_CLONE_RETRY_COUNT must be a non-negative integer, got: '$RETRY_COUNT'"
   exit 1
 fi
 
 if [[ ! "$RETRY_DELAY" =~ ^(0|[1-9][0-9]*)$ ]]; then
-  log_error "Invalid value for DOWNLOAD_CLONE_RETRY_DELAY: $RETRY_DELAY"
+  log_error "DOWNLOAD_CLONE_RETRY_DELAY must be a non-negative integer, got: '$RETRY_DELAY'"
   exit 1
 fi
 
 if [[ ! "$SPEED_LIMIT" =~ ^(0|[1-9][0-9]*)$ ]]; then
-  log_error "Invalid value for DOWNLOAD_CLONE_SPEED_LIMIT: $SPEED_LIMIT"
+  log_error "DOWNLOAD_CLONE_SPEED_LIMIT must be a non-negative integer, got: '$SPEED_LIMIT'"
   exit 1
 fi
 
 if [[ ! "$SPEED_TIME" =~ ^[1-9][0-9]*$ ]]; then
-  log_error "Invalid value for DOWNLOAD_CLONE_SPEED_TIME: $SPEED_TIME"
+  log_error "DOWNLOAD_CLONE_SPEED_TIME must be a positive integer, got: '$SPEED_TIME'"
   exit 1
 fi
 
 if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
-  log_error "Invalid value for OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (expected integer 0-99)"
+  log_error "OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99, got: '$MIN_FREE_DISK_PERCENT'"
   exit 1
 fi
 

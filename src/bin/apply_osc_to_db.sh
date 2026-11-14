@@ -164,25 +164,25 @@ verify_globals() {
   local MESSAGE
 
   if [[ ! "$UPDATE_FREQUENCY" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid OVERPASS_UPDATE_FREQUENCY: $UPDATE_FREQUENCY (must be a positive integer)"
+    MESSAGE="OVERPASS_UPDATE_FREQUENCY must be a positive integer, got: '$UPDATE_FREQUENCY'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$MAX_BATCH_MB" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid APPLY_OSC_MAX_BATCH_MB: $MAX_BATCH_MB (must be a positive integer)"
+    MESSAGE="APPLY_OSC_MAX_BATCH_MB must be a positive integer, got: '$MAX_BATCH_MB'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$MAX_BATCH_TIME" =~ ^[1-9][0-9]*$ ]]; then
-    MESSAGE="Invalid APPLY_OSC_MAX_BATCH_TIME: $MAX_BATCH_TIME (must be a positive integer)"
+    MESSAGE="APPLY_OSC_MAX_BATCH_TIME must be a positive integer, got: '$MAX_BATCH_TIME'"
     log_error "$MESSAGE"
     exit 1
   fi
 
   if [[ ! "$MIN_FREE_DISK_PERCENT" =~ ^(0|[1-9][0-9]*)$ ]] || (( MIN_FREE_DISK_PERCENT >= 100 )); then
-    MESSAGE="Invalid OVERPASS_MIN_FREE_DISK_PERCENT: $MIN_FREE_DISK_PERCENT (must be an integer from 0 to 99)"
+    MESSAGE="OVERPASS_MIN_FREE_DISK_PERCENT must be an integer from 0 to 99, got: '$MIN_FREE_DISK_PERCENT'"
     log_error "$MESSAGE"
     exit 1
   fi
