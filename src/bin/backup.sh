@@ -575,7 +575,7 @@ sleep_with_interrupts() {
 # ============================================================================
 
 log_message "-----------------------------------"
-log_message "Starting backup.sh"
+log_message "Starting backup.sh ($0)"
 log_message "-----------------------------------"
 log_message "BACKUP_DIR                         $BACKUP_DIR"
 log_message "OVERPASS_BACKUP_TIME               ${BACKUP_TIME:-(not set, one-shot mode)}"

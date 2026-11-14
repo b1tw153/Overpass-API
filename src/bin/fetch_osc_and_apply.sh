@@ -616,7 +616,22 @@ trap 'shutdown 129' SIGHUP
 verify_globals
 
 echo >> "$LOG_FILE"
-log_message "Starting fetch and apply from $SOURCE_URL"
+log_message "-----------------------------------"
+log_message "Starting Fetch and Apply Process ($0)"
+log_message "-----------------------------------"
+log_message "OVERPASS_DIFF_URL                  $SOURCE_URL"
+log_message "OVERPASS_UPDATE_FREQUENCY          $UPDATE_FREQUENCY"
+log_message "FETCH_OSC_UPDATE_TRIM              $UPDATE_TRIM"
+log_message "FETCH_OSC_MAX_BATCH_SIZE           $MAX_BATCH_COUNT"
+log_message "APPLY_OSC_MAX_BATCH_MB             $MAX_BATCH_MB"
+log_message "FETCH_OSC_CONNECT_TIMEOUT          $CURL_CONNECT_TIMEOUT"
+log_message "FETCH_OSC_KEEPALIVE_TIME           $CURL_KEEPALIVE_TIME"
+log_message "FETCH_OSC_MAX_RETRIES              $CURL_MAX_RETRIES"
+log_message "FETCH_OSC_RETRY_DELAY              $CURL_RETRY_DELAY"
+log_message "FETCH_OSC_SPEED_LIMIT              $CURL_SPEED_LIMIT"
+log_message "FETCH_OSC_SPEED_TIME               $CURL_SPEED_TIME"
+log_message "APPLY_OSC_APPLY_MAX_RETRIES        $APPLY_MAX_RETRIES"
+log_message "-----------------------------------"
 
 CURRENT_ID=$(($(read_current_state) + 0))
 
