@@ -84,22 +84,19 @@ FILES_ATTIC=(
 # Log error
 log_error()
 {
-  local message="$1"
-  echo "Error: $message" >&2
+  echo "$(date -u '+%F %T'): ERROR: $1"
 }
 
 # Log warning
 log_warning()
 {
-  local message="$1"
-  echo "Warning: $message" >&2
+  echo "$(date -u '+%F %T'): WARNING: $1"
 }
 
 # Log message
 log_message()
 {
-  local message="$1"
-  echo "$message"
+  echo "$(date -u '+%F %T'): $1"
 }
 
 # ============================================================================
