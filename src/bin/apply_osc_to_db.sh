@@ -89,7 +89,7 @@ EXEC_DIR="$(dirname "$(realpath "$0")")"
 REPLICATE_DIR="$(realpath "$REPLICATE_DIR")"
 
 # Get database directory
-DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir)
+DB_DIR=$("$EXEC_DIR"/dispatcher --show-dir) || { echo "ERROR: dispatcher --show-dir failed" >&2; exit 1; }
 DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -d "$DB_DIR" ]]; then

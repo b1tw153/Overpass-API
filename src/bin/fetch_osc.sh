@@ -139,7 +139,7 @@ LATEST_ROOT_LM=        # Last-Modified epoch of root state.txt from last get_lat
 EXEC_DIR="$(dirname "$(realpath "$0")")"
 
 # Get database directory from dispatcher
-DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir)
+DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir) || { echo "ERROR: dispatcher --show-dir failed" >&2; exit 1; }
 DB_DIR="$(realpath "$DB_DIR")"
 
 if [[ ! -d "$DB_DIR" ]]; then
