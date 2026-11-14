@@ -43,8 +43,13 @@ Environment variables (overridden by arguments):
 EOF
 }
 
-ARGS=$(getopt -o '' --long 'time:,day:' -n "$0" -- "$@") || { usage; exit 1; }
-eval set -- "$ARGS"
+PARSED=$(getopt \
+  --options '' \
+  --longoptions 'time:,day:' \
+  --name "$0" \
+  -- "$@") || { usage; exit 1; }
+
+eval set -- "$PARSED"
 
 ARG_TIME=""
 ARG_DAY=""

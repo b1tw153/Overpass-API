@@ -88,8 +88,12 @@ FORMAT=$(printf '%s' "${QUERY_STRING:-}" | tr '[:upper:]' '[:lower:]' | tr '&' '
   | grep '^format=' | cut -d= -f2 | head -1)
 FORMAT="${FORMAT:-text}"
 
-PARSED=$(getopt --options '' --longoptions 'format:' --name "$0" -- "$@") \
-  || { usage; exit 1; }
+PARSED=$(getopt \
+  --options '' \
+  --longoptions 'format:' \
+  --name "$0" \
+  -- "$@") || { usage; exit 1; }
+
 eval set -- "$PARSED"
 
 while true; do
