@@ -329,10 +329,10 @@ CURL_STATUS=$?
 if (( CURL_STATUS != 0 )); then
   error "Failed to download MD5 checksum from $MD5_URL (curl exit $CURL_STATUS)"
   exit 1
-elif [[ "$HTTP_CODE" == 404 ]]; then
+elif [[ "$HTTP_CODE" == "404" ]]; then
   rm -f "$FILENAME.md5"
   message "WARNING: No MD5 checksum available for $FILENAME (HTTP 404); skipping verification"
-elif [[ "$HTTP_CODE" != 200 ]]; then
+elif [[ "$HTTP_CODE" != "200" ]]; then
   rm -f "$FILENAME.md5"
   error "Failed to download MD5 checksum from $MD5_URL (HTTP $HTTP_CODE)"
   exit 1
