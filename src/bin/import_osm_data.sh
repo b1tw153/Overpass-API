@@ -228,6 +228,20 @@ fi
 # SETUP
 # ============================================================================
 
+if "$EXEC_DIR/dispatcher" --show-dir > /dev/null 2>&1; then
+  error "Dispatcher is running. Stop all Overpass processes before importing."
+  exit 1
+fi
+
+# The import assumes an empty database. A glob that matches nothing stays
+# literal, so -e is false for it and for a missing directory.
+for FILE in "$DB_DIR"/*.bin "$DB_DIR"/*.map "$DB_DIR"/*.idx; do
+  if [[ -e "$FILE" ]]; then
+    error "Database directory $DB_DIR already contains database files (e.g., $FILE). Move or delete them before importing."
+    exit 1
+  fi
+done
+
 if ! mkdir -p "$DB_DIR"; then
   error "Failed to create or access database directory: $DB_DIR"
   exit 1
