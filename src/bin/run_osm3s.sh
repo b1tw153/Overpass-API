@@ -252,7 +252,7 @@ if [[ ! "$OVERPASS_CLEANUP_KEEP_HOURS" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-BACKUP="no"
+BACKUP=false
 if [[ -n "$OVERPASS_BACKUP_DIR" ]]; then
   if ! [[ -d "$OVERPASS_BACKUP_DIR" && -w "$OVERPASS_BACKUP_DIR" ]]; then
     error "OVERPASS_BACKUP_DIR '$OVERPASS_BACKUP_DIR' is not a writeable directory"
@@ -263,7 +263,7 @@ if [[ -n "$OVERPASS_BACKUP_DIR" ]]; then
   OVERPASS_BACKUP_DIR="$(realpath "$OVERPASS_BACKUP_DIR")"
   
   if [[ -n "$OVERPASS_BACKUP_TIME" || -n "$OVERPASS_BACKUP_DAY" ]]; then
-    BACKUP="yes"
+    BACKUP=true
   else
     message "INFO: Specify OVERPASS_BACKUP_TIME or OVERPASS_BACKUP_DAY to enable backups"
   fi
@@ -581,7 +581,7 @@ start_rules_loop() {
 }
 
 start_backup() {
-  if [[ "$BACKUP" == "yes" ]]; then
+  if [[ "$BACKUP" == "true" ]]; then
     message "Starting backup.sh"
     "$EXEC_DIR/backup.sh" \
       "$OVERPASS_BACKUP_DIR" \
@@ -756,7 +756,7 @@ check_rules_loop() {
 }
 
 check_backup() {
-  [[ "$BACKUP" == "no" ]] && return 0
+  [[ "$BACKUP" == "false" ]] && return 0
   if [[ -n "$BACKUP_PID" ]] && kill -0 "$BACKUP_PID" 2>/dev/null; then
     return 0
   else
@@ -987,10 +987,10 @@ NOW=$(date +%s)
 LAST_HEALTH_MESSAGE="$NOW"
 LAST_CLEANUP=0
 if [[ -n "$OVERPASS_STALL_MULTIPLIER" ]]; then
-  STALL_DETECTION="yes"
+  STALL_DETECTION=true
   STALL_THRESHOLD=$(( OVERPASS_UPDATE_FREQUENCY * OVERPASS_STALL_MULTIPLIER ))
 else
-  STALL_DETECTION="no"
+  STALL_DETECTION=false
 fi
 CLEANUP_THRESHOLD=$(( OVERPASS_CLEANUP_INTERVAL * 3600 ))
 CLEANUP_KEEP_COUNT=$(( OVERPASS_CLEANUP_KEEP_HOURS * 3600 / OVERPASS_UPDATE_FREQUENCY ))
@@ -1019,7 +1019,7 @@ while true; do
 
   REPLICATE_ID_TIMESTAMP=$(stat -c %Y "$OVERPASS_DB_DIR/replicate_id" 2>/dev/null)
   if [[ -n "$REPLICATE_ID_TIMESTAMP" ]]; then
-    if [[ "$STALL_DETECTION" == "yes" ]] && (( NOW - REPLICATE_ID_TIMESTAMP > STALL_THRESHOLD )); then
+    if [[ "$STALL_DETECTION" == "true" ]] && (( NOW - REPLICATE_ID_TIMESTAMP > STALL_THRESHOLD )); then
       message "WARNING: Database has not advanced in $(( NOW - REPLICATE_ID_TIMESTAMP ))s (threshold: ${STALL_THRESHOLD}s)"
     fi
   fi
