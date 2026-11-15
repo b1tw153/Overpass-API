@@ -63,7 +63,7 @@ elif [[ $META_ARG == "--meta=yes" || $META_ARG == "--meta" ]]; then
 elif [[ $META_ARG == "--meta=no" ]]; then
   META=
 else
-  echo "ERROR: You must specify --meta=attic, --meta=yes, or --meta=no" >&2
+  echo "ERROR: Invalid --meta argument '$META_ARG': must be --meta=attic, --meta=yes, or --meta=no" >&2
   exit 1
 fi
 

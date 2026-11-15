@@ -149,7 +149,7 @@ if [[ -z $START_ID ]]; then
 fi
 
 if [[ "$START_ID" != "auto" && ! "$START_ID" =~ ^[1-9][0-9]*$ ]]; then
-  error "Invalid --run value '$START_ID': must be a positive integer or 'auto'"
+  error "--run must be a positive integer or 'auto', got: '$START_ID'"
   usage
   exit 1
 fi
@@ -185,7 +185,7 @@ if [[ -z $OVERPASS_DIFF_URL ]]; then
 fi
 
 if [[ ! "$OVERPASS_DIFF_URL" =~ ^https?:// ]]; then
-  error "Invalid OVERPASS_DIFF_URL '$OVERPASS_DIFF_URL': must start with http:// or https://"
+  error "--diff-url must start with 'http://' or 'https://', got: '$OVERPASS_DIFF_URL'"
   usage
   exit 1
 fi
