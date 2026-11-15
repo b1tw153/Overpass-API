@@ -89,7 +89,7 @@ FILES_ATTIC=(
 
 # Log error
 log_error() {
-  echo "$(date -u '+%F %T'): ERROR: $1"
+  echo "$(date -u '+%F %T'): ERROR: $1" >&2
 }
 
 # Log warning
@@ -118,7 +118,7 @@ PARSED=$(getopt \
   --options '' \
   --longoptions 'db-dir:,source:,meta:,parallel:,help' \
   --name "$0" \
-  -- "$@") || { usage; exit 1; }
+  -- "$@") || { usage >&2; exit 1; }
 
 eval set -- "$PARSED"
 
@@ -139,7 +139,7 @@ done
 
 if [[ -z "$CLONE_DIR" ]]; then
   log_error "--db-dir is required (or set OVERPASS_DB_DIR)"
-  usage
+  usage >&2
   exit 1
 fi
 
@@ -147,7 +147,7 @@ CLONE_DIR="$(realpath "$CLONE_DIR")"
 
 if [[ -z "$SOURCE" ]]; then
   log_error "--source is required (or set DOWNLOAD_CLONE_SOURCE)"
-  usage
+  usage >&2
   exit 1
 fi
 
@@ -243,9 +243,15 @@ cleanup() {
   exit "$exit_code"
 }
 
+# Helper to allow sleep to be interrupted
+sleep_with_interrupts() {
+  sleep "$1" &
+  wait $!
+}
+
 # Signal handler for graceful interruption
 # $1 - exit code (128 + signal number)
-handle_interrupt() {
+shutdown() {
   INTERRUPTED=true
   cleanup "$1"
 }
@@ -532,7 +538,7 @@ download_files_parallel() {
       # Recoverable error: sleep and retry
       if (( CURL_EXIT != 0 )); then
         log_message "Retrying in $RETRY_DELAY seconds..."
-        sleep "$RETRY_DELAY"
+        sleep_with_interrupts "$RETRY_DELAY"
       fi
     else
       # All files are complete
@@ -711,9 +717,9 @@ main() {
 }
 
 # Set up signal handlers (exit code = 128 + signal number)
-trap 'handle_interrupt 143' SIGTERM
-trap 'handle_interrupt 130' SIGINT
-trap 'handle_interrupt 129' SIGHUP
+trap 'shutdown 143' SIGTERM
+trap 'shutdown 130' SIGINT
+trap 'shutdown 129' SIGHUP
 trap cleanup EXIT
 
 # Run main
