@@ -77,7 +77,15 @@ detect_database_meta_state() {
 }
 
 usage() {
-  printf 'Usage: %s [--format=text|json]\n' "$0" >&2
+  cat >&2 << EOF
+Usage: $0 [--format text|json]
+
+  --format        Output format (default: text)
+
+Environment variables:
+  QUERY_STRING    CGI query string. A 'format=text|json' field sets the format.
+                  An argument overrides it.
+EOF
 }
 
 # ============================================================================
@@ -588,7 +596,7 @@ DIFF_DIR=""
 if [[ -n "$FETCH_PID" ]]; then
   DIFF_DIR=$(tr '\0' '\n' < "/proc/$FETCH_PID/cmdline" 2>/dev/null | awk '/^http/{found=1; next} found && /^\// {print; exit}')
 fi
-DIFF_DIR="${DIFF_DIR:-/opt/overpass/diff}"
+DIFF_DIR=$(realpath -m "${DIFF_DIR:-/opt/overpass/diff}")
 
 FETCH_STATE=$(cat "$DIFF_DIR/replicate_id" 2>/dev/null)
 kv "replicate_id" "${FETCH_STATE:-unknown}"
