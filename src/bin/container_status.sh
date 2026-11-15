@@ -133,7 +133,7 @@ REPORT_TIME="$(date -u '+%Y-%m-%d %H:%M:%S') UTC"
 
 SEPARATOR="-----------------------------------"
 DEPTH=0
-declare -a _JSON_COMMA=()
+declare -a HAS_MEMBER=()
 
 json_escape() {
   local s="$1"
@@ -145,14 +145,20 @@ json_escape() {
   printf '%s' "$s"
 }
 
+# Start a member of the JSON object at the current depth. Print a comma first
+# when the object already has a member.
+json_comma() {
+  if [[ "${HAS_MEMBER[DEPTH]:-false}" == "true" ]]; then printf ','; fi
+  HAS_MEMBER[DEPTH]=true
+}
+
 begin_section() {
   local name="$1"
   if [[ "$FORMAT" == "json" ]]; then
-    if [[ "${_JSON_COMMA[DEPTH]:-0}" == "1" ]]; then printf ','; fi
+    json_comma
     printf '\n%*s"%s":\n%*s{' $(( DEPTH * 2 )) '' "$(json_escape "$name")" $(( DEPTH * 2 )) ''
-    _JSON_COMMA[DEPTH]=1
     (( ++DEPTH ))
-    _JSON_COMMA[DEPTH]=0
+    HAS_MEMBER[DEPTH]=false
   else
     if (( DEPTH == 0 )); then
       printf '\n%s\n%s\n%s\n' "$SEPARATOR" "$name" "$SEPARATOR"
@@ -168,7 +174,7 @@ end_section() {
     printf '\n'
     (( DEPTH-- ))
     printf '%*s}' $(( DEPTH * 2 )) ''
-    _JSON_COMMA[DEPTH]=1
+    HAS_MEMBER[DEPTH]=true
   else
     (( DEPTH-- ))
   fi
@@ -177,9 +183,8 @@ end_section() {
 kv() {
   local key="$1" val="$2"
   if [[ "$FORMAT" == "json" ]]; then
-    if [[ "${_JSON_COMMA[DEPTH]:-0}" == "1" ]]; then printf ','; fi
+    json_comma
     printf '\n%*s"%s": "%s"' $(( DEPTH * 2 )) '' "$(json_escape "$key")" "$(json_escape "$val")"
-    _JSON_COMMA[DEPTH]=1
   else
     local indent=$(( (DEPTH - 1) * 2 ))
     if (( indent > 0 )); then
@@ -317,7 +322,7 @@ proc_stats() {
 if [[ "$FORMAT" == "json" ]]; then
   printf '{'
   DEPTH=1
-  _JSON_COMMA[1]=0
+  HAS_MEMBER[1]=false
   kv "Status report" "$REPORT_TIME"
 else
   printf 'Status report: %s\n' "$REPORT_TIME"
