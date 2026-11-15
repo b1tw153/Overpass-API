@@ -378,6 +378,14 @@ if ! command -v rsync > /dev/null 2>&1; then
   exit 1
 fi
 
+log_message "-----------------------------------"
+log_message "Starting Restore Process ($0)"
+log_message "-----------------------------------"
+log_message "backup_dir                         $BACKUP_DIR"
+log_message "db_dir                             $DB_DIR"
+log_message "OVERPASS_RESTORE_TIMEOUT           $RESTORE_TIMEOUT"
+log_message "-----------------------------------"
+
 check_lock_files || exit 1
 
 META_STATE=$(detect_database_meta_state "$BACKUP_DIR") \

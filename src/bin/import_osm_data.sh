@@ -225,6 +225,22 @@ if ! command -v md5sum > /dev/null 2>&1; then
 fi
 
 # ============================================================================
+# STARTUP
+# ============================================================================
+
+message "-----------------------------------"
+message "Starting Import Process ($0)"
+message "-----------------------------------"
+message "OVERPASS_DB_DIR                    $DB_DIR"
+message "OVERPASS_DIFF_DIR                  $DIFF_DIR"
+message "IMPORT_OSM_DATA_SOURCE             $DATA_SOURCE"
+message "OVERPASS_DIFF_URL                  $REPLICATION_SOURCE"
+message "OVERPASS_META_MODE                 $META"
+message "IMPORT_OSM_COMPRESSION_METHOD      $COMPRESSION"
+message "OVERPASS_MIN_FREE_DISK_PERCENT     $MIN_FREE_DISK_PERCENT"
+message "-----------------------------------"
+
+# ============================================================================
 # SETUP
 # ============================================================================
 
