@@ -119,9 +119,9 @@ if [[ -z "$TARGET_TIME" ]]; then
       exit 1
     fi
   elif [[ -x "$EXEC_DIR/dispatcher" ]]; then
-    DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir 2>/dev/null)
-    DB_DIR="$(realpath "$DB_DIR")"
-    if [[ -n "$DB_DIR" && -s "$DB_DIR/osm_base_version" ]]; then
+    if DB_DIR=$("$EXEC_DIR/dispatcher" --show-dir 2>/dev/null) \
+       && DB_DIR=$(realpath "$DB_DIR" 2>/dev/null) \
+       && [[ -s "$DB_DIR/osm_base_version" ]]; then
       TARGET_TIME=$(cat "$DB_DIR/osm_base_version")
     else
       error "Could not read osm_base_version from dispatcher database directory. Set target_time, OVERPASS_DB_VERSION, or OVERPASS_DB_DIR explicitly."
