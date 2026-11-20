@@ -134,6 +134,16 @@ if [[ -z "$REPLICATION_SOURCE" ]]; then
   exit 1
 fi
 
+if [[ ! "$REPLICATION_SOURCE" =~ ^https?://[^[:space:]/]+[^[:space:]]*$ ]]; then
+  error "--diff-url must be an http:// or https:// URL, got: '$REPLICATION_SOURCE'"
+  exit 1
+fi
+
+if [[ ! "$DATA_SOURCE" =~ ^(https?|ftp)://[^[:space:]/]+[^[:space:]]*$ ]]; then
+  error "--data-source must be an http://, https:// or ftp:// URL, got: '$DATA_SOURCE'"
+  exit 1
+fi
+
 if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
   error "--meta must be 'yes', 'no', or 'attic', got: '$META'"
   exit 1
@@ -206,6 +216,11 @@ fi
 
 if [[ "$USE_TORRENT" == "true" && "$HAS_ARIA2C" == "false" ]]; then
   error "aria2c is required for torrent downloads but is not installed"
+  exit 1
+fi
+
+if [[ "$USE_BUNZIP2" == "true" ]] && ! command -v bunzip2 > /dev/null 2>&1; then
+  error "bunzip2 is required for .bz2 imports but is not installed"
   exit 1
 fi
 

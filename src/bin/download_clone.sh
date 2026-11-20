@@ -151,6 +151,11 @@ if [[ -z "$SOURCE" ]]; then
   exit 1
 fi
 
+if [[ ! "$SOURCE" =~ ^https?://[^[:space:]/]+[^[:space:]]*$ ]]; then
+  log_error "--source must be an http:// or https:// URL, got: '$SOURCE'"
+  exit 1
+fi
+
 if ! [[ "$META" =~ ^(yes|no|attic)$ ]]; then
   log_error "--meta must be 'yes', 'no', or 'attic', got: '$META'"
   exit 1
