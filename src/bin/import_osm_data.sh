@@ -291,7 +291,7 @@ fi
 # clone and planet file sizes as of 2026-05.  Uses the larger (conservative)
 # planet ratio for .bz2 in base/meta modes; switches to the history ratio for
 # attic mode.  The .pbf attic ratio is extrapolated from the pbf/bz2 compression
-# factor since no history.osm.pbf exists at time of writing.
+# factor since no history.osm.pbf was measured.
 FILE_SIZE=$(curl -sIL --max-time 30 "$FILE_URL" 2>/dev/null \
   | grep -i "^content-length:" | tail -1 | tr -d ' \r' | cut -d: -f2)
 
@@ -410,7 +410,12 @@ if [[ "$USE_BUNZIP2" == "true" ]]; then
         --compression-method="$COMPRESSION" \
         --map-compression-method="$COMPRESSION"
 elif [[ "$USE_OSMIUM" == "true" ]]; then
-  osmium cat -f osm "$DB_DIR/$FILENAME" \
+  if [[ "$META" == "attic" ]]; then
+    OSMIUM_FORMAT="osh"
+  else
+    OSMIUM_FORMAT="osm"
+  fi
+  osmium cat -f "$OSMIUM_FORMAT" "$DB_DIR/$FILENAME" \
     | "$EXEC_DIR/update_database" \
         --db-dir="$DB_DIR" \
         "$META_FLAG" \
